@@ -37,7 +37,7 @@ func parseProject(projectRoot string) []model.LogType {
 
 	//call helper function for each file in each pkg
 	for _, file := range filesToParse {
-		logTypes = append(logTypes, findLogsInFile(file)...)
+		logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
 	}
 
 	return logTypes
@@ -66,7 +66,7 @@ func isFromLog(fn *ast.SelectorExpr) bool {
 	return false
 }
 
-func findLogsInFile(path string) []model.LogType {
+func findLogsInFile(path string, base string) []model.LogType {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
@@ -129,9 +129,10 @@ func findLogsInFile(path string) []model.LogType {
 				// fmt.Println("Basic", v.Value)
 				//add the log information to the
 				//result array
-				currentLog.FilePath, _ = filepath.Abs(fset.File(l.n.Pos()).Name())
+				relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name())
+				currentLog.FilePath = filepath.ToSlash(relPath)
 				currentLog.LineNumber = fset.Position(l.n.Pos()).Line
-				currentLog.Regex = v.Value
+				currentLog.Regex = v.Value[1 : len(v.Value)-1]
 				logInfo = append(logInfo, currentLog)
 
 			//this case catches composite literals
