@@ -19,7 +19,14 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	}
 	defer r.Body.Close()
 
-	// TODO: actually parse the project
+	//actually parse the project
+	logsTypes := parseProject(request.ProjectRoot)
+
+	for _, logType := range logsTypes {
+		fmt.Println(logType.FilePath)
+		fmt.Println(logType.LineNumber)
+		fmt.Println(logType.Regex)
+	}
 
 	logType := model.LogType{}
 	logType.Regex = "This is a test for type .+"
