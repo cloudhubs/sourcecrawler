@@ -12,6 +12,8 @@ import (
 func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := model.ParseProjectRequest{}
 
+	fmt.Println("Requesting... Creating project log types")
+
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&request); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())

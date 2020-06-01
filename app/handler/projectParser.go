@@ -33,9 +33,11 @@ func parseProject(projectRoot string) []model.LogType {
 
 		//TODO: If log type is Msgf - need to build regex for variable string
 
+		//Could try ^[a-zA-Z,0-9: %()"]+$ to match entire string content
+		logTypes[index].Regex = "([^%]*%[a-zA-Z]([^%]+))"
 
-		//TODO: if basic Msg
-		logTypes[index].Regex = "^[a-zA-Z0-9 ]*$"
+		//if basic Msg
+		//logTypes[index].Regex = "^[a-zA-Z0-9 ]*$"
 	}
 
 	fmt.Println("ProjectParser is called")
