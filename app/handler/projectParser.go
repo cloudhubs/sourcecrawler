@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"github.com/jinzhu/gorm"
 	"sourcecrawler/app/model"
 	"time"
@@ -30,14 +31,14 @@ func parseProject(projectRoot string) []model.LogType {
 	//Create regex based on specific log type
 	for index := range logTypes {
 
-		//TODO: Assuming ID identifies the type of log? (info, error, etc.)
-		//if logTypes[index].ID == 1 {
-		//	logTypes[index].Regex = "^[a-zA-Z0-9]*$"
-		//}
+		//TODO: If log type is Msgf - need to build regex for variable string
 
-		//Currently all log type messages match this pattern (any # of alphanumeric or space)
+
+		//TODO: if basic Msg
 		logTypes[index].Regex = "^[a-zA-Z0-9 ]*$"
 	}
+
+	fmt.Println("ProjectParser is called")
 
 	return logTypes
 }
