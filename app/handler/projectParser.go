@@ -21,7 +21,7 @@ func parseProject(projectRoot string) []model.LogType {
 	}
 	type1 := model.LogType{
 		Model:      tempModel,
-		FilePath:   "./",
+		FilePath:   projectRoot,
 		LineNumber: 1,
 		Regex:      "",
 	}
