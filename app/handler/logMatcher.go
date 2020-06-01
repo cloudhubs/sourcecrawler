@@ -15,18 +15,16 @@ func matchLog(logMessage string, db *gorm.DB) model.LogSourceResponse {
 	db.Find(&logTypes)
 
 	// Find the first logType where the logMessage matches the regex
+	response := model.LogSourceResponse{}
 	for _, logType := range logTypes {
 		if regex, err := regexp.Compile(logType.Regex); err == nil {
 			if regex.Match([]byte(logMessage)) {
-				return model.LogSourceResponse{
-					LineNumber: logType.LineNumber,
-					FilePath:   logType.FilePath,
-				}
+				response.LineNumber = logType.LineNumber
+				response.FilePath = logType.FilePath
+				break
 			}
 		}
 	}
-
-	response := model.LogSourceResponse{}
 
 	return response
 }

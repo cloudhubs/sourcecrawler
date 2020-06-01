@@ -47,9 +47,7 @@ func FindLogSource(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	// TODO: try to match logMessage to a regex in logTypes
 	fmt.Println("Requested", logMessage)
-	response := model.LogSourceResponse{}
-	response.FilePath = "some/file/path.go"
-	response.LineNumber = 888
+	response := matchLog(logMessage, db)
 	respondJSON(w, http.StatusOK, response)
 }
 
