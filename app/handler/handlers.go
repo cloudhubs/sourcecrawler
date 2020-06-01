@@ -20,11 +20,7 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	defer r.Body.Close()
 
 	// TODO: actually parse the project
-
-	logType := model.LogType{}
-	logType.Regex = "This is a test for type .+"
-	logType.FilePath = "some/path/file.go"
-	logType.LineNumber = 123
+	logType := parseProject(request.ProjectRoot)
 
 	if err := db.Save(&logType).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
