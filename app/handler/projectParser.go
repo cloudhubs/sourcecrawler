@@ -35,11 +35,9 @@ func parseProject(projectRoot string) []model.LogType {
 		//	logTypes[index].Regex = "^[a-zA-Z0-9]*$"
 		//}
 
-		//Currently all log type messages match this pattern
-		logTypes[index].Regex = "^[a-zA-Z0-9]*$"
+		//Currently all log type messages match this pattern (any # of alphanumeric or space)
+		logTypes[index].Regex = "^[a-zA-Z0-9 ]*$"
 	}
 
 	return logTypes
 }
-
-
