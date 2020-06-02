@@ -48,8 +48,9 @@ func parseProject(projectRoot string) []model.LogType {
 //Can be changed/removed if desired,
 //currently just a placeholder
 type fnStruct struct {
-	n  ast.Node
-	fn *ast.CallExpr
+	n        ast.Node
+	fn       *ast.CallExpr
+	parentFn *ast.FuncDecl
 }
 
 func isFromLog(fn *ast.SelectorExpr) bool {
@@ -63,6 +64,29 @@ func isFromLog(fn *ast.SelectorExpr) bool {
 			return isFromLog(two)
 		}
 	}
+	return false
+}
+
+/*
+Current idea:
+	for each function declaration
+		if it contains a logging statement
+			if the logging statement's args using 1+ of the functions args
+				store it with an associated parent function
+			else
+				store it without an associated parent function
+
+	for each logging statement using parent function argument(s)
+		for each callexpr of that function
+			store with its message information
+*/
+
+func usesParentArg(parent *ast.FuncDecl, call *ast.CallExpr) bool {
+	// TODO implement this
+	// for _, arg := range call.Args {
+
+	// }
+
 	return false
 }
 
@@ -80,15 +104,18 @@ func findLogsInFile(path string, base string) []model.LogType {
 	//then call the recursive function isFromLog to determine
 	//if these Msg* calls originated from a log statement to eliminate
 	//false positives
+	var parentFn *ast.FuncDecl
 	ast.Inspect(node, func(n ast.Node) bool {
+		// Keep track of the current parent function the log statement is contained in
+		if funcDecl, ok := n.(*ast.FuncDecl); ok {
+			parentFn = funcDecl
+		}
 
 		//continue if Node casts as a CallExpr
-		ret, ok := n.(*ast.CallExpr)
-		if ok {
+		if ret, ok := n.(*ast.CallExpr); ok {
 			//continue processing if CallExpr casts
 			//as a SelectorExpr
-			fn, ok := ret.Fun.(*ast.SelectorExpr)
-			if ok {
+			if fn, ok := ret.Fun.(*ast.SelectorExpr); ok {
 				// fmt.Printf("%T, %v\n", fn, fn)
 				//convert Selector into String for comparison
 				val := fmt.Sprint(fn.Sel)
@@ -97,10 +124,14 @@ func findLogsInFile(path string, base string) []model.LogType {
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if strings.Contains(val, "Msg") {
-					if isFromLog(fn) {
-						logCalls = append(logCalls, fnStruct{n, ret})
+				if strings.Contains(val, "Msg") && isFromLog(fn) {
+					value := fnStruct{n, ret, nil}
+					// Check if the log call depends on a parent function argument
+					// and if it does, specify the parent function
+					if usesParentArg(parentFn, ret) {
+						value.parentFn = parentFn
 					}
+					logCalls = append(logCalls, value)
 				}
 			}
 		}
