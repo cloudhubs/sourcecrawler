@@ -3,10 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jinzhu/gorm"
 	"net/http"
 	"sourcecrawler/app/model"
-
-	"github.com/jinzhu/gorm"
 )
 
 func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -21,13 +20,26 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	}
 	defer r.Body.Close()
 
-	// TODO: actually parse the project
-	logType := parseProject(request.ProjectRoot)
+	//actually parse the project
+	logsTypes := parseProject(request.ProjectRoot)
 
-	if err := db.Save(&logType).Error; err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
+	for _, logType := range logsTypes {
+
+			fmt.Println(logType.FilePath)
+			fmt.Println(logType.LineNumber)
+			fmt.Println(logType.Regex)
+
+		//Save each entry into db
+		if err := db.Save(&logType).Error; err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
+
+	// logType := model.LogType{}
+	// logType.Regex = "This is a test for type .+"
+	// logType.FilePath = "some/path/file.go"
+	// logType.LineNumber = 123
 	respondJSON(w, http.StatusNoContent, nil)
 }
 
