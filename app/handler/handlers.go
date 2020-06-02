@@ -24,22 +24,19 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	logsTypes := parseProject(request.ProjectRoot)
 
 	for _, logType := range logsTypes {
+		fmt.Println(logType.FilePath)
+		fmt.Println(logType.LineNumber)
+		fmt.Println(logType.Regex)
 
-			fmt.Println(logType.FilePath)
-			fmt.Println(logType.LineNumber)
-			fmt.Println(logType.Regex)
+		// TODO: confirm path format. How much info to pass?
 
-		//Save each entry into db
+		// save logType to DB
 		if err := db.Save(&logType).Error; err != nil {
 			respondError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
 
-	// logType := model.LogType{}
-	// logType.Regex = "This is a test for type .+"
-	// logType.FilePath = "some/path/file.go"
-	// logType.LineNumber = 123
 	respondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -53,14 +50,20 @@ func FindLogSource(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	var logMessage string = request.LogMessage
+	fmt.Println("Requested", request.LogMessage)
+	if response, err := matchLog(request.LogMessage, db); response != nil && err != nil {
+		// Successfully matched
+		respondJSON(w, http.StatusOK, response)
+	} else {
+		// Could not find a match
+		responseError := struct {
+			Error string `json:"error"`
+		}{
+			Error: err.Error(),
+		}
 
-	// TODO: try to match logMessage to a regex in logTypes
-	fmt.Println("Requested", logMessage)
-	response := model.LogSourceResponse{}
-	response.FilePath = "some/file/path.go"
-	response.LineNumber = 888
-	respondJSON(w, http.StatusOK, response)
+		respondJSON(w, http.StatusNotFound, responseError)
+	}
 }
 
 func GetAllLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {

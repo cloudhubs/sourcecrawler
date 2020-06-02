@@ -39,7 +39,7 @@ func parseProject(projectRoot string) []model.LogType {
 
 	//call helper function to add each file in each pkg
 	for _, file := range filesToParse {
-		logTypes = append(logTypes, findLogsInFile(file)...)
+		logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
 	}
 
 	return logTypes
@@ -69,7 +69,7 @@ func isFromLog(fn *ast.SelectorExpr) bool {
 	return false
 }
 
-func findLogsInFile(path string) []model.LogType {
+func findLogsInFile(path string, base string) []model.LogType {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
@@ -136,8 +136,12 @@ func findLogsInFile(path string) []model.LogType {
 			//our proof-of-concept case
 			case *ast.BasicLit:
 				// fmt.Println("Basic", v.Value)
+				//add the log information to the
+				//result array
 
-				//add the log information to the result array
+				//relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name()) //TODO: filepath isn't showing up?
+				//currentLog.FilePath = filepath.ToSlash(relPath)
+
 				currentLog.FilePath, _ = filepath.Abs(fset.File(l.n.Pos()).Name())
 				currentLog.LineNumber = fset.Position(l.n.Pos()).Line
 
@@ -169,7 +173,9 @@ func findLogsInFile(path string) []model.LogType {
 					reg = strings.ReplaceAll(reg, "%+v", ".+")
 				}
 
-				currentLog.Regex = reg
+				//Remove the double quotes
+				currentLog.Regex = reg[1 : len(reg)-1]
+
 				logInfo = append(logInfo, currentLog)
 
 
@@ -197,25 +203,6 @@ func findLogsInFile(path string) []model.LogType {
 		}
 		fmt.Println()
 	}
-
-	//Modify Regex
-	//Create regex based on specific log type
-	//for index := range logInfo {
-	//
-	//	lnNumber := logInfo[index].LineNumber
-	//	fPath := logInfo[index].FilePath
-	//	//TODO: If log type is Msgf - need to build regex for variable string
-	//	//For msgf in aggregator.go line 221
-	//	if strings.Contains(fPath, "aggregator.go"){
-	//		if lnNumber == 221{
-	//			logInfo[index].Regex = "database preparation exited with error code \\d+ \\d+"
-	//		}
-	//	}
-	//
-	//	if strings.Contains(logInfo[index].FilePath, "aggregator.go") && logInfo[index].LineNumber == 125 {
-	//		logInfo[index].Regex = "old DB migration version (current: \\d, latest: \\d)"
-	//	}
-	//}
 
 	return logInfo
 }
