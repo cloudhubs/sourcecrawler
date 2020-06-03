@@ -251,7 +251,6 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			//this case catches string literals,
 			//our proof-of-concept case
 			case *ast.BasicLit:
-				currentLog.Regex = v.Value[1 : len(v.Value)-1]
 				good = true
 				// fmt.Println("Basic", v.Value)
 
