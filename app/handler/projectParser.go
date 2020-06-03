@@ -111,8 +111,11 @@ func usesParentArgs(parent *ast.FuncDecl, call *ast.CallExpr) []*ast.Ident {
 			}
 			for _, param := range params {
 				if arg.Name == param {
-					// Found an argument used by the parent in the logging call expression
-					args = append(args, arg)
+					if arg.Obj.Kind == ast.Var || arg.Obj.Kind == ast.Con {
+						// Found an argument used by the parent in the logging call expression
+						// or a constant we can find the value of
+						args = append(args, arg)
+					}
 				}
 			}
 		case *ast.CallExpr:
