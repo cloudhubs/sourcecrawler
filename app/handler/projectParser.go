@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sourcecrawler/app/model"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -38,9 +39,15 @@ func parseProject(projectRoot string) []model.LogType {
 	})
 
 	//call helper function to add each file in each pkg
-	for _, file := range filesToParse {
-		logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
-	}
+	//for _, file := range filesToParse {
+	//	logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
+	//}
+
+	//TODO: Check if given function name is used anywhere else
+	functionDecls(filesToParse)
+	//functList := map[string][]string{}
+
+	//callFrom("HandleMessage", filesToParse)
 
 	return logTypes
 }
@@ -68,6 +75,49 @@ func isFromLog(fn *ast.SelectorExpr) bool {
 	}
 	return false
 }
+
+/*
+ Determines if a function is called somewhere else based on its name (path and line number)
+  -currently goes through all files and finds if it's used
+ */
+func functionDecls(filesToParse []string) map[string][]string{
+
+	//Map of all function names with a [line number, file path]
+	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
+	functMap := map[string][]string{}
+
+
+	//Inspect each file for calls to this function
+	for _, file := range filesToParse{
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, file, nil, 0)
+		if err != nil {
+			log.Error().Err(err).Msg("Error parsing file " + file)
+		}
+
+		//Inspect AST for file
+		ast.Inspect(node, func(currNode ast.Node) bool {
+
+			fdNode, ok := currNode.(*ast.FuncDecl)
+			if ok {
+				functionName := fdNode.Name.Name
+				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
+				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
+
+				//fmt.Println(functionName)
+				//fmt.Println(linePos)
+				//fmt.Println(fpath)
+
+				data := []string{linePos, fpath}
+				functMap[functionName] = data
+			}
+			return true
+		})
+	}
+
+	return functMap
+}
+
 
 func findLogsInFile(path string, base string) []model.LogType {
 	fset := token.NewFileSet()
