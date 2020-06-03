@@ -3,14 +3,15 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jinzhu/gorm"
 	"net/http"
 	"sourcecrawler/app/model"
-
-	"github.com/jinzhu/gorm"
 )
 
 func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := model.ParseProjectRequest{}
+
+	fmt.Println("Requesting... Creating project log types")
 
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&request); err != nil {
@@ -35,11 +36,6 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-
-	logType := model.LogType{}
-	logType.Regex = "This is a test for type .+"
-	logType.FilePath = "some/path/file.go"
-	logType.LineNumber = 123
 
 	respondJSON(w, http.StatusNoContent, nil)
 }
