@@ -14,8 +14,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+//Parse project to create log types
 func parseProject(projectRoot string) []model.LogType {
-	// TODO: parse project and create log types
+
+	//Holds a slice of log types
 	logTypes := []model.LogType{}
 
 	filesToParse := []string{}
@@ -35,7 +37,7 @@ func parseProject(projectRoot string) []model.LogType {
 		return nil
 	})
 
-	//call helper function for each file in each pkg
+	//call helper function to add each file in each pkg
 	for _, file := range filesToParse {
 		logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
 	}
@@ -54,6 +56,7 @@ type fnStruct struct {
 	usedParentArgs []*ast.Ident
 }
 
+//Checks if from log (two.name is Info/Err/Error)
 func isFromLog(fn *ast.SelectorExpr) bool {
 	if strings.Contains(fmt.Sprint(fn.X), "log") {
 		return true
@@ -142,6 +145,9 @@ func findLogsInFile(path string, base string) []model.LogType {
 	logInfo := []model.LogType{}
 	logCalls := []fnStruct{}
 
+	//Helper structure to hold logTypes with function types (msg, msgf, err)
+	//lnTypes := make(map[model.LogType]string)
+
 	//Filter out nodes that do not contain a call to Msg or Msgf
 	//then call the recursive function isFromLog to determine
 	//if these Msg* calls originated from a log statement to eliminate
@@ -161,6 +167,8 @@ func findLogsInFile(path string, base string) []model.LogType {
 				// fmt.Printf("%T, %v\n", fn, fn)
 				//convert Selector into String for comparison
 				val := fmt.Sprint(fn.Sel)
+
+				//fmt.Println("Val: " + val)
 
 				//Should recursively call a function to check if
 				//the preceding SelectorExpressions contain a call
@@ -199,6 +207,7 @@ func findLogsInFile(path string, base string) []model.LogType {
 		// fn, _ := l.fn.Fun.(*ast.SelectorExpr)
 		// fmt.Printf("Args for %v at line %d\n", fn.Sel, fset.Position(l.n.Pos()).Line)
 		for _, a := range l.fn.Args {
+
 			//limits args to literal values and prints them
 			switch v := a.(type) {
 
@@ -208,11 +217,46 @@ func findLogsInFile(path string, base string) []model.LogType {
 				// fmt.Println("Basic", v.Value)
 				//add the log information to the
 				//result array
-				relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name())
-				currentLog.FilePath = filepath.ToSlash(relPath)
+
+				//relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name()) //TODO: filepath isn't showing up?
+				//currentLog.FilePath = filepath.ToSlash(relPath)
+
+				currentLog.FilePath, _ = filepath.Abs(fset.File(l.n.Pos()).Name())
 				currentLog.LineNumber = fset.Position(l.n.Pos()).Line
-				currentLog.Regex = v.Value[1 : len(v.Value)-1]
+
+				//Regex value currently
+				reg := v.Value
+
+				//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
+				if strings.Contains(reg, "("){
+					reg = strings.ReplaceAll(reg,"(", "\\(")
+				}
+				if strings.Contains(reg, ")"){
+					reg = strings.ReplaceAll(reg, ")", "\\)")
+				}
+
+				//Converting %d, %s, %v to regex num, removing single quotes
+				if strings.Contains(reg, "%d"){
+					reg = strings.ReplaceAll(reg, "%d", "\\d")
+				}
+				if strings.Contains(reg, "%s"){
+					reg = strings.ReplaceAll(reg, "%s", ".*")
+				}
+				if strings.Contains(reg, "%v"){
+					reg = strings.ReplaceAll(reg, "%v", ".*")
+				}
+				if strings.Contains(reg, "'"){
+					reg = strings.ReplaceAll(reg, "'", "")
+				}
+				if strings.Contains(reg, "%+v"){
+					reg = strings.ReplaceAll(reg, "%+v", ".+")
+				}
+
+				//Remove the double quotes
+				currentLog.Regex = reg[1 : len(reg)-1]
+
 				logInfo = append(logInfo, currentLog)
+
 
 			//this case catches composite literals
 			case *ast.CompositeLit:
