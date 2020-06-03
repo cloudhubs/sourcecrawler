@@ -29,8 +29,10 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 	return -1, false
 }
 
+//Parse project to create log types
 func parseProject(projectRoot string) []model.LogType {
-	// TODO: parse project and create log types
+
+	//Holds a slice of log types
 	logTypes := []model.LogType{}
 	variableDeclarations := varDecls{}
 	variablesUsedInLogs := map[string]struct{}{}
@@ -124,6 +126,7 @@ type fnStruct struct {
 	fn *ast.CallExpr
 }
 
+//Checks if from log (two.name is Info/Err/Error)
 func isFromLog(fn *ast.SelectorExpr) bool {
 	if strings.Contains(fmt.Sprint(fn.X), "log") {
 		return true
@@ -183,6 +186,9 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	logInfo := []model.LogType{}
 	logCalls := []fnStruct{}
 
+	//Helper structure to hold logTypes with function types (msg, msgf, err)
+	//lnTypes := make(map[model.LogType]string)
+
 	//Filter out nodes that do not contain a call to Msg or Msgf
 	//then call the recursive function isFromLog to determine
 	//if these Msg* calls originated from a log statement to eliminate
@@ -202,6 +208,8 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				// fmt.Printf("%T, %v\n", fn, fn)
 				//convert Selector into String for comparison
 				val := fmt.Sprint(fn.Sel)
+
+				//fmt.Println("Val: " + val)
 
 				//Should recursively call a function to check if
 				//the preceding SelectorExpressions contain a call
@@ -245,6 +253,40 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			case *ast.BasicLit:
 				currentLog.Regex = v.Value[1 : len(v.Value)-1]
 				good = true
+				// fmt.Println("Basic", v.Value)
+
+				//Regex value currently
+				reg := v.Value
+
+				//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
+				if strings.Contains(reg, "(") {
+					reg = strings.ReplaceAll(reg, "(", "\\(")
+				}
+				if strings.Contains(reg, ")") {
+					reg = strings.ReplaceAll(reg, ")", "\\)")
+				}
+
+				//Converting %d, %s, %v to regex num, removing single quotes
+				if strings.Contains(reg, "%d") {
+					reg = strings.ReplaceAll(reg, "%d", "\\d")
+				}
+				if strings.Contains(reg, "%s") {
+					reg = strings.ReplaceAll(reg, "%s", ".*")
+				}
+				if strings.Contains(reg, "%v") {
+					reg = strings.ReplaceAll(reg, "%v", ".*")
+				}
+				if strings.Contains(reg, "'") {
+					reg = strings.ReplaceAll(reg, "'", "")
+				}
+				if strings.Contains(reg, "%+v") {
+					reg = strings.ReplaceAll(reg, "%+v", ".+")
+				}
+
+				//Remove the double quotes
+				currentLog.Regex = reg[1 : len(reg)-1]
+
+				logInfo = append(logInfo, currentLog)
 
 			//this case catches composite literals
 			case *ast.CompositeLit:
