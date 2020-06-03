@@ -14,10 +14,26 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type varDecls struct {
+	asns  []*ast.AssignStmt
+	decls []*ast.ValueSpec
+}
+
+//find index of a logtype for value changing
+func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
+	for k, v := range arr {
+		if elt == v {
+			return k, true
+		}
+	}
+	return -1, false
+}
+
 func parseProject(projectRoot string) []model.LogType {
 	// TODO: parse project and create log types
 	logTypes := []model.LogType{}
-
+	variableDeclarations := varDecls{}
+	variablesUsedInLogs := map[string]struct{}{}
 	filesToParse := []string{}
 	//gather all go files in project
 	filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
@@ -35,9 +51,65 @@ func parseProject(projectRoot string) []model.LogType {
 		return nil
 	})
 
-	//call helper function for each file in each pkg
+	//parse each file to collect logs and the variables used in them
+	//as well as collecting variables declared in the file for later use
 	for _, file := range filesToParse {
-		logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
+		newLogTypes, newVariablesUsedInLogs := findLogsInFile(file, projectRoot)
+		logTypes = append(logTypes, newLogTypes...)
+		for key := range newVariablesUsedInLogs {
+			variablesUsedInLogs[key] = struct{}{}
+		}
+
+		newVarDecls := findVariablesInFile(file)
+		variableDeclarations.asns = append(variableDeclarations.asns, newVarDecls.asns...)
+		variableDeclarations.decls = append(variableDeclarations.decls, newVarDecls.decls...)
+	}
+
+	//match direct references to variables and update regex values
+	//note: may require checking scope if duplicate names are used
+	for _, asn := range variableDeclarations.asns {
+		fnName := fmt.Sprint(asn.Lhs[0])
+		_, ok := variablesUsedInLogs[fnName]
+		if ok {
+			//find variable in logTypes, update value
+			for _, logType := range logTypes {
+				if logType.Regex == fnName {
+					ndx, ok := indexOf(logType, logTypes)
+					if ok {
+						//This could be enhanced to detect non-literal values
+						//such as function returns, but currently just accept
+						//literal values
+						newVal, ok := asn.Rhs[0].(*ast.BasicLit)
+						if ok && len(newVal.Value) > 1 {
+							logTypes[ndx].Regex = newVal.Value[1 : len(newVal.Value)-1]
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, decl := range variableDeclarations.decls {
+		fnName := fmt.Sprint(decl.Names[0])
+		_, ok := variablesUsedInLogs[fnName]
+		if ok {
+			//find variable in logTypes, update value
+			for _, logType := range logTypes {
+				if logType.Regex == fnName {
+					ndx, ok := indexOf(logType, logTypes)
+					if ok {
+						if len(decl.Values) > 0 {
+							//This could be enhanced to detect non-literal values
+							//such as function returns, but currently just accept
+							//literal values
+							newVal, ok := decl.Values[0].(*ast.BasicLit)
+							if ok && len(newVal.Value) > 1 {
+								logTypes[ndx].Regex = newVal.Value[1 : len(newVal.Value)-1]
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return logTypes
@@ -66,13 +138,48 @@ func isFromLog(fn *ast.SelectorExpr) bool {
 	return false
 }
 
-func findLogsInFile(path string, base string) []model.LogType {
+func findVariablesInFile(path string) varDecls {
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to parse file")
+	}
+	vars := varDecls{}
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		//The following two blocks are related to finding variables
+		//and their values
+
+		//filter nodes that represent variable asns and decls
+
+		//These follow pattern "name :=/= value"
+		asn, ok := n.(*ast.AssignStmt)
+		if ok {
+			vars.asns = append(vars.asns, asn)
+		}
+
+		//These nodes follow pattern "var/const name = value"
+		expr, ok := n.(*ast.GenDecl)
+		if ok {
+			spec, ok := expr.Specs[0].(*ast.ValueSpec)
+			if ok {
+				vars.decls = append(vars.decls, spec)
+			}
+		}
+		return true
+	})
+
+	return vars
+}
+
+func findLogsInFile(path string, base string) ([]model.LogType, map[string]struct{}) {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to parse file")
 	}
 
+	varsInLogs := map[string]struct{}{}
 	logInfo := []model.LogType{}
 	logCalls := []fnStruct{}
 
@@ -81,37 +188,6 @@ func findLogsInFile(path string, base string) []model.LogType {
 	//if these Msg* calls originated from a log statement to eliminate
 	//false positives
 	ast.Inspect(node, func(n ast.Node) bool {
-
-		//The following two blocks are related to finding variables
-		//and their values
-
-		//These follow pattern "name :=/= value"
-		asn, ok := n.(*ast.AssignStmt)
-		if ok {
-			fmt.Println("Assigned", asn.Lhs, asn.Rhs)
-		}
-
-		//filter nodes that represent variable assignments,
-		//collect this information for reference later
-		//These nodes follow pattern "var/const name = value"
-		expr, ok := n.(*ast.GenDecl)
-		if ok {
-			spec, ok := expr.Specs[0].(*ast.ValueSpec)
-			if ok {
-				for _, a := range spec.Values {
-					switch v := a.(type) {
-
-					//this case catches string literals
-					case *ast.BasicLit:
-						fmt.Println("Declared", spec.Names, v.Value)
-
-					default:
-						fmt.Println("type", reflect.TypeOf(a), a)
-					}
-					// fmt.Println("Value: ",  v)
-				}
-			}
-		}
 
 		//The following block is for finding log statements and the
 		//values passed to them as args
@@ -151,49 +227,52 @@ func findLogsInFile(path string, base string) []model.LogType {
 	//what was added by the inspection above
 	for _, l := range logCalls {
 		currentLog := model.LogType{}
-		fn, _ := l.fn.Fun.(*ast.SelectorExpr)
-		fmt.Printf("Args for %v at line %d\n", fn.Sel, fset.Position(l.n.Pos()).Line)
+		// fn, _ := l.fn.Fun.(*ast.SelectorExpr)
+		// fmt.Printf("Args for %v at line %d\n", fn.Sel, fset.Position(l.n.Pos()).Line)
+
+		relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name())
+		currentLog.FilePath = filepath.ToSlash(relPath)
+		currentLog.LineNumber = fset.Position(l.n.Pos()).Line
 		for _, a := range l.fn.Args {
-			//limits args to literal values and prints them
+			good := false
+			//later will be used to call functions
+			//to extract data more eficiently for multiple
+			//types of arguments
 			switch v := a.(type) {
 
 			//this case catches string literals,
 			//our proof-of-concept case
 			case *ast.BasicLit:
-				// fmt.Println("Basic", v.Value)
-				//add the log information to the
-				//result array
-				relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name())
-				currentLog.FilePath = filepath.ToSlash(relPath)
-				currentLog.LineNumber = fset.Position(l.n.Pos()).Line
 				currentLog.Regex = v.Value[1 : len(v.Value)-1]
-				fmt.Printf("%v, ", v.Value)
-				logInfo = append(logInfo, currentLog)
+				good = true
 
 			//this case catches composite literals
 			case *ast.CompositeLit:
 				// fmt.Println("Composite", v.Elts)
 
-			//this case catches statically assigned message values
-			//that are declared in same file and not const
+			//This case represents variables used as log arguments
 			case *ast.Ident:
-				if v.Obj != nil {
-					val, ok := v.Obj.Decl.(*ast.AssignStmt)
-					if ok && val != nil {
-						data, ok2 := val.Rhs[0].(*ast.BasicLit)
-						if ok2 && data != nil {
-							fmt.Printf("%v Assigned: %v, %T\n", val.Lhs[0], data.Value, data.Value)
-						} else {
-							fmt.Println(val.Lhs, "Assigned:", val.Rhs[0])
-						}
-					}
-				}
+				//store var name, will be   updated later
+				currentLog.Regex = v.Name
+				// fmt.Printf("%v, ", v.Name)
+
+				//add an entry in the map for the variable name
+				//so we can check if declarations refer to a
+				//variable used in a log statement
+				varsInLogs[v.Name] = struct{}{}
+				good = true
+
 			default:
-				fmt.Println("type", reflect.TypeOf(a), a)
+				fmt.Println("type arg", reflect.TypeOf(a), a)
+			}
+			//if the type is known and handled,
+			//add it to the result array
+			if good {
+				logInfo = append(logInfo, currentLog)
 			}
 		}
 		fmt.Println()
 	}
 
-	return logInfo
+	return logInfo, varsInLogs
 }
