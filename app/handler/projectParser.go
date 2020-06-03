@@ -48,9 +48,10 @@ func parseProject(projectRoot string) []model.LogType {
 //Can be changed/removed if desired,
 //currently just a placeholder
 type fnStruct struct {
-	n        ast.Node
-	fn       *ast.CallExpr
-	parentFn *ast.FuncDecl
+	n              ast.Node
+	fn             *ast.CallExpr
+	parentFn       *ast.FuncDecl
+	usedParentArgs []*ast.Ident
 }
 
 func isFromLog(fn *ast.SelectorExpr) bool {
@@ -81,13 +82,49 @@ Current idea:
 			store with its message information
 */
 
-func usesParentArg(parent *ast.FuncDecl, call *ast.CallExpr) bool {
-	// TODO implement this
-	// for _, arg := range call.Args {
+func usesParentArgs(parent *ast.FuncDecl, call *ast.CallExpr) []*ast.Ident {
+	args := make([]*ast.Ident, 0)
+	if parent == nil || call == nil {
+		return args
+	}
+	if parent.Recv == nil || parent.Recv.List == nil {
+		return args
+	}
 
-	// }
+	// Gather all parent parameter names
+	params := make([]string, 0)
+	for _, field := range parent.Recv.List {
+		if field == nil {
+			continue
+		}
+		for _, param := range field.Names {
+			params = append(params, param.Name)
+		}
+	}
 
-	return false
+	// Check if any call arguments are from the parent function
+	for _, arg := range call.Args {
+		switch arg := arg.(type) {
+		case *ast.Ident:
+			if arg == nil || arg.Obj == nil {
+				continue
+			}
+			for _, param := range params {
+				if arg.Name == param {
+					// Found an argument used by the parent in the logging call expression
+					args = append(args, arg)
+				}
+			}
+		case *ast.CallExpr:
+			// Check for nested function calls that use the parent's argument
+			// Still need to keep track of all the nested functions somehow
+			if arg != nil {
+				args = append(args, usesParentArgs(parent, arg)...)
+			}
+		}
+	}
+
+	return args
 }
 
 func findLogsInFile(path string, base string) []model.LogType {
@@ -125,10 +162,16 @@ func findLogsInFile(path string, base string) []model.LogType {
 				//to log, which means this is most
 				//definitely a log statement
 				if strings.Contains(val, "Msg") && isFromLog(fn) {
-					value := fnStruct{n, ret, nil}
+					parentArgs := usesParentArgs(parentFn, ret)
+					value := fnStruct{
+						n:              n,
+						fn:             ret,
+						parentFn:       nil,
+						usedParentArgs: parentArgs,
+					}
 					// Check if the log call depends on a parent function argument
 					// and if it does, specify the parent function
-					if usesParentArg(parentFn, ret) {
+					if len(parentArgs) > 0 {
 						value.parentFn = parentFn
 					}
 					logCalls = append(logCalls, value)
