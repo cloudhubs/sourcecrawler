@@ -44,10 +44,8 @@ func parseProject(projectRoot string) []model.LogType {
 	//}
 
 	//TODO: Check if given function name is used anywhere else
-	functionDecls(filesToParse)
-	//functList := map[string][]string{}
-
-	//callFrom("HandleMessage", filesToParse)
+	functList := functionDecls(filesToParse) //gathers list of functions
+	callFrom(functList, filesToParse) //checks each expression call to see if it uses an explicitly declared function
 
 	return logTypes
 }
@@ -84,6 +82,7 @@ func functionDecls(filesToParse []string) map[string][]string{
 
 	//Map of all function names with a [line number, file path]
 	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
+	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
 	functMap := map[string][]string{}
 
 
@@ -95,27 +94,66 @@ func functionDecls(filesToParse []string) map[string][]string{
 			log.Error().Err(err).Msg("Error parsing file " + file)
 		}
 
+		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
+		packageName := node.Name.Name + ":"
+		fmt.Print("Package name is " + packageName + " at line ")
+		fmt.Println(fset.Position(node.Pos()).Line)
+
 		//Inspect AST for file
+		//TODO: handle duplicate function names if they're in different packages
 		ast.Inspect(node, func(currNode ast.Node) bool {
 
 			fdNode, ok := currNode.(*ast.FuncDecl)
 			if ok {
-				functionName := fdNode.Name.Name
+				//package name is appended to separate diff functions across packages
+				functionName := packageName + fdNode.Name.Name
 				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
 				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
 
-				//fmt.Println(functionName)
-				//fmt.Println(linePos)
-				//fmt.Println(fpath)
-
+				//Add the data to the function list
 				data := []string{linePos, fpath}
 				functMap[functionName] = data
 			}
+
 			return true
 		})
 	}
 
 	return functMap
+}
+
+//Check the location (file + line number) of where a function is used (this might be a helper function)
+func callFrom(funcList map[string][]string, filesToParse []string){
+
+	for _, file := range filesToParse {
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, file, nil, 0)
+		if err != nil {
+			log.Error().Err(err).Msg("Error parsing file " + file)
+		}
+
+		//Keep track of package name
+		packageName := node.Name.Name + ":"
+		//fmt.Print("Package name is " + packageName + " at line ")
+		//fmt.Println(fset.Position(node.Pos()).Line)
+
+		//Inspect the AST, starting with call expressions
+		ast.Inspect(node, func(currNode ast.Node) bool {
+			callExprNode, ok := currNode.(*ast.CallExpr)
+			if ok {
+				//Filter single function calls such as parseMsg(msg.Value)
+				functionName := packageName + fmt.Sprint(callExprNode.Fun)
+				if val, found := funcList[functionName]; found {
+					fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
+				}
+			}
+			return true
+		})
+	}
+
+	//if val, found := funcList[funcName]; found {
+	//	fmt.Println("The function " + funcName + " was found on line " + val[0] + " in " + val[1])
+	//}
 }
 
 
