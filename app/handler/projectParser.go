@@ -83,17 +83,18 @@ Current idea:
 */
 
 func usesParentArgs(parent *ast.FuncDecl, call *ast.CallExpr) []*ast.Ident {
+	fmt.Println("checking if", call, "depends on", parent.Name)
 	args := make([]*ast.Ident, 0)
-	if parent == nil || call == nil {
+	if call == nil || parent == nil || parent.Type == nil || parent.Type.Params == nil {
 		return args
 	}
-	if parent.Recv == nil || parent.Recv.List == nil {
+	if parent.Type.Params.List == nil || len(parent.Type.Params.List) == 0 {
 		return args
 	}
 
 	// Gather all parent parameter names
 	params := make([]string, 0)
-	for _, field := range parent.Recv.List {
+	for _, field := range parent.Type.Params.List {
 		if field == nil {
 			continue
 		}
@@ -114,6 +115,7 @@ func usesParentArgs(parent *ast.FuncDecl, call *ast.CallExpr) []*ast.Ident {
 					if arg.Obj.Kind == ast.Var || arg.Obj.Kind == ast.Con {
 						// Found an argument used by the parent in the logging call expression
 						// or a constant we can find the value of
+						fmt.Println("\tfound dependant fn", call, "on", parent.Name)
 						args = append(args, arg)
 					}
 				}
