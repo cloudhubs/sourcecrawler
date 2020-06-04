@@ -122,8 +122,10 @@ func parseProject(projectRoot string) []model.LogType {
 //Can be changed/removed if desired,
 //currently just a placeholder
 type fnStruct struct {
-	n  ast.Node
-	fn *ast.CallExpr
+	n              ast.Node
+	fn             *ast.CallExpr
+	parentFn       *ast.FuncDecl
+	usedParentArgs []*ast.Ident
 }
 
 //Checks if from log (two.name is Info/Err/Error)
@@ -139,6 +141,70 @@ func isFromLog(fn *ast.SelectorExpr) bool {
 		}
 	}
 	return false
+}
+
+/*
+Current idea:
+	for each function declaration
+		if it contains a logging statement
+			if the logging statement's args using 1+ of the functions args
+				store it with an associated parent function
+			else
+				store it without an associated parent function
+
+	for each logging statement using parent function argument(s)
+		for each callexpr of that function
+			store with its message information
+*/
+
+func usesParentArgs(parent *ast.FuncDecl, call *ast.CallExpr) []*ast.Ident {
+	fmt.Println("checking if", call, "depends on", parent.Name)
+	args := make([]*ast.Ident, 0)
+	if call == nil || parent == nil || parent.Type == nil || parent.Type.Params == nil {
+		return args
+	}
+	if parent.Type.Params.List == nil || len(parent.Type.Params.List) == 0 {
+		return args
+	}
+
+	// Gather all parent parameter names
+	params := make([]string, 0)
+	for _, field := range parent.Type.Params.List {
+		if field == nil {
+			continue
+		}
+		for _, param := range field.Names {
+			params = append(params, param.Name)
+		}
+	}
+
+	// Check if any call arguments are from the parent function
+	for _, arg := range call.Args {
+		switch arg := arg.(type) {
+		case *ast.Ident:
+			if arg == nil || arg.Obj == nil {
+				continue
+			}
+			for _, param := range params {
+				if arg.Name == param {
+					if arg.Obj.Kind == ast.Var || arg.Obj.Kind == ast.Con {
+						// Found an argument used by the parent in the logging call expression
+						// or a constant we can find the value of
+						fmt.Println("\tfound dependant fn", call, "on", parent.Name)
+						args = append(args, arg)
+					}
+				}
+			}
+		case *ast.CallExpr:
+			// Check for nested function calls that use the parent's argument
+			// Still need to keep track of all the nested functions somehow
+			if arg != nil {
+				args = append(args, usesParentArgs(parent, arg)...)
+			}
+		}
+	}
+
+	return args
 }
 
 func findVariablesInFile(path string) varDecls {
@@ -193,18 +259,21 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	//then call the recursive function isFromLog to determine
 	//if these Msg* calls originated from a log statement to eliminate
 	//false positives
+	var parentFn *ast.FuncDecl
 	ast.Inspect(node, func(n ast.Node) bool {
+		// Keep track of the current parent function the log statement is contained in
+		if funcDecl, ok := n.(*ast.FuncDecl); ok {
+			parentFn = funcDecl
+		}
 
 		//The following block is for finding log statements and the
 		//values passed to them as args
 
 		//continue if Node casts as a CallExpr
-		ret, ok := n.(*ast.CallExpr)
-		if ok {
+		if ret, ok := n.(*ast.CallExpr); ok {
 			//continue processing if CallExpr casts
 			//as a SelectorExpr
-			fn, ok := ret.Fun.(*ast.SelectorExpr)
-			if ok {
+			if fn, ok := ret.Fun.(*ast.SelectorExpr); ok {
 				// fmt.Printf("%T, %v\n", fn, fn)
 				//convert Selector into String for comparison
 				val := fmt.Sprint(fn.Sel)
@@ -215,10 +284,20 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if strings.Contains(val, "Msg") || val == "Err" {
-					if isFromLog(fn) {
-						logCalls = append(logCalls, fnStruct{n, ret})
+				if (strings.Contains(val, "Msg") || val == "Err") && isFromLog(fn) {
+					parentArgs := usesParentArgs(parentFn, ret)
+					value := fnStruct{
+						n:              n,
+						fn:             ret,
+						parentFn:       nil,
+						usedParentArgs: parentArgs,
 					}
+					// Check if the log call depends on a parent function argument
+					// and if it does, specify the parent function
+					if len(parentArgs) > 0 {
+						value.parentFn = parentFn
+					}
+					logCalls = append(logCalls, value)
 				}
 			}
 		}

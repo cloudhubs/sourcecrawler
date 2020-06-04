@@ -53,13 +53,7 @@ func FindLogSource(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusOK, response)
 	} else {
 		// Could not find a match
-		responseError := struct {
-			Error string `json:"error"`
-		}{
-			Error: err.Error(),
-		}
-
-		respondJSON(w, http.StatusNotFound, responseError)
+		respondError(w, http.StatusNotFound, err.Error())
 	}
 }
 
