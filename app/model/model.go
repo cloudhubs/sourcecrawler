@@ -23,6 +23,7 @@ type LogSourceRequest struct {
 type LogSourceResponse struct {
 	FilePath   string `json:"filePath"`
 	LineNumber int    `json:"lineNumber"`
+	Regex      string `json:"regex"`
 }
 
 // DBMigrate will create and migrate the tables, and then make the some relationships if necessary

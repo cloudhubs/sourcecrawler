@@ -3,9 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/jinzhu/gorm"
 	"net/http"
 	"sourcecrawler/app/model"
+
+	"github.com/jinzhu/gorm"
 )
 
 func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -24,8 +25,6 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	logsTypes := parseProject(request.ProjectRoot)
 
 	for _, logType := range logsTypes {
-		fmt.Println(logType.FilePath, logType.LineNumber, logType.Regex)
-		fmt.Println()
 
 		// save logType to DB
 		if err := db.Save(&logType).Error; err != nil {
