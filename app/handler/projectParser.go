@@ -1,25 +1,99 @@
 package handler
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sourcecrawler/app/model"
 	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 )
+//Gathers all log files in the project directory
+func gatherLogFiles(projectRoot string) []string{
+	//Gather all .log files in project
+	logFiles := []string{}
+
+	filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error{
+		if err != nil{
+			fmt.Printf("error reading path #{path}: #{err}\n")
+			return err
+		}
+
+		//Read all log files
+		if filepath.Ext(path) == ".log" {
+			//Read absolute path
+			fpath, ferr := filepath.Abs(path)
+			if ferr != nil{
+				fmt.Println(err)
+			}
+			logFiles = append(logFiles, fpath) //Add file to list of log files
+		}
+
+		return nil
+	})
+
+	return logFiles
+}
 
 //Parse project to create log types
 func parseProject(projectRoot string) []model.LogType {
 
 	//Holds a slice of log types
 	logTypes := []model.LogType{}
+
+	//Gather all log files
+	logFiles := gatherLogFiles(projectRoot)
+
+	//For each log file, gather all log entries
+	for _, logFile := range logFiles {
+		file, err := os.Open(logFile)
+		if err != nil {
+			log.Err(err).Msg("Error opening " + file.Name())
+		}
+
+		logMessages := []string{}
+
+		//Create scanner and read each line into list of messages
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan(){
+			logMessages = append(logMessages, scanner.Text())
+		}
+
+		//Map each log statement with a given id
+		logID := 1
+		data := map[int]map[string]string{}
+
+		//For all log messages, unmarshal JSON to a "unstructured" result map
+		//   -- this is because each log entry has a different structure
+		for _, msg := range logMessages{
+			var result map[string]interface{}
+			json.Unmarshal([]byte(msg), &result)
+
+			data[logID] = map[string]string{}
+			for key, value := range result{
+				data[logID][key] = fmt.Sprint(value)
+			}
+			logID++
+		}
+
+		//Test print first 5 json entries
+		for i := 1; i < 10; i++{
+			fmt.Println(i)
+			fmt.Println("{")
+			for key, value := range data[i]{
+				fmt.Print("  " + key + " ")
+				fmt.Println(value)
+			}
+			fmt.Println("}")
+		}
+	}
 
 	filesToParse := []string{}
 	//gather all go files in project
@@ -39,11 +113,11 @@ func parseProject(projectRoot string) []model.LogType {
 	})
 
 	//call helper function to add each file in each pkg
-	//for _, file := range filesToParse {
-	//	logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
-	//}
+	for _, file := range filesToParse {
+		logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
+	}
 
-	//TODO: Check if given function name is used anywhere else
+	//Check if given function name is used anywhere else
 	functList := functionDecls(filesToParse) //gathers list of functions
 	callFrom(functList, filesToParse) //checks each expression call to see if it uses an explicitly declared function
 
@@ -57,6 +131,12 @@ func parseProject(projectRoot string) []model.LogType {
 type fnStruct struct {
 	n  ast.Node
 	fn *ast.CallExpr
+}
+
+//Struct for quick access to the function declaration nodes
+type fdeclStruct struct {
+	node ast.Node
+	fd *ast.FuncDecl
 }
 
 //Checks if from log (two.name is Info/Err/Error)
@@ -85,7 +165,6 @@ func functionDecls(filesToParse []string) map[string][]string{
 	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
 	functMap := map[string][]string{}
 
-
 	//Inspect each file for calls to this function
 	for _, file := range filesToParse{
 		fset := token.NewFileSet()
@@ -96,13 +175,11 @@ func functionDecls(filesToParse []string) map[string][]string{
 
 		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
 		packageName := node.Name.Name + ":"
-		fmt.Print("Package name is " + packageName + " at line ")
-		fmt.Println(fset.Position(node.Pos()).Line)
+		//fmt.Print("Package name is " + packageName + " at line ")
+		//fmt.Println(fset.Position(node.Pos()).Line)
 
 		//Inspect AST for file
-		//TODO: handle duplicate function names if they're in different packages
 		ast.Inspect(node, func(currNode ast.Node) bool {
-
 			fdNode, ok := currNode.(*ast.FuncDecl)
 			if ok {
 				//package name is appended to separate diff functions across packages
@@ -114,7 +191,6 @@ func functionDecls(filesToParse []string) map[string][]string{
 				data := []string{linePos, fpath}
 				functMap[functionName] = data
 			}
-
 			return true
 		})
 	}
@@ -125,6 +201,9 @@ func functionDecls(filesToParse []string) map[string][]string{
 //Check the location (file + line number) of where a function is used (this might be a helper function)
 func callFrom(funcList map[string][]string, filesToParse []string){
 
+	functCalls := []fdeclStruct{}
+
+	//Parse files again to get AST
 	for _, file := range filesToParse {
 		fset := token.NewFileSet()
 		node, err := parser.ParseFile(fset, file, nil, 0)
@@ -133,27 +212,31 @@ func callFrom(funcList map[string][]string, filesToParse []string){
 		}
 
 		//Keep track of package name
-		packageName := node.Name.Name + ":"
-		//fmt.Print("Package name is " + packageName + " at line ")
-		//fmt.Println(fset.Position(node.Pos()).Line)
+		//packageName := node.Name.Name + ":"
 
-		//Inspect the AST, starting with call expressions
+		//Load all FuncDecl calls
 		ast.Inspect(node, func(currNode ast.Node) bool {
-			callExprNode, ok := currNode.(*ast.CallExpr)
+			fdNode, ok := currNode.(*ast.FuncDecl)
 			if ok {
-				//Filter single function calls such as parseMsg(msg.Value)
-				functionName := packageName + fmt.Sprint(callExprNode.Fun)
-				if val, found := funcList[functionName]; found {
-					fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
-				}
+				//Add astNode and the FuncDecl node to the function calls
+				functCalls = append(functCalls, fdeclStruct{currNode, fdNode})
 			}
 			return true
 		})
-	}
 
-	//if val, found := funcList[funcName]; found {
-	//	fmt.Println("The function " + funcName + " was found on line " + val[0] + " in " + val[1])
-	//}
+		//Inspect the AST CallExpressions
+		//ast.Inspect(node, func(currNode ast.Node) bool {
+		//	callExprNode, ok := currNode.(*ast.CallExpr)
+		//	if ok {
+		//		//Filter single function calls such as parseMsg(msg.Value)
+		//		functionName := packageName + fmt.Sprint(callExprNode.Fun)
+		//		if val, found := funcList[functionName]; found {
+		//			fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
+		//		}
+		//	}
+		//	return true
+		//})
+	}
 }
 
 
@@ -286,10 +369,10 @@ func findLogsInFile(path string, base string) []model.LogType {
 					}
 				}
 			default:
-				fmt.Println("type", reflect.TypeOf(a), a)
+				//fmt.Println("type", reflect.TypeOf(a), a)
 			}
 		}
-		fmt.Println()
+		//fmt.Println()
 	}
 
 	return logInfo

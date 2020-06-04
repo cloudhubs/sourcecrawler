@@ -71,3 +71,4 @@ func GetAllLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	db.Find(&types)
 	respondJSON(w, http.StatusOK, types)
 }
+
