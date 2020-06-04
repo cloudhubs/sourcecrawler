@@ -24,11 +24,8 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	logsTypes := parseProject(request.ProjectRoot)
 
 	for _, logType := range logsTypes {
-		fmt.Println(logType.FilePath)
-		fmt.Println(logType.LineNumber)
-		fmt.Println(logType.Regex)
-
-		// TODO: confirm path format. How much info to pass?
+		fmt.Println(logType.FilePath, logType.LineNumber, logType.Regex)
+		fmt.Println()
 
 		// save logType to DB
 		if err := db.Save(&logType).Error; err != nil {
