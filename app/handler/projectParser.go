@@ -190,7 +190,7 @@ func usesParentArgs(parent *ast.FuncDecl, call *ast.CallExpr) []*ast.Ident {
 					if arg.Obj.Kind == ast.Var || arg.Obj.Kind == ast.Con {
 						// Found an argument used by the parent in the logging call expression
 						// or a constant we can find the value of
-						fmt.Println("\tfound dependant fn", call, "on", parent.Name)
+						fmt.Println("\tcall expression uses", param)
 						args = append(args, arg)
 					}
 				}
