@@ -22,3 +22,17 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 func respondError(w http.ResponseWriter, code int, message string) {
 	respondJSON(w, code, map[string]string{"error": message})
 }
+
+func doMath() int{
+	sum := 5 + 5
+	return sum
+}
+
+func testConditional() bool{
+	sum := 5
+	if sum > 6{
+		return true
+	} else{
+		return false
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"golang.org/x/tools/go/cfg"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -28,11 +29,12 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 		}
 	}
 	return -1, false
-
 }
 
 //Parse project to create log types
 func parseProject(projectRoot string) []model.LogType {
+
+	fmt.Println("Project root is: " + projectRoot)
 
 	//Holds a slice of log types
 	logTypes := []model.LogType{}
@@ -117,17 +119,64 @@ func parseProject(projectRoot string) []model.LogType {
 	}
 
 	//Check all function declarations
-	//functionDecls(filesToParse)
+	funcDecList := functionDecls(filesToParse)
 	findPanics(filesToParse)
 
+	//Create test CFG
+	constructCFG(funcDecList)
 
 	return logTypes
+}
+
+//TODO: temporary for working with CFG
+func constructCFG(funcDecList []fdeclStruct){
+	for _, value := range funcDecList{
+		//if value.fd.Name.Name == "testConditional"{
+			ast.Inspect(value.node, func(currNode ast.Node) bool {
+				//Check block statement and construct CFG
+				blockNode, ok := currNode.(*ast.BlockStmt)
+				if ok {
+					currentCFG := cfg.New(blockNode, func(exprNode *ast.CallExpr) bool {
+						return true
+					})
+
+					//Print formatted Control flow graph (testing)
+					prettyPrint := currentCFG.Format(token.NewFileSet())
+					fmt.Println(prettyPrint)
+
+					// Every CFG has a list of blocks
+					// Each block contains a list of AST nodes,
+					//  List of successor blocks(0 - return block, 1 - normal block, 2 - conditional block)
+					// index within CFG blocks, and if block is reachable from entry (Live)
+
+					//Go through each block
+					for _, blockVal := range currentCFG.Blocks{
+						//Go through all AST nodes in each block
+						for _, nd := range blockVal.Nodes{
+							ast.Inspect(nd, func(currNode ast.Node) bool{
+								exprNode, ok := currNode.(*ast.CallExpr)
+								if ok{
+									fmt.Println("ExprCall name: " + fmt.Sprint(exprNode.Fun))
+								}
+								return true
+							})
+						}
+					}
+				}
+				return true
+			})
+		//}
+	}
+
 }
 
 //Struct for quick access to the function declaration nodes
 type fdeclStruct struct {
 	node ast.Node
 	fd *ast.FuncDecl
+	filePath string
+	lineNum string
+	Name string
 }
 
 //Stores the file path and line # (Node pointers there for extra info)
@@ -143,7 +192,7 @@ type panicStruct struct {
  Determines if a function is called somewhere else based on its name (path and line number)
   -currently goes through all files and finds if it's used
 */
-func functionDecls(filesToParse []string) map[string][]string{
+func functionDecls(filesToParse []string) []fdeclStruct{
 
 	//Map of all function names with a [line number, file path]
 	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
@@ -178,7 +227,13 @@ func functionDecls(filesToParse []string) map[string][]string{
 				functMap[functionName] = data
 
 				//Add astNode and the FuncDecl node to the function calls
-				functCalls = append(functCalls, fdeclStruct{currNode, fdNode})
+				functCalls = append(functCalls, fdeclStruct{
+					currNode,
+					fdNode,
+					fpath,
+					linePos,
+					functionName,
+				})
 			}
 			return true
 		})
@@ -189,19 +244,20 @@ func functionDecls(filesToParse []string) map[string][]string{
 			if ok {
 				//Filter single function calls such as parseMsg(msg.Value)
 				functionName := packageName + fmt.Sprint(callExprNode.Fun)
-				if val, found := functMap[functionName]; found {
-					fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
+				if _, found := functMap[functionName]; found {
+					//fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
+					fmt.Println("")
 				}
 			}
 			return true
 		})
 	}
 
-	return functMap
+	return functCalls
 }
 
 //Finds all panic statements
-func findPanics(filesToParse []string){
+func findPanics(filesToParse []string) []panicStruct{
 
 	panicList := []panicStruct{}
 
@@ -234,8 +290,8 @@ func findPanics(filesToParse []string){
 		for _, value := range panicList{
 			fmt.Println(value.filePath, value.lineNum, fmt.Sprint(value.pd.Fun))
 		}
-
 	}
+	return panicList
 }
 
 //This is just a struct
