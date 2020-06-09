@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	"strings"
 
@@ -333,36 +334,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				good = true
 				// fmt.Println("Basic", v.Value)
 
-				//Regex value currently
-				reg := v.Value
-
-				//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
-				if strings.Contains(reg, "(") {
-					reg = strings.ReplaceAll(reg, "(", "\\(")
-				}
-				if strings.Contains(reg, ")") {
-					reg = strings.ReplaceAll(reg, ")", "\\)")
-				}
-
-				//Converting %d, %s, %v to regex num, removing single quotes
-				if strings.Contains(reg, "%d") {
-					reg = strings.ReplaceAll(reg, "%d", "\\d")
-				}
-				if strings.Contains(reg, "%s") {
-					reg = strings.ReplaceAll(reg, "%s", ".*")
-				}
-				if strings.Contains(reg, "%v") {
-					reg = strings.ReplaceAll(reg, "%v", ".*")
-				}
-				if strings.Contains(reg, "'") {
-					reg = strings.ReplaceAll(reg, "'", "")
-				}
-				if strings.Contains(reg, "%+v") {
-					reg = strings.ReplaceAll(reg, "%+v", ".+")
-				}
-
-				//Remove the double quotes
-				currentLog.Regex = reg[1 : len(reg)-1]
+				currentLog.Regex = createRegex(v.Value)
 
 				logInfo = append(logInfo, currentLog)
 
@@ -395,4 +367,102 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	}
 
 	return logInfo, varsInLogs
+}
+
+func createRegex(value string) string {
+	//Regex value currently
+	reg := value
+
+	//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
+	if strings.Contains(reg, "(") {
+		reg = strings.ReplaceAll(reg, "(", "\\(")
+	}
+	if strings.Contains(reg, ")") {
+		reg = strings.ReplaceAll(reg, ")", "\\)")
+	}
+
+	//Converting %d, %s, %v to regex num, removing single quotes
+	if strings.Contains(reg, "%d") {
+		reg = strings.ReplaceAll(reg, "%d", "\\d")
+	}
+	if strings.Contains(reg, "%s") {
+		reg = strings.ReplaceAll(reg, "%s", ".*")
+	}
+	if strings.Contains(reg, "%v") {
+		reg = strings.ReplaceAll(reg, "%v", ".*")
+	}
+	if strings.Contains(reg, "'") {
+		reg = strings.ReplaceAll(reg, "'", "")
+	}
+	if strings.Contains(reg, "%+v") {
+		reg = strings.ReplaceAll(reg, "%+v", ".+")
+	}
+
+	//Remove the double quotes
+	return reg[1 : len(reg)-1]
+}
+
+func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet) db.Node {
+	if fn.Body == nil {
+		return nil
+	}
+
+	var root db.Node
+	var current db.Node
+	var prev db.Node
+
+	for _, stmt := range fn.Body.List {
+		node := getStatementNode(stmt, base, fset)
+		if node == nil {
+			continue
+		}
+
+		if root == nil {
+			root = node
+		}
+		if prev == nil && current != nil {
+			prev = current
+		}
+		current = node
+
+		// may need to fast-forward the current node if there is an initialization step
+		// in a conditional
+		// node.GetChildren()
+
+		// update conditional leaf nodes to point to the next node
+		// node.GetChildren()
+
+	}
+
+	return root
+}
+
+func getStatementNode(stmt ast.Stmt, base string, fset *token.FileSet) (node db.Node) {
+	switch stmt := stmt.(type) {
+	case *ast.ExprStmt:
+		callExpr, ok := stmt.X.(*ast.CallExpr)
+		if !ok {
+			return nil
+		}
+
+		regex := ""
+		if selectStmt, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
+			val := fmt.Sprint(selectStmt.Sel)
+			if (strings.Contains(val, "Msg") || !strings.Contains(val, "Err")) && !isFromLog(selectStmt) {
+				// use createRegex() and somehow rectify the API to reuse the latter half of findLogsInFile fn here
+			}
+		}
+
+		relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
+		node = db.Node(&db.StatementNode{
+			Filename:   filepath.ToSlash(relPath),
+			LineNumber: fset.Position(stmt.Pos()).Line,
+			LogRegex:   regex,
+		})
+	case *ast.IfStmt:
+		// recursively get statement nodes
+	case *ast.ForStmt:
+		// treat the same as an if statement
+	}
+	return
 }
