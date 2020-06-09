@@ -145,8 +145,8 @@ func constructCFG(funcDecList []fdeclStruct){
 					fmt.Println(prettyPrint)
 
 					// Every CFG has a list of blocks
-					// Each block contains a list of AST nodes,
-					//  List of successor blocks(0 - return block, 1 - normal block, 2 - conditional block)
+					// Each block contains a list of AST nodes (statements, expressions, ValueSpecs), and
+					// a list of successor blocks(0 - return block, 1 - normal block, 2 - conditional block), and
 					// index within CFG blocks, and if block is reachable from entry (Live)
 
 					//Go through each block
@@ -167,7 +167,6 @@ func constructCFG(funcDecList []fdeclStruct){
 			})
 		//}
 	}
-
 }
 
 //Struct for quick access to the function declaration nodes
