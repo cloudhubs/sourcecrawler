@@ -21,12 +21,14 @@ func matchLog(logMessage string, db *gorm.DB) (*model.LogSourceResponse, error) 
 
 	// Find the first logType where the logMessage matches the regex
 	for _, logType := range logTypes {
-		if regex, err := regexp.Compile(logType.Regex); err == nil {
+		fullRegex := "^" + logType.Regex + "$"
+		if regex, err := regexp.Compile(fullRegex); err == nil {
 			if regex.Match([]byte(logMessage)) {
 				// Found a log type, set values
 				response = &model.LogSourceResponse{
 					LineNumber: logType.LineNumber,
 					FilePath:   logType.FilePath,
+					Regex:      logType.Regex,
 				}
 				err = nil
 				break
