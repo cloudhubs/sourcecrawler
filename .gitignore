@@ -3,3 +3,5 @@ sourcecrawler
 .DS_Store
 sourcecrawler.exe
 .vscode/
+..gitignore.un~
+.gitignore~
