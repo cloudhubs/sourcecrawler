@@ -61,3 +61,16 @@ func GetAllLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	db.Find(&types)
 	respondJSON(w, http.StatusOK, types)
 }
+
+func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	request := struct {
+		FilePath string `json:"filePath"`
+	}{}
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer r.Body.Close()
+}
