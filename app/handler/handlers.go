@@ -25,7 +25,6 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	logsTypes := parseProject(request.ProjectRoot)
 
 	for _, logType := range logsTypes {
-
 		// save logType to DB
 		if err := db.Save(&logType).Error; err != nil {
 			respondError(w, http.StatusInternalServerError, err.Error())
