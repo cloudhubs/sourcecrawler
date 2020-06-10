@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bufio"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -42,19 +43,63 @@ func parsePanic(){
 	//	}
 	//}()
 	//
-	//panic("Testing panic stack trace")
 	//logFile.Write(debug.Stack())
 
 	//logFile, err := os.OpenFile("stackTrace.log", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0777)
 	//if err != nil {
 	//	log.Err(err)
 	//}
-	//log.Panic().Msg("PANIC MSG")
+	//generateStackTrace()
+	file, err := os.Open("stackTrace.log")
+	if err != nil {
+		fmt.Println("Error opening file")
+	}
 
+	//TODO: Parsing through the stack trace log to determine file/line num
+	scanner := bufio.NewScanner(file)
+	fileLineNum := 1
+	stkTrc := stackTraceStruct{}
+	stkTrc.fileNameLine = make(map[string]string)
+	for scanner.Scan() {
+		logStr := scanner.Text()
+		//Check first two lines for message type
+		if fileLineNum == 1 || fileLineNum == 2 {
+			if strings.Contains(logStr, "panic"){
+				stkTrc.msgType = "panic"
+			}
+		}
+
+		//Check if line contains a posisble file name, store to map of fileName+LineNumber
+		if strings.Contains(logStr, ".go"){
+			fileNm := logStr[strings.LastIndex(logStr, "/")+1 : strings.LastIndex(logStr, ":")]
+			indxLineNumStart := strings.LastIndex(logStr, ":")
+			lineNumLarge := logStr[indxLineNumStart+1:]
+
+			//If space in line number string with +0xaa, etc
+			var lineNum string
+			if strings.Contains(lineNumLarge, " "){
+				lineNum = lineNumLarge[0:strings.Index(lineNumLarge, " ")]
+			} else{
+				lineNum = lineNumLarge
+			}
+
+			//Add file + line num to the map
+			stkTrc.fileNameLine[fileNm] = lineNum
+		}
+
+		//fmt.Printf("Line num %d: %s\n", fileLineNum, scanner.Text())
+		fileLineNum++
+	}
+
+	//Test print struct
+	for key, value := range stkTrc.fileNameLine{
+		fmt.Println(key, value)
+	}
 }
 
-func panic2(){
-	panic("Bad error here")
+//Helper function to generate a sample panic msg
+func generateStackTrace(){
+	//log.Panic().Msg("PANIC MSG TEST")
 }
 
 //Parse project to create log types
@@ -151,13 +196,8 @@ func parseProject(projectRoot string) []model.LogType {
 	//Create test CFG
 	constructCFG(funcDecList)
 
-	//testPanic()
+	//TODO: parse panic message for line number + file name
 	parsePanic()
-
-	file, err := os.Open("stackTrace.log")
-	if err != nil {
-		fmt.Println("Error opening file")
-	}
 
 	return logTypes
 }
@@ -218,6 +258,13 @@ type panicStruct struct {
 	pd *ast.CallExpr
 	filePath string
 	lineNum string
+}
+
+//Parsing a panic runtime stack trace
+type stackTraceStruct struct {
+	msgType string
+	fileNameLine map[string]string
+
 }
 
 //Helper function to find origin of function
