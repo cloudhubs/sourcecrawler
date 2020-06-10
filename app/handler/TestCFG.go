@@ -1,5 +1,7 @@
 package handler
 
+import "log"
+
 //Testing CFG - can remove
 func doMath() int{
 	sum := 5 + 5
@@ -14,4 +16,9 @@ func testConditional() bool{
 	} else{
 		return false
 	}
+}
+
+//
+func testPanic(){
+	log.Panicf("Throwing error")
 }

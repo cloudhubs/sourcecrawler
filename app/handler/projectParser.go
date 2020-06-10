@@ -5,7 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"golang.org/x/tools/go/cfg"
+	_ "golang.org/x/tools/go/cfg"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -31,10 +31,36 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 	return -1, false
 }
 
+
+//TODO: parse through panic message in runtime stack trace
+func parsePanic(){
+
+	//Not sure if this is needed, currently trying to store stack trace into a log/text file
+	//defer func(){
+	//	if err := recover(); err != nil{
+	//		fmt.Println(err)
+	//	}
+	//}()
+	//
+	//panic("Testing panic stack trace")
+	//logFile.Write(debug.Stack())
+
+	//logFile, err := os.OpenFile("stackTrace.log", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0777)
+	//if err != nil {
+	//	log.Err(err)
+	//}
+	//log.Panic().Msg("PANIC MSG")
+
+}
+
+func panic2(){
+	panic("Bad error here")
+}
+
 //Parse project to create log types
 func parseProject(projectRoot string) []model.LogType {
 
-	fmt.Println("Project root is: " + projectRoot)
+	//fmt.Println("Project root is: " + projectRoot)
 
 	//Holds a slice of log types
 	logTypes := []model.LogType{}
@@ -125,48 +151,56 @@ func parseProject(projectRoot string) []model.LogType {
 	//Create test CFG
 	constructCFG(funcDecList)
 
+	//testPanic()
+	parsePanic()
+
+	file, err := os.Open("stackTrace.log")
+	if err != nil {
+		fmt.Println("Error opening file")
+	}
+
 	return logTypes
 }
 
 //TODO: temporary for working with CFG
 func constructCFG(funcDecList []fdeclStruct){
-	for _, value := range funcDecList{
-		//if value.fd.Name.Name == "testConditional"{
-			ast.Inspect(value.node, func(currNode ast.Node) bool {
-				//Check block statement and construct CFG
-				blockNode, ok := currNode.(*ast.BlockStmt)
-				if ok {
-					currentCFG := cfg.New(blockNode, func(exprNode *ast.CallExpr) bool {
-						return true
-					})
-
-					//Print formatted Control flow graph (testing)
-					prettyPrint := currentCFG.Format(token.NewFileSet())
-					fmt.Println(prettyPrint)
-
-					// Every CFG has a list of blocks
-					// Each block contains a list of AST nodes (statements, expressions, ValueSpecs), and
-					// a list of successor blocks(0 - return block, 1 - normal block, 2 - conditional block), and
-					// index within CFG blocks, and if block is reachable from entry (Live)
-
-					//Go through each block
-					for _, blockVal := range currentCFG.Blocks{
-						//Go through all AST nodes in each block
-						for _, nd := range blockVal.Nodes{
-							ast.Inspect(nd, func(currNode ast.Node) bool{
-								exprNode, ok := currNode.(*ast.CallExpr)
-								if ok{
-									fmt.Println("ExprCall name: " + fmt.Sprint(exprNode.Fun))
-								}
-								return true
-							})
-						}
-					}
-				}
-				return true
-			})
-		//}
-	}
+//	for _, value := range funcDecList{
+//		//if value.fd.Name.Name == "testConditional"{
+//			ast.Inspect(value.node, func(currNode ast.Node) bool {
+//				//Check block statement and construct CFG
+//				blockNode, ok := currNode.(*ast.BlockStmt)
+//				if ok {
+//					currentCFG := cfg.New(blockNode, func(exprNode *ast.CallExpr) bool {
+//						return true
+//					})
+//
+//					//Print formatted Control flow graph (testing)
+//					prettyPrint := currentCFG.Format(token.NewFileSet())
+//					fmt.Println(prettyPrint)
+//
+//					// Every CFG has a list of blocks
+//					// Each block contains a list of AST nodes (statements, expressions, ValueSpecs), and
+//					// a list of successor blocks(0 - return block, 1 - normal block, 2 - conditional block), and
+//					// index within CFG blocks, and if block is reachable from entry (Live)
+//
+//					//Go through each block
+//					for _, blockVal := range currentCFG.Blocks{
+//						//Go through all AST nodes in each block
+//						for _, nd := range blockVal.Nodes{
+//							ast.Inspect(nd, func(currNode ast.Node) bool{
+//								exprNode, ok := currNode.(*ast.CallExpr)
+//								if ok{
+//									fmt.Println("ExprCall name: " + fmt.Sprint(exprNode.Fun))
+//								}
+//								return true
+//							})
+//						}
+//					}
+//				}
+//				return true
+//			})
+//		//}
+//	}
 }
 
 //Struct for quick access to the function declaration nodes
@@ -184,6 +218,15 @@ type panicStruct struct {
 	pd *ast.CallExpr
 	filePath string
 	lineNum string
+}
+
+//Helper function to find origin of function
+func findFuncOrigin(name string, funcDecList []fdeclStruct){
+	for _, value := range funcDecList{
+		if name == value.fd.Name.Name {
+			fmt.Println(name, value.filePath, value.lineNum)
+		}
+	}
 }
 
 

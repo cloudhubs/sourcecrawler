@@ -1,0 +1,32 @@
+{"level":"panic","time":"2020-06-10T14:27:45-05:00","message":"PANIC MSG"}
+2020/06/10 14:27:45 http: panic serving 127.0.0.1:51539: PANIC MSG
+goroutine 10 [running]:
+net/http.(*conn).serve.func1(0xc0001c9180)
+	C:/Go/src/net/http/server.go:1772 +0x140
+panic(0x820260, 0xc000202e90)
+	C:/Go/src/runtime/panic.go:975 +0x3f1
+github.com/rs/zerolog.(*Logger).Panic.func1(0x8ba8e6, 0x9)
+	C:/Go/bin/pkg/mod/github.com/rs/zerolog@v1.18.0/log.go:338 +0x56
+github.com/rs/zerolog.(*Event).msg(0xc000200780, 0x8ba8e6, 0x9)
+	C:/Go/bin/pkg/mod/github.com/rs/zerolog@v1.18.0/event.go:146 +0x207
+github.com/rs/zerolog.(*Event).Msg(...)
+	C:/Go/bin/pkg/mod/github.com/rs/zerolog@v1.18.0/event.go:105
+sourcecrawler/app/handler.parsePanic()
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/projectParser.go:52 +0x66
+sourcecrawler/app/handler.parseProject(0xc000210080, 0x18, 0xc0002025e0, 0x0, 0x0)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/projectParser.go:155 +0xeca
+sourcecrawler/app/handler.CreateProjectLogTypes(0xc0001ee270, 0x95db00, 0xc000226000, 0xc00022c100)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/handlers.go:25 +0x28c
+sourcecrawler/app.(*App).handleRequest.func1(0x95db00, 0xc000226000, 0xc00022c100)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/app.go:77 +0x57
+net/http.HandlerFunc.ServeHTTP(0xc0001e9620, 0x95db00, 0xc000226000, 0xc00022c100)
+	C:/Go/src/net/http/server.go:2012 +0x4b
+github.com/gorilla/mux.(*Router).ServeHTTP(0xc000140540, 0x95db00, 0xc000226000, 0xc0001eaa00)
+	C:/Go/bin/pkg/mod/github.com/gorilla/mux@v1.7.4/mux.go:210 +0xe9
+net/http.serverHandler.ServeHTTP(0xc00028c000, 0x95db00, 0xc000226000, 0xc0001eaa00)
+	C:/Go/src/net/http/server.go:2807 +0xaa
+net/http.(*conn).serve(0xc0001c9180, 0x95e640, 0xc0001ecc40)
+	C:/Go/src/net/http/server.go:1895 +0x873
+created by net/http.(*Server).Serve
+	C:/Go/src/net/http/server.go:2933 +0x363
+exit status 2
