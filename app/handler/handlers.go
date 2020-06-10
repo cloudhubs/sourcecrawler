@@ -9,10 +9,12 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
+func NeoTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	createTestNeoNodes()
+}
+
 func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := model.ParseProjectRequest{}
-
-	fmt.Println("Requesting... Creating project log types")
 
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&request); err != nil {

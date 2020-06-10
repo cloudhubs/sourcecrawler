@@ -8,11 +8,25 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 )
+
+func createTestNeoNodes() {
+	node7 := db.StatementNode{"test.go", 7, "", nil}
+	node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
+	node5 := db.StatementNode{"test.go", 5, "", &node6}
+	node4 := db.StatementNode{"test.go", 4, "my log regex", &node6}
+	node3 := db.ConditionalNode{"test.go", 3, "myvar != nil", &node4, &node5}
+	node2 := db.StatementNode{"test.go", 2, "", &node3}
+	node1 := db.StatementNode{"test.go", 1, "", &node2}
+
+	dao := db.NodeDaoNeoImpl{}
+	dao.CreateTree(&node1)
+}
 
 type varDecls struct {
 	asns  []*ast.AssignStmt

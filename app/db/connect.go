@@ -1,30 +1,17 @@
 package db
 
 import (
-	"fmt"
-
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 )
 
-func doThaTest() {
-	greeting, err := helloWorld("bolt://localhost:7687", "neo4j", "password")
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-	fmt.Println(greeting)
-}
-
-func connect() (neo4j.Session, neo4j.Driver) {
+func connectToNeo() (neo4j.Session, neo4j.Driver) {
 	uri := "bolt://localhost:7687"
 	username := "neo4j"
 	password := "sourcecrawler"
 	var (
-		err      error
-		driver   neo4j.Driver
-		session  neo4j.Session
-		result   neo4j.Result
-		greeting interface{}
+		err     error
+		driver  neo4j.Driver
+		session neo4j.Session
 	)
 	useConsoleLogger := func(level neo4j.LogLevel) func(config *neo4j.Config) {
 		return func(config *neo4j.Config) {

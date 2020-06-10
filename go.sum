@@ -20,6 +20,7 @@ github.com/neo4j-drivers/gobolt v1.7.4 h1:80c7W+vtw39ES9Q85q9GZh4tJo+1MpQGpFTuo2
 github.com/neo4j-drivers/gobolt v1.7.4/go.mod h1:O9AUbip4Dgre+CD3p40dnMD4a4r52QBIfblg5k7CTbE=
 github.com/neo4j/neo4j-go-driver v1.7.4 h1:BgVVwYkG3DWcZGiOPUOkwkd54sSg+UHDaLYz3aiNCek=
 github.com/neo4j/neo4j-go-driver v1.7.4/go.mod h1:aPO0vVr+WnhEJne+FgFjfsjzAnssPFLucHgGZ76Zb/U=
+github.com/neo4j/neo4j-go-driver v1.8.0 h1:YRp9jsFcF9k/AnvbcqFCN9OMeIT2XTJgxOpp2Puq7OE=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/rs/xid v1.2.1/go.mod h1:+uKXf+4Djp6Md1KODXJxgGQPKngRmWyn10oCKFzNHOQ=
 github.com/rs/zerolog v1.18.0 h1:CbAm3kP2Tptby1i9sYy2MGRg0uxIN9cyDb59Ys7W8z8=
