@@ -39,13 +39,13 @@ func parseProject(projectRoot string) []model.LogType {
 	})
 
 	//call helper function to add each file in each pkg
-	//for _, file := range filesToParse {
-	//	logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
-	//}
+	for _, file := range filesToParse {
+		logTypes = append(logTypes, findLogsInFile(file, projectRoot)...)
+	}
 
-	//TODO: Check if given function name is used anywhere else
-	functList := functionDecls(filesToParse) //gathers list of functions
-	callFrom(functList, filesToParse) //checks each expression call to see if it uses an explicitly declared function
+	// Doesn't do anything right now
+	// functList := functionDecls(filesToParse) //gathers list of functions
+	// callFrom(functList, filesToParse) //checks each expression call to see if it uses an explicitly declared function
 
 	return logTypes
 }
@@ -77,17 +77,16 @@ func isFromLog(fn *ast.SelectorExpr) bool {
 /*
  Determines if a function is called somewhere else based on its name (path and line number)
   -currently goes through all files and finds if it's used
- */
-func functionDecls(filesToParse []string) map[string][]string{
+*/
+func functionDecls(filesToParse []string) map[string][]string {
 
 	//Map of all function names with a [line number, file path]
 	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
 	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
 	functMap := map[string][]string{}
 
-
 	//Inspect each file for calls to this function
-	for _, file := range filesToParse{
+	for _, file := range filesToParse {
 		fset := token.NewFileSet()
 		node, err := parser.ParseFile(fset, file, nil, 0)
 		if err != nil {
@@ -122,8 +121,10 @@ func functionDecls(filesToParse []string) map[string][]string{
 	return functMap
 }
 
-//Check the location (file + line number) of where a function is used (this might be a helper function)
-func callFrom(funcList map[string][]string, filesToParse []string){
+/*
+	Check the location (file + line number) of where a function is used (this might be a helper function)
+*/
+func callFrom(funcList map[string][]string, filesToParse []string) {
 
 	for _, file := range filesToParse {
 		fset := token.NewFileSet()
@@ -155,7 +156,6 @@ func callFrom(funcList map[string][]string, filesToParse []string){
 	//	fmt.Println("The function " + funcName + " was found on line " + val[0] + " in " + val[1])
 	//}
 }
-
 
 func findLogsInFile(path string, base string) []model.LogType {
 	fset := token.NewFileSet()
@@ -237,27 +237,27 @@ func findLogsInFile(path string, base string) []model.LogType {
 				reg := v.Value
 
 				//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
-				if strings.Contains(reg, "("){
-					reg = strings.ReplaceAll(reg,"(", "\\(")
+				if strings.Contains(reg, "(") {
+					reg = strings.ReplaceAll(reg, "(", "\\(")
 				}
-				if strings.Contains(reg, ")"){
+				if strings.Contains(reg, ")") {
 					reg = strings.ReplaceAll(reg, ")", "\\)")
 				}
 
 				//Converting %d, %s, %v to regex num, removing single quotes
-				if strings.Contains(reg, "%d"){
+				if strings.Contains(reg, "%d") {
 					reg = strings.ReplaceAll(reg, "%d", "\\d")
 				}
-				if strings.Contains(reg, "%s"){
+				if strings.Contains(reg, "%s") {
 					reg = strings.ReplaceAll(reg, "%s", ".*")
 				}
-				if strings.Contains(reg, "%v"){
+				if strings.Contains(reg, "%v") {
 					reg = strings.ReplaceAll(reg, "%v", ".*")
 				}
-				if strings.Contains(reg, "'"){
+				if strings.Contains(reg, "'") {
 					reg = strings.ReplaceAll(reg, "'", "")
 				}
-				if strings.Contains(reg, "%+v"){
+				if strings.Contains(reg, "%+v") {
 					reg = strings.ReplaceAll(reg, "%+v", ".+")
 				}
 
@@ -265,7 +265,6 @@ func findLogsInFile(path string, base string) []model.LogType {
 				currentLog.Regex = reg[1 : len(reg)-1]
 
 				logInfo = append(logInfo, currentLog)
-
 
 			//this case catches composite literals
 			case *ast.CompositeLit:
