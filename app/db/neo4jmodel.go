@@ -16,6 +16,13 @@ type Node interface {
 	GetProperties() string
 }
 
+type FunctionNode struct {
+	Filename     string
+	LineNumber   int
+	FunctionName string
+	Child        *Node
+}
+
 type StatementNode struct {
 	Filename   string
 	LineNumber int
@@ -56,5 +63,17 @@ func (n *ConditionalNode) GetChildren() map[*Node]string {
 
 func (n *ConditionalNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: \"%v\", condition: \"%v\"", n.Filename, n.LineNumber, n.Condition)
+	return "{ " + val + " }"
+}
+
+func (n *FunctionNode) GetChildren() map[*Node]string {
+	var m = map[*Node]string{
+		n.Child: "",
+	}
+	return m
+}
+
+func (n *FunctionNode) GetProperties() string {
+	val := fmt.Sprintf("filename: \"%v\", linenumber: \"%v\", function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
 	return "{ " + val + " }"
 }
