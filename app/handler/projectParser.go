@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/tools/go/analysis/passes/ctrlflow"
 )
 
 type varDecls struct {
@@ -264,6 +265,8 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	ast.Inspect(node, func(n ast.Node) bool {
 		// Keep track of the current parent function the log statement is contained in
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
+			fmt.Println("checking funcDecl", funcDecl.Name)
+			_ = createFnCfg(funcDecl, base, fset)
 			parentFn = funcDecl
 		}
 
@@ -404,6 +407,7 @@ func createRegex(value string) string {
 
 func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet) db.Node {
 	if fn.Body == nil {
+		fmt.Println("\tbody was nil")
 		return nil
 	}
 
@@ -411,27 +415,43 @@ func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet) db.Node {
 	var current db.Node
 	var prev db.Node
 
-	for _, stmt := range fn.Body.List {
-		node := getStatementNode(stmt, base, fset)
-		if node == nil {
+	ctrlFlow := ctrlflow.CFGs{}
+	cfg := ctrlFlow.FuncDecl(fn)
+	for _, block := range cfg.Blocks {
+		if block == nil {
 			continue
 		}
+		var dbNode db.Node
+		for _, node := range block.Nodes {
+			switch node := node.(type) {
+			case ast.Stmt:
+				dbNode = getStatementNode(node, base, fset)
+			case ast.Expr:
+				exprStmt := &ast.ExprStmt{
+					X: node,
+				}
+				dbNode = getStatementNode(exprStmt, base, fset)
+			}
+			if dbNode == nil {
+				fmt.Println("\treturn node was nil")
+				continue
+			}
+			if root == nil {
+				root = dbNode
+			}
+			if prev == nil && current != nil {
+				prev = current
+			}
+			current = dbNode
+			dbNode = nil
 
-		if root == nil {
-			root = node
+			// may need to fast-forward the current node if there is an initialization step
+			// in a conditional
+			// node.GetChildren()
+
+			// update conditional leaf nodes to point to the next node
+			// node.GetChildren()
 		}
-		if prev == nil && current != nil {
-			prev = current
-		}
-		current = node
-
-		// may need to fast-forward the current node if there is an initialization step
-		// in a conditional
-		// node.GetChildren()
-
-		// update conditional leaf nodes to point to the next node
-		// node.GetChildren()
-
 	}
 
 	return root
@@ -442,15 +462,20 @@ func getStatementNode(stmt ast.Stmt, base string, fset *token.FileSet) (node db.
 	case *ast.ExprStmt:
 		callExpr, ok := stmt.X.(*ast.CallExpr)
 		if !ok {
+			fmt.Println("\t\tnot a callexpr")
 			return nil
 		}
+		fmt.Print("\t\tfound a callexpr ")
 
 		regex := ""
 		if selectStmt, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
 			val := fmt.Sprint(selectStmt.Sel)
-			if (strings.Contains(val, "Msg") || !strings.Contains(val, "Err")) && !isFromLog(selectStmt) {
+			fmt.Println(val)
+			if (strings.Contains(val, "Msg") || strings.Contains(val, "Err")) && isFromLog(selectStmt) {
 				// use createRegex() and somehow rectify the API to reuse the latter half of findLogsInFile fn here
 			}
+		} else {
+			fmt.Println()
 		}
 
 		relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
@@ -460,9 +485,154 @@ func getStatementNode(stmt ast.Stmt, base string, fset *token.FileSet) (node db.
 			LogRegex:   regex,
 		})
 	case *ast.IfStmt:
+		fmt.Println("\t\tfound if")
+
+		var initStmt *db.StatementNode
+		if expr, ok := stmt.Init.(*ast.ExprStmt); ok {
+			fmt.Print("\t\t\tfound init expr.. ")
+			if call, ok := expr.X.(*ast.CallExpr); ok {
+				fmt.Println("is a statement")
+				relPath, _ := filepath.Rel(base, fset.File(call.Pos()).Name())
+				initStmt = &db.StatementNode{
+					Filename:   filepath.ToSlash(relPath),
+					LineNumber: fset.Position(call.Pos()).Line,
+					LogRegex:   "",
+				}
+			}
+		}
+
+		cond := expressionString(stmt.Cond)
+		relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
+		conditional := db.Node(&db.ConditionalNode{
+			Filename:   filepath.ToSlash(relPath),
+			LineNumber: fset.Position(stmt.Pos()).Line,
+			Condition:  cond,
+		})
+
+		if initStmt != nil {
+			initStmt.Child = &conditional
+			node = initStmt
+		} else {
+			node = conditional
+		}
+
 		// recursively get statement nodes
+
 	case *ast.ForStmt:
+		fmt.Println("\t\tfound for")
 		// treat the same as an if statement
+	case *ast.AssignStmt:
+		fmt.Println("\t\tfound assignstmt")
+		var first db.Node
+		var current db.Node
+		var prev db.Node
+		for _, expr := range stmt.Rhs {
+			if callExpr, ok := expr.(*ast.CallExpr); ok {
+				fmt.Println("\t\t\tfound a callexpr")
+				if prev == nil && current != nil {
+					prev = current
+				}
+
+				relPath, _ := filepath.Rel(base, fset.File(callExpr.Pos()).Name())
+				current = db.Node(&db.StatementNode{
+					Filename:   filepath.ToSlash(relPath),
+					LineNumber: fset.Position(callExpr.Pos()).Line,
+					LogRegex:   "", // i've never seen a log function used in a _, _ = foo(), bar() type statement or where it returns at all, and I don't think you can use loops or if's in assignments like rust
+				})
+
+				if node, ok := prev.(*db.StatementNode); ok {
+					node.Child = &current
+				} else {
+					fmt.Println("i have no idea how it got here.......................................................")
+				}
+
+				if first == nil {
+					first = current
+				}
+			}
+		}
+		node = first
+	default:
+		fmt.Println("\t\tdid not cast")
 	}
 	return
+}
+
+func expressionString(expr ast.Expr) string {
+	if expr == nil {
+		return ""
+	}
+	switch condition := expr.(type) {
+	case *ast.BasicLit:
+		return condition.Value
+	case *ast.Ident:
+		return condition.Name
+	case *ast.BinaryExpr:
+		leftStr, rightStr := "", ""
+		leftStr = expressionString(condition.X)
+		rightStr = expressionString(condition.Y)
+		return fmt.Sprint(leftStr, condition.Op, rightStr)
+	case *ast.UnaryExpr:
+		op := condition.Op.String()
+		str := expressionString(condition.X)
+		return fmt.Sprint(op, str)
+	case *ast.SelectorExpr:
+		selector := ""
+		if condition.Sel != nil {
+			selector = condition.Sel.String()
+		}
+		str := expressionString(condition.X)
+		return fmt.Sprint(str, selector)
+	case *ast.ParenExpr:
+		return fmt.Sprintf("(%s)", expressionString(condition.X))
+	case *ast.CallExpr:
+		// may want to return *db.StatementNode for CallExpr I find these to add to the CFG
+		fn := expressionString(condition.Fun)
+		args := make([]string, 0)
+		for _, arg := range condition.Args {
+			args = append(args, expressionString(arg))
+		}
+		if condition.Ellipsis != token.NoPos {
+			args[len(args)-1] = fmt.Sprintf("%s...", args[len(args)-1])
+		}
+
+		var builder strings.Builder
+		_, _ = builder.WriteString(fmt.Sprintf("%s(", fn))
+		for i, arg := range args {
+			var s string
+			if i == len(args)-1 {
+				s = fmt.Sprintf("%s)", arg)
+			} else {
+				s = fmt.Sprintf("%s, ", arg)
+			}
+			_, _ = builder.WriteString(s)
+		}
+
+		return builder.String()
+	case *ast.IndexExpr:
+		expr := expressionString(condition.X)
+		ndx := expressionString(condition.Index)
+		return fmt.Sprintf("%s[%s]", expr, ndx)
+	case *ast.KeyValueExpr:
+		key := expressionString(condition.Key)
+		value := expressionString(condition.Value)
+		return fmt.Sprint(key, ":", value)
+	case *ast.SliceExpr: // not sure about this one
+		expr := expressionString(condition.X)
+		low := expressionString(condition.Low)
+		high := expressionString(condition.High)
+		if condition.Slice3 {
+			max := expressionString(condition.Max)
+			return fmt.Sprintf("%s[%s : %s : %s]", expr, low, high, max)
+		}
+		return fmt.Sprintf("%s[%s : %s]", expr, low, high)
+	case *ast.StarExpr:
+		expr := expressionString(condition.X)
+		return fmt.Sprintf("*%s", expr)
+	case *ast.TypeAssertExpr:
+		expr := expressionString(condition.X)
+		typecast := expressionString(condition.Type)
+		return fmt.Sprintf("%s(%s)", typecast, expr)
+	}
+	return ""
 }
