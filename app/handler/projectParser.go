@@ -29,6 +29,7 @@ func createTestNeoNodes() {
 
 	dao := db.NodeDaoNeoImpl{}
 	dao.CreateTree(&node1)
+
 }
 
 type varDecls struct {
@@ -47,45 +48,55 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 }
 
 
-//TODO: parse through panic message in runtime stack trace
-func parsePanic(){
+// Parse through a panic message for stack traces
+func parsePanic(filesToParse []string){
 
-	//Not sure if this is needed, currently trying to store stack trace into a log/text file
-	//defer func(){
-	//	if err := recover(); err != nil{
-	//		fmt.Println(err)
-	//	}
-	//}()
-	//
-	//logFile.Write(debug.Stack())
-
-	//logFile, err := os.OpenFile("stackTrace.log", os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0777)
-	//if err != nil {
-	//	log.Err(err)
-	//}
+	//Generates test stack traces (run once and redirect to log file)
+	// "go run main.go 2>stackTrace.log"
 	//generateStackTrace()
+
+	//Open stack trace log file (assume there will be a log file named this)
 	file, err := os.Open("stackTrace.log")
 	if err != nil {
 		fmt.Println("Error opening file")
 	}
 
-	//TODO: Parsing through the stack trace log to determine file/line num
+	//Parse through stack trace log file
 	scanner := bufio.NewScanner(file)
-	fileLineNum := 1
-	stkTrc := stackTraceStruct{}
-	stkTrc.fileNameLine = make(map[string]string)
+	stackTrc := []stackTraceStruct{}
+	tempStackTrace := stackTraceStruct{
+		msgType:  "",
+		fnLine: map[string]string{},
+	}
+
+	//Scan through each line of log file and do analysis
 	for scanner.Scan() {
 		logStr := scanner.Text()
-		//Check first two lines for message type
-		if fileLineNum == 1 || fileLineNum == 2 {
+
+		//Check for beginning of new stack trace statement (create new trace struct for new statement)
+		// keyword "serving" is found in the first line of each new stack trace
+		if strings.Contains(logStr, "serving"){
+
+			//Make sure attributes aren't empty before adding it
+			if tempStackTrace.msgType != "" && len(tempStackTrace.fnLine) != 0 {
+				stackTrc = append(stackTrc, tempStackTrace)
+			}
+
+			//New statement trace
+			tempStackTrace = stackTraceStruct{
+				msgType: "",
+				fnLine: map[string]string{},
+			}
+
+			//Assign panic type
 			if strings.Contains(logStr, "panic"){
-				stkTrc.msgType = "panic"
+				tempStackTrace.msgType = "panic"
 			}
 		}
 
-		//Check if line contains a posisble file name, store to map of fileName+LineNumber
+		//Check if line contains a possible file name, store to map of fileName+LineNumber
 		if strings.Contains(logStr, ".go"){
-			fileNm := logStr[strings.LastIndex(logStr, "/")+1 : strings.LastIndex(logStr, ":")]
+			fileName := logStr[strings.LastIndex(logStr, "/")+1 : strings.LastIndex(logStr, ":")]
 			indxLineNumStart := strings.LastIndex(logStr, ":")
 			lineNumLarge := logStr[indxLineNumStart+1:]
 
@@ -97,23 +108,32 @@ func parsePanic(){
 				lineNum = lineNumLarge
 			}
 
-			//Add file + line num to the map
-			stkTrc.fileNameLine[fileNm] = lineNum
+			//Check for originating files where the exception was thrown (could be multiple files, parent calls, etc)
+			for index := range filesToParse{
+				if strings.Contains(filesToParse[index], fileName){
+					tempStackTrace.fnLine[fileName] = lineNum
+				}
+			}
 		}
-
-		//fmt.Printf("Line num %d: %s\n", fileLineNum, scanner.Text())
-		fileLineNum++
 	}
 
-	//Test print struct
-	for key, value := range stkTrc.fileNameLine{
-		fmt.Println(key, value)
+	//Add last entry
+	stackTrc = append(stackTrc, tempStackTrace)
+
+	//Test print the processed stack traces
+	for index := range stackTrc {
+		fmt.Println(stackTrc[index])
 	}
 }
 
 //Helper function to generate a sample panic msg
 func generateStackTrace(){
-	//log.Panic().Msg("PANIC MSG TEST")
+	//num := 5
+	//if num != 5{
+	//	panic("BADBAD")
+	//}else{
+	//	panic("Test 3 panic")
+	//}
 }
 
 //Parse project to create log types
@@ -207,54 +227,10 @@ func parseProject(projectRoot string) []model.LogType {
 	// funcDecList := functionDecls(filesToParse)
 	// findPanics(filesToParse)
 
-	//Create test CFG
-	// constructCFG(funcDecList)
-
 	//TODO: parse panic message for line number + file name
-	parsePanic()
+	parsePanic(filesToParse)
 
 	return logTypes
-}
-
-//TODO: temporary for working with CFG
-func constructCFG(funcDecList []fdeclStruct){
-//	for _, value := range funcDecList{
-//		//if value.fd.Name.Name == "testConditional"{
-//			ast.Inspect(value.node, func(currNode ast.Node) bool {
-//				//Check block statement and construct CFG
-//				blockNode, ok := currNode.(*ast.BlockStmt)
-//				if ok {
-//					currentCFG := cfg.New(blockNode, func(exprNode *ast.CallExpr) bool {
-//						return true
-//					})
-//
-//					//Print formatted Control flow graph (testing)
-//					prettyPrint := currentCFG.Format(token.NewFileSet())
-//					fmt.Println(prettyPrint)
-//
-//					// Every CFG has a list of blocks
-//					// Each block contains a list of AST nodes (statements, expressions, ValueSpecs), and
-//					// a list of successor blocks(0 - return block, 1 - normal block, 2 - conditional block), and
-//					// index within CFG blocks, and if block is reachable from entry (Live)
-//
-//					//Go through each block
-//					for _, blockVal := range currentCFG.Blocks{
-//						//Go through all AST nodes in each block
-//						for _, nd := range blockVal.Nodes{
-//							ast.Inspect(nd, func(currNode ast.Node) bool{
-//								exprNode, ok := currNode.(*ast.CallExpr)
-//								if ok{
-//									fmt.Println("ExprCall name: " + fmt.Sprint(exprNode.Fun))
-//								}
-//								return true
-//							})
-//						}
-//					}
-//				}
-//				return true
-//			})
-//		//}
-//	}
 }
 
 //Struct for quick access to the function declaration nodes
@@ -277,10 +253,10 @@ type panicStruct struct {
 //Parsing a panic runtime stack trace
 type stackTraceStruct struct {
 	msgType string
-	fileNameLine map[string]string
+	fnLine map[string]string
 }
 
-//Helper function to find origin of function
+//Helper function to find origin of function (not used but may need later)
 func findFuncOrigin(name string, funcDecList []fdeclStruct){
 	for _, value := range funcDecList{
 		if name == value.fd.Name.Name {
@@ -288,7 +264,6 @@ func findFuncOrigin(name string, funcDecList []fdeclStruct){
 		}
 	}
 }
-
 
 /*
  Determines if a function is called somewhere else based on its name (path and line number)
@@ -358,7 +333,7 @@ func functionDecls(filesToParse []string) []fdeclStruct{
 	return functCalls
 }
 
-//Finds all panic statements
+//Finds all panic statements (not currently used, but may need later)
 func findPanics(filesToParse []string) []panicStruct{
 
 	panicList := []panicStruct{}

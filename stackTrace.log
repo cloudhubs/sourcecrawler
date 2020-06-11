@@ -30,3 +30,62 @@ net/http.(*conn).serve(0xc0001c9180, 0x95fe60, 0xc000206000)
 created by net/http.(*Server).Serve
 	C:/Go/src/net/http/server.go:2933 +0x363
 exit status 2
+{"level":"panic","time":"2020-06-11T11:07:54-05:00","message":"Test panic 2"}
+2020/06/11 11:07:54 http: panic serving 127.0.0.1:50914: Test panic 2
+goroutine 34 [running]:
+net/http.(*conn).serve.func1(0xc000232780)
+	C:/Go/src/net/http/server.go:1772 +0x140
+panic(0x89b620, 0xc000206850)
+	C:/Go/src/runtime/panic.go:975 +0x3f1
+github.com/rs/zerolog.(*Logger).Panic.func1(0x940e17, 0xc)
+	C:/Go/bin/pkg/mod/github.com/rs/zerolog@v1.18.0/log.go:338 +0x56
+github.com/rs/zerolog.(*Event).msg(0xc0002006c0, 0x940e17, 0xc)
+	C:/Go/bin/pkg/mod/github.com/rs/zerolog@v1.18.0/event.go:146 +0x207
+github.com/rs/zerolog.(*Event).Msg(...)
+	C:/Go/bin/pkg/mod/github.com/rs/zerolog@v1.18.0/event.go:105
+sourcecrawler/app/handler.generateStackTrace()
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/projectParser.go:105 +0x66
+sourcecrawler/app/handler.parsePanic()
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/projectParser.go:54 +0x3e
+sourcecrawler/app/handler.parseProject(0xc0002161a0, 0x18, 0xc0002063a0, 0x0, 0x0)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/projectParser.go:200 +0xceb
+sourcecrawler/app/handler.CreateProjectLogTypes(0xc0001b1ee0, 0x9ea040, 0xc00023e0e0, 0xc000252200)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/handlers.go:27 +0x228
+sourcecrawler/app.(*App).handleRequest.func1(0x9ea040, 0xc00023e0e0, 0xc000252200)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/app.go:78 +0x57
+net/http.HandlerFunc.ServeHTTP(0xc0002103c0, 0x9ea040, 0xc00023e0e0, 0xc000252200)
+	C:/Go/src/net/http/server.go:2012 +0x4b
+github.com/gorilla/mux.(*Router).ServeHTTP(0xc000230000, 0x9ea040, 0xc00023e0e0, 0xc000252000)
+	C:/Go/bin/pkg/mod/github.com/gorilla/mux@v1.7.4/mux.go:210 +0xe9
+net/http.serverHandler.ServeHTTP(0xc00023e000, 0x9ea040, 0xc00023e0e0, 0xc000252000)
+	C:/Go/src/net/http/server.go:2807 +0xaa
+net/http.(*conn).serve(0xc000232780, 0x9eac80, 0xc0002020c0)
+	C:/Go/src/net/http/server.go:1895 +0x873
+created by net/http.(*Server).Serve
+	C:/Go/src/net/http/server.go:2933 +0x363
+2020/06/11 11:11:59 http: panic serving 127.0.0.1:50924: Test 3 panic
+goroutine 18 [running]:
+net/http.(*conn).serve.func1(0xc0000b8780)
+	C:/Go/src/net/http/server.go:1772 +0x140
+panic(0x89a500, 0x9d6e10)
+	C:/Go/src/runtime/panic.go:975 +0x3f1
+sourcecrawler/app/handler.generateStackTrace(...)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/projectParser.go:110
+sourcecrawler/app/handler.parsePanic()
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/projectParser.go:55 +0x40
+sourcecrawler/app/handler.parseProject(0xc0000961a0, 0x18, 0xc00008e950, 0x0, 0x0)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/projectParser.go:206 +0xceb
+sourcecrawler/app/handler.CreateProjectLogTypes(0xc0001e1d40, 0x9e8860, 0xc0000c40e0, 0xc0000d6200)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/handler/handlers.go:27 +0x228
+sourcecrawler/app.(*App).handleRequest.func1(0x9e8860, 0xc0000c40e0, 0xc0000d6200)
+	C:/Users/Mark/Documents/IRES_Research/sourcecrawler/app/app.go:78 +0x57
+net/http.HandlerFunc.ServeHTTP(0xc0000929c0, 0x9e8860, 0xc0000c40e0, 0xc0000d6200)
+	C:/Go/src/net/http/server.go:2012 +0x4b
+github.com/gorilla/mux.(*Router).ServeHTTP(0xc0000b6000, 0x9e8860, 0xc0000c40e0, 0xc0000d6000)
+	C:/Go/bin/pkg/mod/github.com/gorilla/mux@v1.7.4/mux.go:210 +0xe9
+net/http.serverHandler.ServeHTTP(0xc0000c4000, 0x9e8860, 0xc0000c40e0, 0xc0000d6000)
+	C:/Go/src/net/http/server.go:2807 +0xaa
+net/http.(*conn).serve(0xc0000b8780, 0x9e94a0, 0xc00009e200)
+	C:/Go/src/net/http/server.go:1895 +0x873
+created by net/http.(*Server).Serve
+	C:/Go/src/net/http/server.go:2933 +0x363
