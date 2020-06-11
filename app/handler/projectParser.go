@@ -47,8 +47,7 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 	return -1, false
 }
 
-
-// Parse through a panic message for stack traces
+// Parse through a panic message and find originating file/line number
 func parsePanic(filesToParse []string){
 
 	//Generates test stack traces (run once and redirect to log file)
