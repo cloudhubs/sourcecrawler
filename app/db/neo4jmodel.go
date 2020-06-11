@@ -16,6 +16,10 @@ type Node interface {
 	GetProperties() string
 
 	GetNodeType() string
+
+	GetFilename() string
+
+	GetLineNumber() int
 }
 
 type FunctionNode struct {
@@ -61,6 +65,14 @@ func (n *StatementNode) GetNodeType() string {
 	return ":STATEMENT"
 }
 
+func (n *StatementNode) GetFilename() string {
+	return n.Filename
+}
+
+func (n *StatementNode) GetLineNumber() int {
+	return n.LineNumber
+}
+
 // conditional nodes
 
 func (n *ConditionalNode) GetChildren() map[Node]string {
@@ -77,11 +89,19 @@ func (n *ConditionalNode) GetProperties() string {
 }
 
 func (n *ConditionalNode) GetNodeType() string {
-	return ":STATEMENT:CONDITIONAL"
+	return ":CONDITIONAL"
 }
 
-func (n *FunctionNode) GetChildren() map[*Node]string {
-	var m = map[*Node]string{
+func (n *ConditionalNode) GetFilename() string {
+	return n.Filename
+}
+
+func (n *ConditionalNode) GetLineNumber() int {
+	return n.LineNumber
+}
+
+func (n *FunctionNode) GetChildren() map[Node]string {
+	var m = map[Node]string{
 		n.Child: "",
 	}
 	return m
@@ -93,5 +113,13 @@ func (n *FunctionNode) GetProperties() string {
 }
 
 func (n *FunctionNode) GetNodeType() string {
-  return ":STATEMENT:CONDITIONAL:FUNCTIONCALL"
+	return ":FUNCTIONCALL"
+}
+
+func (n *FunctionNode) GetFilename() string {
+	return n.Filename
+}
+
+func (n *FunctionNode) GetLineNumber() int {
+	return n.LineNumber
 }

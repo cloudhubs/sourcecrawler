@@ -415,23 +415,6 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 
 	return logInfo, varsInLogs
 }
-
-func connectNodes(caller, callee db.FunctionNode) {
-
-	/*
-		//query for getting nodes from db
-		MATCH (a:Node), (b:Node)
-		WHERE a.function = b.function
-		AND a.filename = $callerFile AND b.filename = $calleeFile
-		AND a.line = $callerLine AND b.line = $calleeLine
-
-		//and adding relationship to connect the two graphs
-		CREATE e = (a)-[r:CALLS]->(b)
-		RETURN e,
-		map[string]interface{}{"callerFile": caller.Filename, "calleeFile": callee.Filename,
-		"callerLine": caller.LineNumber, "calleeLine": callee.LineNumber}
-	*/
-}
 // Functions for finding calls across files
 
 /*
@@ -484,7 +467,7 @@ func functionDecls(filesToParse []string) map[string][]string {
 
 /*
 	Check the location (file + line number) of where each function is used
-  TODO: create return value
+  TODO: create return value, connect calling node to function decl
 */
 func callFrom(funcList map[string][]string, filesToParse []string) {
 

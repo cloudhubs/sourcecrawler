@@ -83,3 +83,40 @@ func createQueryRecur(node Node, count *int, query *string, seenNodes *map[strin
 
 	return currCount
 }
+
+func (dao NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
+	session, driver := connectToNeo()
+	defer session.Close()
+	defer driver.Close()
+
+	//Connect
+	if first.GetNodeType() == ":FUNCTIONCALL" {
+		response, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
+			res, err := transaction.Run(
+				//query for getting nodes from db
+				//and adding relationship to connect the two graphs
+				`MATCH (a:Node), (b:Node) WHERE a.filename = $callerFile 
+				AND b.filename = $calleeFile AND a.line = $callerLine 
+				AND b.line = $calleeLine 
+				CREATE e = (a)-[r:FLOWSTO]->(b) 
+				RETURN e`,
+				map[string]interface{}{"callerFile": first.GetFilename(), "calleeFile": second.GetFilename(),
+					"callerLine": first.GetLineNumber(), "calleeLine": second.GetLineNumber()})
+			if err != nil {
+				return nil, err
+			}
+
+			if res.Next() {
+				return res.Record().GetByIndex(0), nil
+			}
+
+			return nil, res.Err()
+		})
+		if err != nil {
+			return "", err
+		}
+		return response.(string), nil
+	} else {
+		return "", nil
+	}
+}
