@@ -9,10 +9,12 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
+func NeoTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	createTestNeoNodes()
+}
+
 func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := model.ParseProjectRequest{}
-
-	fmt.Println("Requesting... Creating project log types")
 
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&request); err != nil {
@@ -60,4 +62,17 @@ func GetAllLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	types := []model.LogType{}
 	db.Find(&types)
 	respondJSON(w, http.StatusOK, types)
+}
+
+func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	request := struct {
+		FilePath string `json:"filePath"`
+	}{}
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer r.Body.Close()
 }

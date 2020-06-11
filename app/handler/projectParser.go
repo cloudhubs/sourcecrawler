@@ -10,12 +10,26 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 )
+
+func createTestNeoNodes() {
+	node7 := db.StatementNode{"test.go", 7, "", nil}
+	node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
+	node5 := db.StatementNode{"test.go", 5, "", &node6}
+	node4 := db.StatementNode{"test.go", 4, "my log regex", &node6}
+	node3 := db.ConditionalNode{"test.go", 3, "myvar != nil", &node4, &node5}
+	node2 := db.StatementNode{"test.go", 2, "", &node3}
+	node1 := db.StatementNode{"test.go", 1, "", &node2}
+
+	dao := db.NodeDaoNeoImpl{}
+	dao.CreateTree(&node1)
+}
 
 type varDecls struct {
 	asns  []*ast.AssignStmt
@@ -190,11 +204,11 @@ func parseProject(projectRoot string) []model.LogType {
 	}
 
 	//Check all function declarations
-	funcDecList := functionDecls(filesToParse)
-	findPanics(filesToParse)
+	// funcDecList := functionDecls(filesToParse)
+	// findPanics(filesToParse)
 
 	//Create test CFG
-	constructCFG(funcDecList)
+	// constructCFG(funcDecList)
 
 	//TODO: parse panic message for line number + file name
 	parsePanic()
@@ -264,7 +278,6 @@ type panicStruct struct {
 type stackTraceStruct struct {
 	msgType string
 	fileNameLine map[string]string
-
 }
 
 //Helper function to find origin of function
@@ -662,3 +675,21 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 
 	return logInfo, varsInLogs
 }
+
+func connectNodes(caller, callee db.FunctionNode) {
+
+	/*
+		//query for getting nodes from db
+		MATCH (a:Node), (b:Node)
+		WHERE a.function = b.function
+		AND a.filename = $callerFile AND b.filename = $calleeFile
+		AND a.line = $callerLine AND b.line = $calleeLine
+
+		//and adding relationship to connect the two graphs
+		CREATE e = (a)-[r:CALLS]->(b)
+		RETURN e,
+		map[string]interface{}{"callerFile": caller.Filename, "calleeFile": callee.Filename,
+		"callerLine": caller.LineNumber, "calleeLine": callee.LineNumber}
+	*/
+}
+// Functions for finding calls across files
