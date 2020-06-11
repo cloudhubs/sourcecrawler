@@ -89,7 +89,7 @@ func (n *ConditionalNode) GetProperties() string {
 }
 
 func (n *ConditionalNode) GetNodeType() string {
-	return ":CONDITIONAL"
+	return ":CONDITIONAL:STATEMENT"
 }
 
 func (n *ConditionalNode) GetFilename() string {
@@ -113,7 +113,7 @@ func (n *FunctionNode) GetProperties() string {
 }
 
 func (n *FunctionNode) GetNodeType() string {
-	return ":FUNCTIONCALL"
+	return ":FUNCTIONCALL:STATEMENT"
 }
 
 func (n *FunctionNode) GetFilename() string {

@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 )
@@ -90,14 +91,14 @@ func (dao NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
 	defer driver.Close()
 
 	//Connect
-	if first.GetNodeType() == ":FUNCTIONCALL" {
+	if strings.Contains(first.GetNodeType(), ":FUNCTIONCALL") {
 		response, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
 			res, err := transaction.Run(
 				//query for getting nodes from db
 				//and adding relationship to connect the two graphs
-				`MATCH (a:Node), (b:Node) WHERE a.filename = $callerFile 
-				AND b.filename = $calleeFile AND a.line = $callerLine 
-				AND b.line = $calleeLine 
+				`MATCH (a:STATEMENT), (b:STATEMENT) WHERE a.filename = $callerFile 
+				AND b.filename = $calleeFile AND a.linenumber = $callerLine 
+				AND b.linenumber = $calleeLine 
 				CREATE e = (a)-[r:FLOWSTO]->(b) 
 				RETURN e`,
 				map[string]interface{}{"callerFile": first.GetFilename(), "calleeFile": second.GetFilename(),
