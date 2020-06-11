@@ -80,12 +80,12 @@ func (n *ConditionalNode) GetNodeType() string {
 	return ":STATEMENT:CONDITIONAL"
 }
 
-// func (n *FunctionNode) GetChildren() map[*Node]string {
-// 	var m = map[*Node]string{
-// 		n.Child: "",
-// 	}
-// 	return m
-// }
+func (n *FunctionNode) GetChildren() map[Node]string {
+	var m = map[Node]string{
+		n.Child: "",
+	}
+	return m
+}
 
 func (n *FunctionNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: \"%v\", function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
@@ -93,5 +93,5 @@ func (n *FunctionNode) GetProperties() string {
 }
 
 func (n *FunctionNode) GetNodeType() string {
-  return ":STATEMENT:CONDITIONAL:FUNCTIONCALL"
+	return ":STATEMENT:CONDITIONAL:FUNCTIONCALL"
 }

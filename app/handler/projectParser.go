@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/tools/go/cfg"
 )
 
 func createTestNeoNodes() {
@@ -516,6 +517,8 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	ast.Inspect(node, func(n ast.Node) bool {
 		// Keep track of the current parent function the log statement is contained in
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
+			fmt.Println("checking funcDecl", funcDecl.Name)
+			_ = createFnCfg(funcDecl, base, fset, map[int]string{})
 			parentFn = funcDecl
 		}
 
@@ -586,36 +589,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				good = true
 				// fmt.Println("Basic", v.Value)
 
-				//Regex value currently
-				reg := v.Value
-
-				//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
-				if strings.Contains(reg, "(") {
-					reg = strings.ReplaceAll(reg, "(", "\\(")
-				}
-				if strings.Contains(reg, ")") {
-					reg = strings.ReplaceAll(reg, ")", "\\)")
-				}
-
-				//Converting %d, %s, %v to regex num, removing single quotes
-				if strings.Contains(reg, "%d") {
-					reg = strings.ReplaceAll(reg, "%d", "\\d")
-				}
-				if strings.Contains(reg, "%s") {
-					reg = strings.ReplaceAll(reg, "%s", ".*")
-				}
-				if strings.Contains(reg, "%v") {
-					reg = strings.ReplaceAll(reg, "%v", ".*")
-				}
-				if strings.Contains(reg, "'") {
-					reg = strings.ReplaceAll(reg, "'", "")
-				}
-				if strings.Contains(reg, "%+v") {
-					reg = strings.ReplaceAll(reg, "%+v", ".+")
-				}
-
-				//Remove the double quotes
-				currentLog.Regex = reg[1 : len(reg)-1]
+				currentLog.Regex = createRegex(v.Value)
 
 				logInfo = append(logInfo, currentLog)
 
@@ -666,4 +640,454 @@ func connectNodes(caller, callee db.FunctionNode) {
 		"callerLine": caller.LineNumber, "calleeLine": callee.LineNumber}
 	*/
 }
-// Functions for finding calls across files
+
+func createRegex(value string) string {
+	//Regex value currently
+	reg := value
+
+	//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
+	if strings.Contains(reg, "(") {
+		reg = strings.ReplaceAll(reg, "(", "\\(")
+	}
+	if strings.Contains(reg, ")") {
+		reg = strings.ReplaceAll(reg, ")", "\\)")
+	}
+
+	//Converting %d, %s, %v to regex num, removing single quotes
+	if strings.Contains(reg, "%d") {
+		reg = strings.ReplaceAll(reg, "%d", "\\d")
+	}
+	if strings.Contains(reg, "%s") {
+		reg = strings.ReplaceAll(reg, "%s", ".*")
+	}
+	if strings.Contains(reg, "%v") {
+		reg = strings.ReplaceAll(reg, "%v", ".*")
+	}
+	if strings.Contains(reg, "'") {
+		reg = strings.ReplaceAll(reg, "'", "")
+	}
+	if strings.Contains(reg, "%+v") {
+		reg = strings.ReplaceAll(reg, "%+v", ".+")
+	}
+
+	//Remove the double quotes
+	return reg[1 : len(reg)-1]
+}
+
+func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet, regexes map[int]string) db.Node {
+	if fn == nil {
+		fmt.Println("\tfn was nil")
+		return nil
+	}
+	if fn.Body == nil {
+		fmt.Println("\tbody was nil")
+		return nil
+	}
+	if fn.Name == nil {
+		fmt.Println("\tname was nil")
+		return nil
+	}
+
+	root := getStatementNode(fn, base, fset, regexes)
+
+	cfg := cfg.New(fn.Body, func(call *ast.CallExpr) bool {
+		if call != nil {
+			if fn.Name.Name != "Exit" && !strings.Contains(fn.Name.Name, "Fatal") && fn.Name.Name != "panic" {
+				return true
+			}
+		}
+		return false
+	})
+	fmt.Println(cfg.Format(fset))
+
+	if len(cfg.Blocks) < 1 {
+		return root
+	}
+
+	block := cfg.Blocks[0]
+	node := constructSubCfg(block, base, fset, regexes)
+	if node == nil {
+		return root
+	}
+
+	if fn, ok := root.(*db.FunctionNode); ok {
+		fn.Child = node
+	}
+
+	printCfg(root, "")
+	fmt.Println()
+
+	return root
+}
+
+func printCfg(node db.Node, level string) {
+	if node == nil {
+		return
+	}
+	switch node := node.(type) {
+	case *db.FunctionNode:
+		fmt.Printf("%s%s\n", level, node.FunctionName)
+		printCfg(node.Child, level)
+	case *db.StatementNode:
+		fmt.Printf("%s%s\n", level, node.LogRegex)
+		printCfg(node.Child, level)
+	case *db.ConditionalNode:
+		fmt.Printf("%sif %s\n", level, node.Condition)
+		printCfg(node.TrueChild, level+"  ")
+		fmt.Println(level + "else")
+		printCfg(node.FalseChild, level+"  ")
+	}
+}
+
+func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes map[int]string) (root db.Node) {
+	if block == nil || block.Nodes == nil {
+		return nil
+	}
+
+	conditional := false
+	var prev db.Node
+	var current db.Node
+	for i, node := range block.Nodes {
+		last := i == len(block.Nodes)-1
+		conditional = len(block.Succs) > 1
+
+		switch node := node.(type) {
+		case ast.Stmt:
+			current = getStatementNode(node, base, fset, regexes)
+		case ast.Expr:
+			current = getExprNode(node, base, fset, last && conditional, regexes)
+		}
+		if current == nil {
+			fmt.Println("\treturn node was nil")
+			continue
+		}
+		if root == nil {
+			root = current
+		}
+		if prev == nil {
+			prev = current
+		}
+		if current != nil {
+			switch prevNode := prev.(type) {
+			case *db.FunctionNode:
+				// may need to fast-forward to deepest child node here
+				// if there was a statement like _, _ = func1(), func2()
+				prevNode.Child = current
+				if call, ok := current.(*db.FunctionNode); ok {
+					for call != nil {
+						if child, ok := call.Child.(*db.FunctionNode); ok && child != nil {
+							if child == call {
+								call.Child = nil
+								if child.Child == call {
+									child.Child = nil
+								}
+							}
+							prev = call
+							current = child
+							call = child
+						} else {
+							call = nil
+						}
+					}
+				}
+			case *db.StatementNode:
+				// You should never encounter a "previous" conditional inside of a block since
+				// the conditional is always the last node in a CFG block if a conditional is present
+				// case *db.ConditionalNode:
+				prevNode.Child = current
+			}
+			prev = current
+		}
+
+		if expr, ok := node.(ast.Expr); ok && last && conditional {
+			var conditional *db.ConditionalNode
+			if cond, ok := current.(*db.ConditionalNode); ok && cond != nil {
+				conditional = cond
+			} else {
+				relPath, _ := filepath.Rel(base, fset.File(expr.Pos()).Name())
+				conditional = &db.ConditionalNode{
+					Filename:   filepath.ToSlash(relPath),
+					LineNumber: fset.Position(expr.Pos()).Line,
+					Condition:  expressionString(expr),
+				}
+			}
+			conditional.TrueChild = constructSubCfg(block.Succs[0], base, fset, regexes)
+			conditional.FalseChild = constructSubCfg(block.Succs[1], base, fset, regexes)
+
+			switch node := current.(type) {
+			case *db.FunctionNode:
+				node.Child = db.Node(conditional)
+			case *db.StatementNode:
+				node.Child = db.Node(conditional)
+			}
+		} else if len(block.Succs) == 1 {
+			subCfg := constructSubCfg(block.Succs[0], base, fset, regexes)
+			switch node := current.(type) {
+			case *db.FunctionNode:
+				node.Child = subCfg
+			case *db.StatementNode:
+				node.Child = subCfg
+			}
+		}
+
+		current = nil
+	}
+
+	return
+}
+
+func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bool, regexes map[int]string) (node db.Node) {
+	relPath, _ := filepath.Rel(base, fset.File(expr.Pos()).Name())
+	switch expr := expr.(type) {
+	case *ast.CallExpr:
+		fmt.Print("\t\tfound a callexpr ")
+		if selectStmt, ok := expr.Fun.(*ast.SelectorExpr); ok {
+			val := fmt.Sprint(selectStmt.Sel)
+			fmt.Println(val)
+			if (strings.Contains(val, "Msg") || strings.Contains(val, "Err")) && isFromLog(selectStmt) {
+				line := fset.Position(expr.Pos()).Line
+				node = db.Node(&db.StatementNode{
+					Filename:   filepath.ToSlash(relPath),
+					LineNumber: line,
+					LogRegex:   regexes[line],
+				})
+			} else {
+				node = db.Node(&db.FunctionNode{
+					Filename:     filepath.ToSlash(relPath),
+					LineNumber:   fset.Position(expr.Pos()).Line,
+					FunctionName: expressionString(selectStmt),
+				})
+			}
+		} else {
+			fmt.Println(callExprName(expr))
+			node = db.Node(&db.FunctionNode{
+				Filename:     filepath.ToSlash(relPath),
+				LineNumber:   fset.Position(expr.Pos()).Line,
+				FunctionName: callExprName(expr),
+			})
+		}
+	case *ast.UnaryExpr:
+		subExpr := getExprNode(expr.X, base, fset, conditional, regexes)
+		if conditional {
+			fmt.Println("\t\tfound a unary condition")
+			conditional := db.Node(&db.ConditionalNode{
+				Filename:   filepath.ToSlash(relPath),
+				LineNumber: fset.Position(expr.Pos()).Line,
+				Condition:  expressionString(expr),
+			})
+			if subExpr != nil {
+				node = subExpr
+				connectToLeaf(node, conditional)
+			} else {
+				node = conditional
+			}
+		} else {
+			fmt.Println("\t\tfound a unary sub condition")
+			if subExpr != nil {
+				node = subExpr
+			}
+		}
+	case *ast.BinaryExpr:
+		rightSubExpr := getExprNode(expr.X, base, fset, false, regexes)
+		leftSubExpr := getExprNode(expr.Y, base, fset, false, regexes)
+		if conditional {
+			fmt.Println("\t\tfound a binary condition")
+			conditional := db.Node(&db.ConditionalNode{
+				Filename:   filepath.ToSlash(relPath),
+				LineNumber: fset.Position(expr.Pos()).Line,
+				Condition:  expressionString(expr),
+			})
+			if rightSubExpr != nil && leftSubExpr != nil {
+				node = leftSubExpr
+				connectToLeaf(node, rightSubExpr)
+				connectToLeaf(rightSubExpr, conditional)
+			} else if leftSubExpr != nil {
+				node = leftSubExpr
+				connectToLeaf(node, conditional)
+			} else if rightSubExpr != nil {
+				node = rightSubExpr
+				connectToLeaf(node, conditional)
+			} else {
+				node = conditional
+			}
+		} else {
+			fmt.Println("\t\tfound a binary sub condition")
+			if rightSubExpr != nil && leftSubExpr != nil {
+				node = leftSubExpr
+				connectToLeaf(node, rightSubExpr)
+			} else if leftSubExpr != nil {
+				node = leftSubExpr
+			} else if rightSubExpr != nil {
+				node = rightSubExpr
+			}
+		}
+	default:
+		if conditional {
+			fmt.Println("\t\tfound a condition")
+			node = db.Node(&db.ConditionalNode{
+				Filename:   filepath.ToSlash(relPath),
+				LineNumber: fset.Position(expr.Pos()).Line,
+				Condition:  expressionString(expr),
+			})
+		}
+	}
+	return
+}
+
+// Assumes only function nodes
+func connectToLeaf(root db.Node, node db.Node) {
+	if call, ok := root.(*db.FunctionNode); ok {
+		var current *db.FunctionNode
+		for call != nil {
+			if child, ok := call.Child.(*db.FunctionNode); ok && child != nil {
+				current = child
+				call = child
+			} else {
+				current = call
+				call = nil
+			}
+		}
+		if current != nil {
+			fmt.Println("connecting", current.FunctionName, "to", node)
+			current.Child = node
+		} else {
+			fmt.Println("connecting", current.FunctionName, "to", node)
+			call.Child = node
+		}
+	}
+}
+
+func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes map[int]string) (node db.Node) {
+	switch stmt := stmt.(type) {
+	case *ast.ExprStmt:
+		node = getExprNode(stmt.X, base, fset, false, regexes)
+	case *ast.FuncDecl:
+		relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
+		node = db.Node(&db.FunctionNode{
+			Filename:     filepath.ToSlash(relPath),
+			LineNumber:   fset.Position(stmt.Pos()).Line,
+			FunctionName: stmt.Name.Name,
+		})
+	case *ast.AssignStmt:
+		fmt.Println("\t\tfound assignstmt")
+		var first db.Node
+		var current db.Node
+		var prev db.Node
+		for _, expr := range stmt.Rhs {
+			exprNode := getExprNode(expr, base, fset, false, regexes)
+			if prev == nil && current != nil {
+				prev = current
+			}
+
+			switch exprNode := exprNode.(type) {
+			case *db.FunctionNode:
+				current = exprNode
+			case *db.StatementNode:
+				current = exprNode
+			}
+
+			if node, ok := prev.(*db.FunctionNode); ok {
+				node.Child = current
+			}
+
+			if first == nil {
+				first = current
+			}
+		}
+		node = first
+	default:
+		fmt.Println("\t\tdid not cast")
+	}
+	return
+}
+
+func expressionString(expr ast.Expr) string {
+	if expr == nil {
+		return ""
+	}
+	switch condition := expr.(type) {
+	case *ast.BasicLit:
+		return condition.Value
+	case *ast.Ident:
+		return condition.Name
+	case *ast.BinaryExpr:
+		leftStr, rightStr := "", ""
+		leftStr = expressionString(condition.X)
+		rightStr = expressionString(condition.Y)
+		return fmt.Sprint(leftStr, condition.Op, rightStr)
+	case *ast.UnaryExpr:
+		op := condition.Op.String()
+		str := expressionString(condition.X)
+		return fmt.Sprint(op, str)
+	case *ast.SelectorExpr:
+		selector := ""
+		if condition.Sel != nil {
+			selector = condition.Sel.String()
+		}
+		str := expressionString(condition.X)
+		return fmt.Sprintf("%s.%s", str, selector)
+	case *ast.ParenExpr:
+		return fmt.Sprintf("(%s)", expressionString(condition.X))
+	case *ast.CallExpr:
+		// may want to return *db.StatementNode for CallExpr I find these to add to the CFG
+		fn := expressionString(condition.Fun)
+		args := make([]string, 0)
+		for _, arg := range condition.Args {
+			args = append(args, expressionString(arg))
+		}
+		if condition.Ellipsis != token.NoPos {
+			args[len(args)-1] = fmt.Sprintf("%s...", args[len(args)-1])
+		}
+
+		var builder strings.Builder
+		_, _ = builder.WriteString(fmt.Sprintf("%s(", fn))
+		for i, arg := range args {
+			var s string
+			if i == len(args)-1 {
+				s = fmt.Sprintf("%s)", arg)
+			} else {
+				s = fmt.Sprintf("%s, ", arg)
+			}
+			_, _ = builder.WriteString(s)
+		}
+		if len(args) == 0 {
+			_, _ = builder.WriteString(")")
+		}
+
+		return builder.String()
+	case *ast.IndexExpr:
+		expr := expressionString(condition.X)
+		ndx := expressionString(condition.Index)
+		return fmt.Sprintf("%s[%s]", expr, ndx)
+	case *ast.KeyValueExpr:
+		key := expressionString(condition.Key)
+		value := expressionString(condition.Value)
+		return fmt.Sprint(key, ":", value)
+	case *ast.SliceExpr: // not sure about this one
+		expr := expressionString(condition.X)
+		low := expressionString(condition.Low)
+		high := expressionString(condition.High)
+		if condition.Slice3 {
+			max := expressionString(condition.Max)
+			return fmt.Sprintf("%s[%s : %s : %s]", expr, low, high, max)
+		}
+		return fmt.Sprintf("%s[%s : %s]", expr, low, high)
+	case *ast.StarExpr:
+		expr := expressionString(condition.X)
+		return fmt.Sprintf("*%s", expr)
+	case *ast.TypeAssertExpr:
+		expr := expressionString(condition.X)
+		typecast := expressionString(condition.Type)
+		return fmt.Sprintf("%s(%s)", typecast, expr)
+	}
+	return ""
+}
+
+func callExprName(call *ast.CallExpr) string {
+	fn := expressionString(call)
+	name := ""
+	if s := strings.Split(fn, "("); len(s) > 0 {
+		name = s[0]
+	}
+	return name
+}
