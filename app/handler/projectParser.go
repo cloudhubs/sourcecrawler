@@ -284,7 +284,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		// Keep track of the current parent function the log statement is contained in
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
 			fmt.Println("checking funcDecl", funcDecl.Name)
-			_ = createFnCfg(funcDecl, base, fset)
+			_ = createFnCfg(funcDecl, base, fset, map[int]string{})
 			parentFn = funcDecl
 		}
 
@@ -523,7 +523,7 @@ func createRegex(value string) string {
 	return reg[1 : len(reg)-1]
 }
 
-func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet) db.Node {
+func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet, regexes map[int]string) db.Node {
 	if fn == nil {
 		fmt.Println("\tfn was nil")
 		return nil
@@ -537,7 +537,7 @@ func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet) db.Node {
 		return nil
 	}
 
-	root := getStatementNode(fn, base, fset)
+	root := getStatementNode(fn, base, fset, regexes)
 
 	cfg := cfg.New(fn.Body, func(call *ast.CallExpr) bool {
 		if call != nil {
@@ -554,7 +554,7 @@ func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet) db.Node {
 	}
 
 	block := cfg.Blocks[0]
-	node := constructSubCfg(block, base, fset)
+	node := constructSubCfg(block, base, fset, regexes)
 	if node == nil {
 		return root
 	}
@@ -588,7 +588,7 @@ func printCfg(node db.Node, level string) {
 	}
 }
 
-func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet) (root db.Node) {
+func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes map[int]string) (root db.Node) {
 	if block == nil || block.Nodes == nil {
 		return nil
 	}
@@ -602,9 +602,9 @@ func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet) (root d
 
 		switch node := node.(type) {
 		case ast.Stmt:
-			current = getStatementNode(node, base, fset)
+			current = getStatementNode(node, base, fset, regexes)
 		case ast.Expr:
-			current = getExprNode(node, base, fset, last && conditional)
+			current = getExprNode(node, base, fset, last && conditional, regexes)
 		}
 		if current == nil {
 			fmt.Println("\treturn node was nil")
@@ -660,8 +660,8 @@ func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet) (root d
 					Condition:  expressionString(expr),
 				}
 			}
-			conditional.TrueChild = constructSubCfg(block.Succs[0], base, fset)
-			conditional.FalseChild = constructSubCfg(block.Succs[1], base, fset)
+			conditional.TrueChild = constructSubCfg(block.Succs[0], base, fset, regexes)
+			conditional.FalseChild = constructSubCfg(block.Succs[1], base, fset, regexes)
 
 			switch node := current.(type) {
 			case *db.FunctionNode:
@@ -670,7 +670,7 @@ func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet) (root d
 				node.Child = db.Node(conditional)
 			}
 		} else if len(block.Succs) == 1 {
-			subCfg := constructSubCfg(block.Succs[0], base, fset)
+			subCfg := constructSubCfg(block.Succs[0], base, fset, regexes)
 			switch node := current.(type) {
 			case *db.FunctionNode:
 				node.Child = subCfg
@@ -685,7 +685,7 @@ func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet) (root d
 	return
 }
 
-func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bool) (node db.Node) {
+func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bool, regexes map[int]string) (node db.Node) {
 	relPath, _ := filepath.Rel(base, fset.File(expr.Pos()).Name())
 	switch expr := expr.(type) {
 	case *ast.CallExpr:
@@ -694,12 +694,11 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 			val := fmt.Sprint(selectStmt.Sel)
 			fmt.Println(val)
 			if (strings.Contains(val, "Msg") || strings.Contains(val, "Err")) && isFromLog(selectStmt) {
-				regex := ""
-				// use createRegex() and somehow rectify the API to reuse the latter half of findLogsInFile fn here
+				line := fset.Position(expr.Pos()).Line
 				node = db.Node(&db.StatementNode{
 					Filename:   filepath.ToSlash(relPath),
-					LineNumber: fset.Position(expr.Pos()).Line,
-					LogRegex:   regex,
+					LineNumber: line,
+					LogRegex:   regexes[line],
 				})
 			} else {
 				node = db.Node(&db.FunctionNode{
@@ -729,10 +728,10 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 	return
 }
 
-func getStatementNode(stmt ast.Node, base string, fset *token.FileSet) (node db.Node) {
+func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes map[int]string) (node db.Node) {
 	switch stmt := stmt.(type) {
 	case *ast.ExprStmt:
-		node = getExprNode(stmt.X, base, fset, false)
+		node = getExprNode(stmt.X, base, fset, false, regexes)
 	case *ast.FuncDecl:
 		relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
 		node = db.Node(&db.FunctionNode{
@@ -746,7 +745,7 @@ func getStatementNode(stmt ast.Node, base string, fset *token.FileSet) (node db.
 		var current db.Node
 		var prev db.Node
 		for _, expr := range stmt.Rhs {
-			exprNode := getExprNode(expr, base, fset, false)
+			exprNode := getExprNode(expr, base, fset, false, regexes)
 			if prev == nil && current != nil {
 				prev = current
 			}
