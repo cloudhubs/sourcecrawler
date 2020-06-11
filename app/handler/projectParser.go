@@ -715,6 +715,61 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 				FunctionName: callExprName(expr),
 			})
 		}
+	case *ast.UnaryExpr:
+		subExpr := getExprNode(expr.X, base, fset, conditional, regexes)
+		if conditional {
+			fmt.Println("\t\tfound a unary condition")
+			conditional := db.Node(&db.ConditionalNode{
+				Filename:   filepath.ToSlash(relPath),
+				LineNumber: fset.Position(expr.Pos()).Line,
+				Condition:  expressionString(expr),
+			})
+			if subExpr != nil {
+				node = subExpr
+				connectToLeaf(node, conditional)
+			} else {
+				node = conditional
+			}
+		} else {
+			fmt.Println("\t\tfound a unary sub condition")
+			if subExpr != nil {
+				node = subExpr
+			}
+		}
+	case *ast.BinaryExpr:
+		rightSubExpr := getExprNode(expr.X, base, fset, false, regexes)
+		leftSubExpr := getExprNode(expr.Y, base, fset, false, regexes)
+		if conditional {
+			fmt.Println("\t\tfound a binary condition")
+			conditional := db.Node(&db.ConditionalNode{
+				Filename:   filepath.ToSlash(relPath),
+				LineNumber: fset.Position(expr.Pos()).Line,
+				Condition:  expressionString(expr),
+			})
+			if rightSubExpr != nil && leftSubExpr != nil {
+				node = leftSubExpr
+				connectToLeaf(node, rightSubExpr)
+				connectToLeaf(rightSubExpr, conditional)
+			} else if leftSubExpr != nil {
+				node = leftSubExpr
+				connectToLeaf(node, conditional)
+			} else if rightSubExpr != nil {
+				node = rightSubExpr
+				connectToLeaf(node, conditional)
+			} else {
+				node = conditional
+			}
+		} else {
+			fmt.Println("\t\tfound a binary sub condition")
+			if rightSubExpr != nil && leftSubExpr != nil {
+				node = leftSubExpr
+				connectToLeaf(node, rightSubExpr)
+			} else if leftSubExpr != nil {
+				node = leftSubExpr
+			} else if rightSubExpr != nil {
+				node = rightSubExpr
+			}
+		}
 	default:
 		if conditional {
 			fmt.Println("\t\tfound a condition")
@@ -726,6 +781,29 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 		}
 	}
 	return
+}
+
+// Assumes only function nodes
+func connectToLeaf(root db.Node, node db.Node) {
+	if call, ok := root.(*db.FunctionNode); ok {
+		var current *db.FunctionNode
+		for call != nil {
+			if child, ok := call.Child.(*db.FunctionNode); ok && child != nil {
+				current = child
+				call = child
+			} else {
+				current = call
+				call = nil
+			}
+		}
+		if current != nil {
+			fmt.Println("connecting", current.FunctionName, "to", node)
+			current.Child = node
+		} else {
+			fmt.Println("connecting", current.FunctionName, "to", node)
+			call.Child = node
+		}
+	}
 }
 
 func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes map[int]string) (node db.Node) {
