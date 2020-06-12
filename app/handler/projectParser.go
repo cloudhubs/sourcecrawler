@@ -14,8 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	_ "golang.org/x/tools/go/cfg"
-
 	"github.com/rs/zerolog/log"
 	"golang.org/x/tools/go/cfg"
 )
