@@ -284,7 +284,10 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		// Keep track of the current parent function the log statement is contained in
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
 			fmt.Println("checking funcDecl", funcDecl.Name)
-			_ = createFnCfg(funcDecl, base, fset, map[int]string{})
+			cfg := FnCfgCreator{}
+			root := cfg.CreateCfg(funcDecl, base, fset, map[int]string{})
+			printCfg(root, "")
+			fmt.Println()
 			parentFn = funcDecl
 		}
 
@@ -523,48 +526,63 @@ func createRegex(value string) string {
 	return reg[1 : len(reg)-1]
 }
 
-func createFnCfg(fn *ast.FuncDecl, base string, fset *token.FileSet, regexes map[int]string) db.Node {
+// FnCfgCreator allows you to compute the CFG for a given function declaration
+type FnCfgCreator struct {
+	blocks map[*cfg.Block]db.Node
+}
+
+// NewFnCfgCreator returns a newly initialized FnCfgCreator
+func NewFnCfgCreator() *FnCfgCreator {
+	return &FnCfgCreator{
+		blocks: make(map[*cfg.Block]db.Node),
+	}
+}
+
+// CreateCfg creates the CFG For a given function declaration, filepath and file, and a map of regexes containde within the file.
+func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.FileSet, regexes map[int]string) db.Node {
 	if fn == nil {
-		fmt.Println("\tfn was nil")
+		log.Warn().Msg("received a null function declaration")
 		return nil
-	}
-	if fn.Body == nil {
-		fmt.Println("\tbody was nil")
+	} else if fn.Body == nil {
+		log.Warn().Msg("received a null function body")
 		return nil
-	}
-	if fn.Name == nil {
-		fmt.Println("\tname was nil")
+	} else if fn.Name == nil {
+		log.Warn().Msg("received function with no identifier")
 		return nil
 	}
 
+	fnCfg.blocks = make(map[*cfg.Block]db.Node)
+
+	// Function declaration is the root node
 	root := getStatementNode(fn, base, fset, regexes)
 
 	cfg := cfg.New(fn.Body, func(call *ast.CallExpr) bool {
 		if call != nil {
+			// Functions that won't potentially cause the program will return.
 			if fn.Name.Name != "Exit" && !strings.Contains(fn.Name.Name, "Fatal") && fn.Name.Name != "panic" {
 				return true
 			}
 		}
 		return false
 	})
-	fmt.Println(cfg.Format(fset))
+	// fmt.Println(cfg.Format(fset))
 
+	// Empty function declaration
 	if len(cfg.Blocks) < 1 {
 		return root
 	}
 
+	// Begin constructing the cfg
 	block := cfg.Blocks[0]
-	node := constructSubCfg(block, base, fset, regexes)
+	node := fnCfg.constructSubCfg(block, base, fset, regexes)
 	if node == nil {
 		return root
 	}
 
+	// Connect the function declaration to the sub cfg
 	if fn, ok := root.(*db.FunctionNode); ok {
 		fn.Child = node
 	}
-
-	printCfg(root, "")
-	fmt.Println()
 
 	return root
 }
@@ -588,7 +606,7 @@ func printCfg(node db.Node, level string) {
 	}
 }
 
-func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes map[int]string) (root db.Node) {
+func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes map[int]string) (root db.Node) {
 	if block == nil || block.Nodes == nil {
 		return nil
 	}
@@ -596,6 +614,9 @@ func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes
 	conditional := false
 	var prev db.Node
 	var current db.Node
+	// fmt.Println(block.Succs)
+
+	// Convert each node in the block into a db.Node (if it is one we want to keep)
 	for i, node := range block.Nodes {
 		last := i == len(block.Nodes)-1
 		conditional = len(block.Succs) > 1
@@ -606,49 +627,53 @@ func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes
 		case ast.Expr:
 			current = getExprNode(node, base, fset, last && conditional, regexes)
 		}
+		// Received a nil node, continue to the next one
 		if current == nil {
-			fmt.Println("\treturn node was nil")
 			continue
 		}
+
+		// Update predecessor pointers
 		if root == nil {
 			root = current
 		}
 		if prev == nil {
 			prev = current
 		}
-		if current != nil {
-			switch prevNode := prev.(type) {
-			case *db.FunctionNode:
-				// may need to fast-forward to deepest child node here
-				// if there was a statement like _, _ = func1(), func2()
-				prevNode.Child = current
-				if call, ok := current.(*db.FunctionNode); ok {
-					for call != nil {
-						if child, ok := call.Child.(*db.FunctionNode); ok && child != nil {
-							if child == call {
-								call.Child = nil
-								if child.Child == call {
-									child.Child = nil
-								}
-							}
-							prev = call
-							current = child
-							call = child
-						} else {
-							call = nil
-						}
-					}
-				}
-			case *db.StatementNode:
-				// You should never encounter a "previous" conditional inside of a block since
-				// the conditional is always the last node in a CFG block if a conditional is present
-				// case *db.ConditionalNode:
+
+		switch prevNode := prev.(type) {
+		case *db.FunctionNode:
+			// Set the previous pointer's child
+			if prev != current {
+				// fmt.Println("prev not current, set child")
 				prevNode.Child = current
 			}
-			prev = current
-		}
 
+			// May need to fast-forward to deepest child node here
+			// if there was a statement like _, _ = func1(), func2()
+			if call, ok := current.(*db.FunctionNode); ok {
+				for call != nil {
+					if child, ok := call.Child.(*db.FunctionNode); ok && child != nil {
+						prev = call
+						call = child
+						current = child
+					} else {
+						call = nil
+					}
+				}
+			}
+		case *db.StatementNode:
+			// You should never encounter a "previous" conditional inside of a block since
+			// the conditional is always the last node in a CFG block if a conditional is present
+			prevNode.Child = current
+		}
+		prev = current
+
+		// Conditionals are the last node and expression in a block, so if it is a control-flow, handle it
 		if expr, ok := node.(ast.Expr); ok && last && conditional {
+			// If the current node is the conditional, use it
+			// otherwise there was some initialization and it will need to be
+			// a new conditional node as the child of the previous initialization
+			// node.
 			var conditional *db.ConditionalNode
 			if cond, ok := current.(*db.ConditionalNode); ok && cond != nil {
 				conditional = cond
@@ -660,26 +685,63 @@ func constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes
 					Condition:  expressionString(expr),
 				}
 			}
-			conditional.TrueChild = constructSubCfg(block.Succs[0], base, fset, regexes)
-			conditional.FalseChild = constructSubCfg(block.Succs[1], base, fset, regexes)
 
-			switch node := current.(type) {
+			// Compute the success and fail trees if they haven't been computed already
+			// and set the respective child pointers
+			if succ, ok := fnCfg.blocks[block.Succs[0]]; ok {
+				conditional.TrueChild = succ
+			} else {
+				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
+			}
+
+			if fail, ok := fnCfg.blocks[block.Succs[1]]; ok {
+				conditional.FalseChild = fail
+			} else {
+				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1], base, fset, regexes)
+				fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
+			}
+
+			// Set the predecessor's child to be the conditional (which may be some initialization call)
+			switch node := prev.(type) {
 			case *db.FunctionNode:
 				node.Child = db.Node(conditional)
 			case *db.StatementNode:
 				node.Child = db.Node(conditional)
 			}
-		} else if len(block.Succs) == 1 {
-			subCfg := constructSubCfg(block.Succs[0], base, fset, regexes)
-			switch node := current.(type) {
+		} else if len(block.Succs) == 1 && last {
+			// The last node was not a conditional but is the last statement, so
+			// retrieve the child sub-cfg of the next block if it exits,
+			// or otherwise compute it
+			var child db.Node
+			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
+				child = subCfg
+			} else {
+				child = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+				fnCfg.blocks[block.Succs[0]] = child
+			}
+
+			// Update the previous node's child
+			switch node := prev.(type) {
 			case *db.FunctionNode:
-				node.Child = subCfg
+				node.Child = child
 			case *db.StatementNode:
-				node.Child = subCfg
+				node.Child = child
 			}
 		}
 
 		current = nil
+	}
+
+	// The root was nil, so try to get the next block.
+	// If the block is part of a for statement it would infinitely recurse, so leave it nil.
+	if root == nil && len(block.Succs) == 1 && !strings.Contains(block.String(), "for") {
+		if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
+			root = subCfg
+		} else {
+			root = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+			fnCfg.blocks[block.Succs[0]] = root
+		}
 	}
 
 	return
@@ -689,10 +751,12 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 	relPath, _ := filepath.Rel(base, fset.File(expr.Pos()).Name())
 	switch expr := expr.(type) {
 	case *ast.CallExpr:
-		fmt.Print("\t\tfound a callexpr ")
+		// fmt.Print("\t\tfound a callexpr ")
 		if selectStmt, ok := expr.Fun.(*ast.SelectorExpr); ok {
 			val := fmt.Sprint(selectStmt.Sel)
-			fmt.Println(val)
+			// fmt.Println(val)
+
+			// Check if the statement is a logging statement, if it is return a StatementNode
 			if (strings.Contains(val, "Msg") || strings.Contains(val, "Err")) && isFromLog(selectStmt) {
 				line := fset.Position(expr.Pos()).Line
 				node = db.Node(&db.StatementNode{
@@ -701,6 +765,7 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 					LogRegex:   regexes[line],
 				})
 			} else {
+				// Was a method call.
 				node = db.Node(&db.FunctionNode{
 					Filename:     filepath.ToSlash(relPath),
 					LineNumber:   fset.Position(expr.Pos()).Line,
@@ -708,7 +773,9 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 				})
 			}
 		} else {
-			fmt.Println(callExprName(expr))
+			// fmt.Println(callExprName(expr))
+
+			// Found a function call
 			node = db.Node(&db.FunctionNode{
 				Filename:     filepath.ToSlash(relPath),
 				LineNumber:   fset.Position(expr.Pos()).Line,
@@ -718,29 +785,29 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 	case *ast.UnaryExpr:
 		subExpr := getExprNode(expr.X, base, fset, conditional, regexes)
 		if conditional {
-			fmt.Println("\t\tfound a unary condition")
+			// Found a unary conditional
 			conditional := db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fset.Position(expr.Pos()).Line,
 				Condition:  expressionString(expr),
 			})
+			// subExpr was a function call of some kind
 			if subExpr != nil {
 				node = subExpr
 				connectToLeaf(node, conditional)
 			} else {
+				// Normal condition
 				node = conditional
 			}
-		} else {
-			fmt.Println("\t\tfound a unary sub condition")
-			if subExpr != nil {
-				node = subExpr
-			}
+		} else if subExpr != nil {
+			// Was a regular expression
+			node = subExpr
 		}
 	case *ast.BinaryExpr:
 		rightSubExpr := getExprNode(expr.X, base, fset, false, regexes)
 		leftSubExpr := getExprNode(expr.Y, base, fset, false, regexes)
 		if conditional {
-			fmt.Println("\t\tfound a binary condition")
+			// Found a binary conditional
 			conditional := db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fset.Position(expr.Pos()).Line,
@@ -760,7 +827,7 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 				node = conditional
 			}
 		} else {
-			fmt.Println("\t\tfound a binary sub condition")
+			// Found a binary sub-condition
 			if rightSubExpr != nil && leftSubExpr != nil {
 				node = leftSubExpr
 				connectToLeaf(node, rightSubExpr)
@@ -772,7 +839,7 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 		}
 	default:
 		if conditional {
-			fmt.Println("\t\tfound a condition")
+			// fmt.Println("\t\tfound a condition")
 			node = db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fset.Position(expr.Pos()).Line,
@@ -783,7 +850,8 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 	return
 }
 
-// Assumes only function nodes
+// This function will connect the given node to the root's deepest child.
+// Assumes only function nodes since it is the only situation I have enountered where this was necessary.
 func connectToLeaf(root db.Node, node db.Node) {
 	if call, ok := root.(*db.FunctionNode); ok {
 		var current *db.FunctionNode
@@ -796,11 +864,10 @@ func connectToLeaf(root db.Node, node db.Node) {
 				call = nil
 			}
 		}
+		// Chain the nodes together
 		if current != nil {
-			fmt.Println("connecting", current.FunctionName, "to", node)
 			current.Child = node
 		} else {
-			fmt.Println("connecting", current.FunctionName, "to", node)
 			call.Child = node
 		}
 	}
@@ -818,38 +885,41 @@ func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes m
 			FunctionName: stmt.Name.Name,
 		})
 	case *ast.AssignStmt:
-		fmt.Println("\t\tfound assignstmt")
+		// Found an assignment
 		var first db.Node
 		var current db.Node
 		var prev db.Node
 		for _, expr := range stmt.Rhs {
 			exprNode := getExprNode(expr, base, fset, false, regexes)
-			if prev == nil && current != nil {
-				prev = current
-			}
-
-			switch exprNode := exprNode.(type) {
-			case *db.FunctionNode:
-				current = exprNode
-			case *db.StatementNode:
-				current = exprNode
-			}
-
-			if node, ok := prev.(*db.FunctionNode); ok {
-				node.Child = current
-			}
-
+			// Initialize first node pointer
 			if first == nil {
-				first = current
+				first = exprNode
+				prev = first
+			} else {
+				// Update current pointer
+				switch exprNode := exprNode.(type) {
+				case *db.FunctionNode:
+					current = exprNode
+				case *db.StatementNode:
+					current = exprNode
+				}
+
+				// Chain nodes together
+				if node, ok := prev.(*db.FunctionNode); ok && node != nil {
+					node.Child = current
+				}
+
+				prev = current
 			}
 		}
 		node = first
 	default:
-		fmt.Println("\t\tdid not cast")
+		// fmt.Println("\t\tdid not cast")
 	}
 	return
 }
 
+// Recursively creates the string of an `ast.Expr`.
 func expressionString(expr ast.Expr) string {
 	if expr == nil {
 		return ""
@@ -878,7 +948,6 @@ func expressionString(expr ast.Expr) string {
 	case *ast.ParenExpr:
 		return fmt.Sprintf("(%s)", expressionString(condition.X))
 	case *ast.CallExpr:
-		// may want to return *db.StatementNode for CallExpr I find these to add to the CFG
 		fn := expressionString(condition.Fun)
 		args := make([]string, 0)
 		for _, arg := range condition.Args {
