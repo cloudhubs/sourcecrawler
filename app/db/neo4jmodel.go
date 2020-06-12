@@ -80,8 +80,8 @@ func (n *ConditionalNode) GetNodeType() string {
 	return ":STATEMENT:CONDITIONAL"
 }
 
-func (n *FunctionNode) GetChildren() map[*Node]string {
-	var m = map[*Node]string{
+func (n *FunctionNode) GetChildren() map[Node]string {
+	var m = map[Node]string{
 		n.Child: "",
 	}
 	return m
@@ -93,5 +93,5 @@ func (n *FunctionNode) GetProperties() string {
 }
 
 func (n *FunctionNode) GetNodeType() string {
-  return ":STATEMENT:CONDITIONAL:FUNCTIONCALL"
+	return ":STATEMENT:CONDITIONAL:FUNCTIONCALL"
 }
