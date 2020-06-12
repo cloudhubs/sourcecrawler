@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bufio"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -12,6 +13,8 @@ import (
 	"sourcecrawler/app/model"
 	"strconv"
 	"strings"
+
+	_ "golang.org/x/tools/go/cfg"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/tools/go/cfg"
@@ -28,6 +31,7 @@ func createTestNeoNodes() {
 
 	dao := db.NodeDaoNeoImpl{}
 	dao.CreateTree(&node1)
+
 }
 
 type varDecls struct {
@@ -45,8 +49,98 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 	return -1, false
 }
 
+// Parse through a panic message and find originating file/line number
+func parsePanic(filesToParse []string) {
+
+	//Generates test stack traces (run once and redirect to log file)
+	// "go run main.go 2>stackTrace.log"
+	//generateStackTrace()
+
+	//Open stack trace log file (assume there will be a log file named this)
+	file, err := os.Open("stackTrace.log")
+	if err != nil {
+		fmt.Println("Error opening file")
+	}
+
+	//Parse through stack trace log file
+	scanner := bufio.NewScanner(file)
+	stackTrc := []stackTraceStruct{}
+	tempStackTrace := stackTraceStruct{
+		msgType: "",
+		fnLine:  map[string]string{},
+	}
+
+	//Scan through each line of log file and do analysis
+	for scanner.Scan() {
+		logStr := scanner.Text()
+
+		//Check for beginning of new stack trace statement (create new trace struct for new statement)
+		// keyword "serving" is found in the first line of each new stack trace
+		if strings.Contains(logStr, "serving") {
+
+			//Make sure attributes aren't empty before adding it
+			if tempStackTrace.msgType != "" && len(tempStackTrace.fnLine) != 0 {
+				stackTrc = append(stackTrc, tempStackTrace)
+			}
+
+			//New statement trace
+			tempStackTrace = stackTraceStruct{
+				msgType: "",
+				fnLine:  map[string]string{},
+			}
+
+			//Assign panic type
+			if strings.Contains(logStr, "panic") {
+				tempStackTrace.msgType = "panic"
+			}
+		}
+
+		//Check if line contains a possible file name, store to map of fileName+LineNumber
+		if strings.Contains(logStr, ".go") {
+			fileName := logStr[strings.LastIndex(logStr, "/")+1 : strings.LastIndex(logStr, ":")]
+			indxLineNumStart := strings.LastIndex(logStr, ":")
+			lineNumLarge := logStr[indxLineNumStart+1:]
+
+			//If space in line number string with +0xaa, etc
+			var lineNum string
+			if strings.Contains(lineNumLarge, " ") {
+				lineNum = lineNumLarge[0:strings.Index(lineNumLarge, " ")]
+			} else {
+				lineNum = lineNumLarge
+			}
+
+			//Check for originating files where the exception was thrown (could be multiple files, parent calls, etc)
+			for index := range filesToParse {
+				if strings.Contains(filesToParse[index], fileName) {
+					tempStackTrace.fnLine[fileName] = lineNum
+				}
+			}
+		}
+	}
+
+	//Add last entry
+	stackTrc = append(stackTrc, tempStackTrace)
+
+	//Test print the processed stack traces
+	for index := range stackTrc {
+		fmt.Println(stackTrc[index])
+	}
+}
+
+//Helper function to generate a sample panic msg
+func generateStackTrace() {
+	//num := 5
+	//if num != 5{
+	//	panic("BADBAD")
+	//}else{
+	//	panic("Test 3 panic")
+	//}
+}
+
 //Parse project to create log types
 func parseProject(projectRoot string) []model.LogType {
+
+	//fmt.Println("Project root is: " + projectRoot)
 
 	//Holds a slice of log types
 	logTypes := []model.LogType{}
@@ -130,11 +224,152 @@ func parseProject(projectRoot string) []model.LogType {
 		}
 	}
 
-	// Doesn't do anything right now
-	// functList := functionDecls(filesToParse) //gathers list of functions
-	// callFrom(functList, filesToParse) //checks each expression call to see if it uses an explicitly declared function
+	//Check all function declarations
+	// funcDecList := functionDecls(filesToParse)
+	// findPanics(filesToParse)
+
+	//Parses panic stack trace message
+	parsePanic(filesToParse)
 
 	return logTypes
+}
+
+//Struct for quick access to the function declaration nodes
+type fdeclStruct struct {
+	node     ast.Node
+	fd       *ast.FuncDecl
+	filePath string
+	lineNum  string
+	Name     string
+}
+
+//Stores the file path and line # (Node pointers there for extra info)
+type panicStruct struct {
+	node     ast.Node
+	pd       *ast.CallExpr
+	filePath string
+	lineNum  string
+}
+
+//Parsing a panic runtime stack trace
+type stackTraceStruct struct {
+	msgType string
+	fnLine  map[string]string
+}
+
+//Helper function to find origin of function (not used but may need later)
+func findFuncOrigin(name string, funcDecList []fdeclStruct) {
+	for _, value := range funcDecList {
+		if name == value.fd.Name.Name {
+			fmt.Println(name, value.filePath, value.lineNum)
+		}
+	}
+}
+
+/*
+ Determines if a function is called somewhere else based on its name (path and line number)
+  -currently goes through all files and finds if it's used
+*/
+func functionDecls(filesToParse []string) []fdeclStruct {
+
+	//Map of all function names with a [line number, file path]
+	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
+	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
+	functMap := map[string][]string{}
+	functCalls := []fdeclStruct{}
+
+	//Inspect each file for calls to this function
+	for _, file := range filesToParse {
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, file, nil, 0)
+		if err != nil {
+			log.Error().Err(err).Msg("Error parsing file " + file)
+		}
+
+		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
+		packageName := node.Name.Name + ":"
+		fmt.Print("Package name is " + packageName + " at line ")
+		fmt.Println(fset.Position(node.Pos()).Line)
+
+		//Inspect AST for explicit function declarations
+		ast.Inspect(node, func(currNode ast.Node) bool {
+			fdNode, ok := currNode.(*ast.FuncDecl)
+			if ok {
+				//package name is appended to separate diff functions across packages
+				functionName := packageName + fdNode.Name.Name
+				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
+				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
+
+				//Add the data to the function list
+				data := []string{linePos, fpath}
+				functMap[functionName] = data
+
+				//Add astNode and the FuncDecl node to the function calls
+				functCalls = append(functCalls, fdeclStruct{
+					currNode,
+					fdNode,
+					fpath,
+					linePos,
+					functionName,
+				})
+			}
+			return true
+		})
+
+		//Inspect the AST Call Expressions (where they call a function)
+		ast.Inspect(node, func(currNode ast.Node) bool {
+			callExprNode, ok := currNode.(*ast.CallExpr)
+			if ok {
+				//Filter single function calls such as parseMsg(msg.Value)
+				functionName := packageName + fmt.Sprint(callExprNode.Fun)
+				if _, found := functMap[functionName]; found {
+					//fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
+					fmt.Println("")
+				}
+			}
+			return true
+		})
+	}
+
+	return functCalls
+}
+
+//Finds all panic statements (not currently used, but may need later)
+func findPanics(filesToParse []string) []panicStruct {
+
+	panicList := []panicStruct{}
+
+	for _, file := range filesToParse {
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, file, nil, 0)
+		if err != nil {
+			log.Error().Err(err).Msg("Error parsing file " + file)
+		}
+
+		//Inspect call expressions
+		ast.Inspect(node, func(currNode ast.Node) bool {
+			callExprNode, ok := currNode.(*ast.CallExpr)
+			if ok {
+				//If it's a panic statement, add to the struct
+				if name := fmt.Sprint(callExprNode.Fun); name == "panic" {
+					lnNum := fmt.Sprint(fset.Position(callExprNode.Pos()).Line)
+					panicList = append(panicList, panicStruct{
+						node:     currNode,
+						pd:       callExprNode,
+						filePath: file,
+						lineNum:  lnNum,
+					})
+				}
+			}
+			return true
+		})
+
+		//Print file name/line number/panic
+		for _, value := range panicList {
+			fmt.Println(value.filePath, value.lineNum, fmt.Sprint(value.pd.Fun))
+		}
+	}
+	return panicList
 }
 
 //This is just a struct
@@ -261,6 +496,7 @@ func findVariablesInFile(path string) varDecls {
 	return vars
 }
 
+// Returns logTypes with map struct
 func findLogsInFile(path string, base string) ([]model.LogType, map[string]struct{}) {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
@@ -283,11 +519,11 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	ast.Inspect(node, func(n ast.Node) bool {
 		// Keep track of the current parent function the log statement is contained in
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
-			fmt.Println("checking funcDecl", funcDecl.Name)
-			cfg := FnCfgCreator{}
-			root := cfg.CreateCfg(funcDecl, base, fset, map[int]string{})
-			printCfg(root, "")
-			fmt.Println()
+			// fmt.Println("checking funcDecl", funcDecl.Name)
+			// cfg := FnCfgCreator{}
+			// root := cfg.CreateCfg(funcDecl, base, fset, map[int]string{})
+			// printCfg(root, "")
+			// fmt.Println()
 			parentFn = funcDecl
 		}
 
@@ -390,7 +626,35 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		fmt.Println()
 	}
 
+	//Create CFG -- NEED to call after regex has been created
+	regexes := mapLogRegex(logInfo)
+	ast.Inspect(node, func(n ast.Node) bool {
+		// Keep track of the current parent function the log statement is contained in
+		if funcDecl, ok := n.(*ast.FuncDecl); ok {
+			fmt.Println("checking funcDecl", funcDecl.Name)
+			cfg := FnCfgCreator{}
+			root := cfg.CreateCfg(funcDecl, base, fset, regexes)
+			printCfg(root, "")
+			fmt.Println()
+		}
+		return true
+	})
+
 	return logInfo, varsInLogs
+}
+
+//Helper function to create map of log to regex
+func mapLogRegex(logInfo []model.LogType) map[int]string {
+	regexMap := make(map[int]string)
+
+	//Grab line number + regex string
+	for index := range logInfo {
+		ln := logInfo[index].LineNumber
+		reg := logInfo[index].Regex
+		regexMap[ln] = reg
+	}
+
+	return regexMap
 }
 
 func connectNodes(caller, callee db.FunctionNode) {
@@ -410,89 +674,7 @@ func connectNodes(caller, callee db.FunctionNode) {
 	*/
 }
 
-// Functions for finding calls across files
-
-/*
- Finds location of all function declarations (path and line number)
-  -currently goes through all files and finds if it's used
-  Returns map from filename -> [linenumber, filepath] (all strings)
-*/
-func functionDecls(filesToParse []string) map[string][]string {
-
-	//Map of all function names with a [line number, file path]
-	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
-	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
-	functMap := map[string][]string{}
-
-	//Inspect each file for calls to this function
-	for _, file := range filesToParse {
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, file, nil, 0)
-		if err != nil {
-			log.Error().Err(err).Msg("Error parsing file " + file)
-		}
-
-		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
-		packageName := node.Name.Name + ":"
-		fmt.Print("Package name is " + packageName + " at line ")
-		fmt.Println(fset.Position(node.Pos()).Line)
-
-		//Inspect AST for file
-		//TODO: handle duplicate function names if they're in different packages
-		ast.Inspect(node, func(currNode ast.Node) bool {
-
-			fdNode, ok := currNode.(*ast.FuncDecl)
-			if ok {
-				//package name is appended to separate diff functions across packages
-				functionName := packageName + fdNode.Name.Name
-				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
-				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
-
-				//Add the data to the function list
-				data := []string{linePos, fpath}
-				functMap[functionName] = data
-			}
-
-			return true
-		})
-	}
-
-	return functMap
-}
-
-/*
-	Check the location (file + line number) of where each function is used
-  TODO: create return value
-*/
-func callFrom(funcList map[string][]string, filesToParse []string) {
-
-	for _, file := range filesToParse {
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, file, nil, 0)
-		if err != nil {
-			log.Error().Err(err).Msg("Error parsing file " + file)
-		}
-
-		//Keep track of package name
-		packageName := node.Name.Name + ":"
-		//fmt.Print("Package name is " + packageName + " at line ")
-		//fmt.Println(fset.Position(node.Pos()).Line)
-
-		//Inspect the AST, starting with call expressions
-		ast.Inspect(node, func(currNode ast.Node) bool {
-			callExprNode, ok := currNode.(*ast.CallExpr)
-			if ok {
-				//Filter single function calls such as parseMsg(msg.Value)
-				functionName := packageName + fmt.Sprint(callExprNode.Fun)
-				if val, found := funcList[functionName]; found {
-					fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
-				}
-			}
-			return true
-		})
-	}
-}
-
+//Generates regex for a given log string
 func createRegex(value string) string {
 	//Regex value currently
 	reg := value
@@ -556,6 +738,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	// Function declaration is the root node
 	root := getStatementNode(fn, base, fset, regexes)
 
+	//Create new CFG, make sure it is not an exit/fatal/panic statement
 	cfg := cfg.New(fn.Body, func(call *ast.CallExpr) bool {
 		if call != nil {
 			// Functions that won't potentially cause the program will return.
@@ -587,6 +770,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	return root
 }
 
+//Prints out the contents of the CFG (recursively)
 func printCfg(node db.Node, level string) {
 	if node == nil {
 		return
@@ -619,8 +803,9 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 	// Convert each node in the block into a db.Node (if it is one we want to keep)
 	for i, node := range block.Nodes {
 		last := i == len(block.Nodes)-1
-		conditional = len(block.Succs) > 1
+		conditional = len(block.Succs) > 1 //2 succesors for conditional block
 
+		//Process node based on its type
 		switch node := node.(type) {
 		case ast.Stmt:
 			current = getStatementNode(node, base, fset, regexes)
@@ -747,6 +932,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 	return
 }
 
+//Returns the expression Node
 func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bool, regexes map[int]string) (node db.Node) {
 	relPath, _ := filepath.Rel(base, fset.File(expr.Pos()).Name())
 	switch expr := expr.(type) {
@@ -859,6 +1045,7 @@ func connectToLeaf(root db.Node, node db.Node) {
 			if child, ok := call.Child.(*db.FunctionNode); ok && child != nil {
 				current = child
 				call = child
+
 			} else {
 				current = call
 				call = nil
@@ -924,6 +1111,8 @@ func expressionString(expr ast.Expr) string {
 	if expr == nil {
 		return ""
 	}
+
+	//Return expression based on the type
 	switch condition := expr.(type) {
 	case *ast.BasicLit:
 		return condition.Value
@@ -1001,6 +1190,7 @@ func expressionString(expr ast.Expr) string {
 	return ""
 }
 
+//Gets the name of a call expression
 func callExprName(call *ast.CallExpr) string {
 	fn := expressionString(call)
 	name := ""
