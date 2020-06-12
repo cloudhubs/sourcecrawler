@@ -17,16 +17,29 @@ import (
 )
 
 func createTestNeoNodes() {
-	node7 := db.StatementNode{"test.go", 7, "", nil}
-	node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
-	node5 := db.StatementNode{"test.go", 5, "", &node6}
-	node4 := db.StatementNode{"test.go", 4, "my log regex", &node6}
-	node3 := db.ConditionalNode{"test.go", 3, "myvar != nil", &node4, &node5}
-	node2 := db.StatementNode{"test.go", 2, "", &node3}
-	node1 := db.StatementNode{"test.go", 1, "", &node2}
+	// node7 := db.StatementNode{"test.go", 7, "", nil}
+	// node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
+	// node5 := db.StatementNode{"test.go", 5, "", &node6}
+	// node4 := db.StatementNode{"test.go", 4, "my log regex", &node6}
+	// node3 := db.ConditionalNode{"test.go", 3, "myvar != nil", &node4, &node5}
+	// node2 := db.StatementNode{"test.go", 2, "", &node3}
+	// node1 := db.StatementNode{"test.go", 1, "", &node2}
 
 	dao := db.NodeDaoNeoImpl{}
-	dao.CreateTree(&node1)
+	// dao.CreateTree(&node1)
+	n1, err := dao.FindNode("test.go", 1)
+	if err != nil {
+		panic(err)
+	}
+	n2, err := dao.FindNode("test.go", 7)
+	if err != nil {
+		panic(err)
+	}
+	msg, err := dao.Connect(n1, n2)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(msg)
 }
 
 type varDecls struct {
@@ -415,6 +428,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 
 	return logInfo, varsInLogs
 }
+
 // Functions for finding calls across files
 
 /*

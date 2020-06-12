@@ -1,7 +1,9 @@
 package db
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/neo4j/neo4j-go-driver/neo4j"
@@ -54,7 +56,7 @@ func createQueryRecur(node Node, count *int, query *string, seenNodes *map[strin
 	var currCount int
 
 	if realNode, ok := node.(*StatementNode); ok {
-		fmt.Printf("we are line number %v", realNode.LineNumber)
+		fmt.Printf("we are line number %v\n", realNode.LineNumber)
 	}
 
 	// use the properties as a key; they include file/line number, so they are unique
@@ -72,7 +74,7 @@ func createQueryRecur(node Node, count *int, query *string, seenNodes *map[strin
 
 		for child, relationshipProps := range node.GetChildren() {
 			if realNode, ok := node.(*StatementNode); ok {
-				fmt.Printf("we are line number %v", realNode.LineNumber)
+				fmt.Printf("we are line number %v\n", realNode.LineNumber)
 			}
 			if child != nil {
 				*count = *count + 1
@@ -85,39 +87,87 @@ func createQueryRecur(node Node, count *int, query *string, seenNodes *map[strin
 	return currCount
 }
 
+func (dao NodeDaoNeoImpl) FindNode(filename string, linenumber int) (Node, error) {
+	session, driver := connectToNeo()
+	defer driver.Close()
+	defer session.Close()
+
+	response, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
+		result, err := transaction.Run(
+			`
+			MATCH (a:STATEMENT {filename: $file, linenumber: $line})
+			RETURN a
+			`,
+			map[string]interface{}{"file": filename, "line": strconv.Itoa(linenumber)})
+		if err != nil {
+			return nil, err
+		}
+		if result.Next() {
+			if node, ok := result.Record().GetByIndex(0).(neo4j.Node); ok {
+				nodeFile := node.Props()["filename"].(string)
+				nodeLine, _ := strconv.Atoi(node.Props()["linenumber"].(string))
+				for _, v := range node.Labels() {
+					switch v {
+					case "FUNCTIONCALL":
+						return &FunctionNode{nodeFile, nodeLine, node.Props()["function"].(string), *new(Node)}, nil
+					case "CONDITIONAL":
+						return &ConditionalNode{nodeFile, nodeLine, node.Props()["condition"].(string), *new(Node), *new(Node)}, nil
+					default:
+						if regex, ok := node.Props()["logregex"]; ok {
+							return &StatementNode{nodeFile, nodeLine, regex.(string), *new(Node)}, nil
+						}
+						return &StatementNode{nodeFile, nodeLine, "", *new(Node)}, nil
+					}
+				}
+			}
+		}
+		return nil, result.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return response.(Node), nil
+
+}
+
 func (dao NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
 	session, driver := connectToNeo()
 	defer session.Close()
 	defer driver.Close()
 
 	//Connect
-	if strings.Contains(first.GetNodeType(), ":FUNCTIONCALL") {
+	if strings.Contains(first.GetNodeType(), ":STATEMENT") {
 		response, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
-			res, err := transaction.Run(
+			//find first node and child
+
+			//find second node and the last node it its chain
+
+			//connect first node to second node,
+
+			//connect last node in second node's
+			//chain to the child of the first node
+
+			_, err := transaction.Run(
 				//query for getting nodes from db
 				//and adding relationship to connect the two graphs
-				`MATCH (a:STATEMENT), (b:STATEMENT) WHERE a.filename = $callerFile 
-				AND b.filename = $calleeFile AND a.linenumber = $callerLine 
-				AND b.linenumber = $calleeLine 
-				CREATE e = (a)-[r:FLOWSTO]->(b) 
-				RETURN e`,
-				map[string]interface{}{"callerFile": first.GetFilename(), "calleeFile": second.GetFilename(),
-					"callerLine": first.GetLineNumber(), "calleeLine": second.GetLineNumber()})
+				`MATCH (a:STATEMENT{filename: $firstFile, linenumber: $firstLine })-[toRemove:FLOWSTO]->(c:STATEMENT),
+				(b:STATEMENT {filename: $secondFile, linenumber: $secondLine})-[*]->(d:STATEMENT) 
+				WHERE NOT (d)-->() 
+				MERGE e1 = (a)-[r1:FLOWSTO]->(b) 
+				MERGE e2 = (d)-[r2:FLOWSTO]->(c) 
+				DELETE toRemove
+				`,
+				map[string]interface{}{"firstFile": first.GetFilename(), "secondFile": second.GetFilename(),
+					"firstLine": strconv.Itoa(first.GetLineNumber()), "secondLine": strconv.Itoa(second.GetLineNumber())})
 			if err != nil {
 				return nil, err
 			}
-
-			if res.Next() {
-				return res.Record().GetByIndex(0), nil
-			}
-
-			return nil, res.Err()
+			return "success", nil
 		})
 		if err != nil {
 			return "", err
 		}
 		return response.(string), nil
-	} else {
-		return "", nil
 	}
+	return "", errors.New("Node is wrong type")
 }
