@@ -1,6 +1,10 @@
 package handler
 
-import "log"
+import (
+	"fmt"
+
+	"log"
+)
 
 //Testing CFG - can remove
 func doMath() int{
@@ -20,5 +24,29 @@ func testConditional() bool{
 
 //
 func testPanic(){
-	log.Panicf("Throwing error")
+	panic("Throwing error")
+}
+
+func dummy() int{
+	return 6
+}
+
+func test() {
+	dummy()
+	x := dummy()
+	if x < 5 {
+		if 2 < dummy() {
+			x++
+		} else {
+			x--
+		}
+		if 1 > dummy() {
+			x++
+		} else {
+			x--
+		}
+	} else {
+		fmt.Println("Error")
+		log.Println("abc")
+	}
 }

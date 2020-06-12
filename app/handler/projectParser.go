@@ -896,6 +896,7 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 						LineNumber: line,
 						LogRegex:   regexes[line],
 					})
+					fmt.Println("LINE IS", regexes[line])
 				} else {
 					node = db.Node(&db.FunctionNode{
 						Filename:     filepath.ToSlash(relPath),
