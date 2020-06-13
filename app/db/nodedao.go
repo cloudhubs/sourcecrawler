@@ -139,17 +139,21 @@ func (dao *NodeDaoNeoImpl) FindNode(filename string, linenumber int) (Node, erro
 			if node, ok := result.Record().GetByIndex(0).(neo4j.Node); ok {
 				nodeFile := node.Props()["filename"].(string)
 				nodeLine := int(node.Props()["linenumber"].(int64))
-				for _, v := range node.Labels() {
+				for i, v := range node.Labels() {
 					switch v {
 					case "FUNCTIONCALL":
 						return &FunctionNode{nodeFile, nodeLine, node.Props()["function"].(string), *new(Node)}, nil
 					case "CONDITIONAL":
 						return &ConditionalNode{nodeFile, nodeLine, node.Props()["condition"].(string), *new(Node), *new(Node)}, nil
 					default:
-						if regex, ok := node.Props()["logregex"]; ok {
-							return &StatementNode{nodeFile, nodeLine, regex.(string), *new(Node)}, nil
+						//only assign as statement if
+						//it's the last (only) label
+						if i == len(node.Labels())-1 {
+							if regex, ok := node.Props()["logregex"]; ok {
+								return &StatementNode{nodeFile, nodeLine, regex.(string), *new(Node)}, nil
+							}
+							return &StatementNode{nodeFile, nodeLine, "", *new(Node)}, nil
 						}
-						return &StatementNode{nodeFile, nodeLine, "", *new(Node)}, nil
 					}
 				}
 			}
@@ -163,7 +167,7 @@ func (dao *NodeDaoNeoImpl) FindNode(filename string, linenumber int) (Node, erro
 
 }
 
-func (dao *NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
+func (dao *NodeDaoNeoImpl) Connect(first, second Node) error {
 	session, err := dao.getSession()
 	if err != nil {
 		panic(err)
@@ -171,8 +175,8 @@ func (dao *NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
 	defer session.Close()
 
 	//Connect
-	if strings.Contains(first.GetNodeType(), ":STATEMENT") {
-		response, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
+	if strings.Contains(first.GetNodeType(), ":FUNCTIONCALL") {
+		_, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
 			_, err := transaction.Run(
 				//query for getting nodes from db
 				//and adding relationship to connect the two graphs
@@ -188,12 +192,12 @@ func (dao *NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
 			if err != nil {
 				return nil, err
 			}
-			return "success", nil
+			return nil, nil
 		})
 		if err != nil {
-			return "", err
+			return err
 		}
-		return response.(string), nil
+		return nil
 	}
-	return "", errors.New("Node is wrong type")
+	return errors.New("Node is wrong type")
 }

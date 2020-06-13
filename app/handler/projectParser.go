@@ -39,7 +39,7 @@ func createTestNeoNodes() {
 
 	nodeC := db.StatementNode{"connect.go", 3, "", nil}
 	nodeB := db.StatementNode{"connect.go", 2, "", &nodeC}
-	nodeA := db.StatementNode{"connect.go", 1, "", &nodeB}
+	nodeA := db.FunctionNode{"connect.go", 1, "func", &nodeB}
 
 	//two trees representing a parent function that
 	//needs to be connected to a function it calls
@@ -56,20 +56,16 @@ func createTestNeoNodes() {
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println(n1.GetProperties())
-	fmt.Println(n2.GetProperties())
 	//Connect parent function to the called function,
 	//which redirects the last nodes in the called
 	//function to the child of the parent function
 	//
 	//Result should be
 	//node1 -> node4 ... node6 && node7 -> node2 -> node3
-	msg, err := dao.Connect(n1, n2)
+	err = dao.Connect(n1, n2)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(msg)
 }
 
 type varDecls struct {
