@@ -9,4 +9,5 @@ require (
 	github.com/neo4j-drivers/gobolt v1.7.4 // indirect
 	github.com/neo4j/neo4j-go-driver v1.8.0
 	github.com/rs/zerolog v1.18.0
+	golang.org/x/tools v0.0.0-20190828213141-aed303cbaa74
 )

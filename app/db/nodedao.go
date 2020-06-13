@@ -3,7 +3,6 @@ package db
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/neo4j/neo4j-go-driver/neo4j"
@@ -14,14 +13,46 @@ type NodeDao interface {
 	Connect(first, second Node)
 }
 
-type NodeDaoNeoImpl struct{}
+type NodeDaoNeoImpl struct {
+	driver neo4j.Driver
+}
 
-func (dao NodeDaoNeoImpl) CreateTree(root Node) {
-	session, driver := connectToNeo()
-	defer driver.Close()
+// ConnectToNeo should be called whenever a dao is created.
+// While not strictly necessary to call,
+// it is good practice to remember to
+// keep track of connections
+func (dao *NodeDaoNeoImpl) ConnectToNeo() {
+	dao.driver = getNeoDriver()
+}
+
+// DisconnectFromNeo should be called at the end of the
+// program to ensure proper cleanup of the Neo4J driver
+func (dao *NodeDaoNeoImpl) DisconnectFromNeo() {
+	err := dao.driver.Close()
+	if err != nil {
+		panic(err)
+	}
+	dao.driver = nil
+}
+
+//create driver if one does not exist,
+//then create and return a session for that driver
+func (dao *NodeDaoNeoImpl) getSession() (neo4j.Session, error) {
+	if dao.driver == nil {
+		dao.ConnectToNeo()
+	}
+	session, err := dao.driver.Session(neo4j.AccessModeWrite)
+	return session, err
+}
+
+func (dao *NodeDaoNeoImpl) CreateTree(root Node) {
+	session, err := dao.getSession()
+	if err != nil {
+		panic(err)
+	}
 	defer session.Close()
 
-	_, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
+	_, err = session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
 		query := "CREATE\n"
 		count := 0
 
@@ -87,9 +118,11 @@ func createQueryRecur(node Node, count *int, query *string, seenNodes *map[strin
 	return currCount
 }
 
-func (dao NodeDaoNeoImpl) FindNode(filename string, linenumber int) (Node, error) {
-	session, driver := connectToNeo()
-	defer driver.Close()
+func (dao *NodeDaoNeoImpl) FindNode(filename string, linenumber int) (Node, error) {
+	session, err := dao.getSession()
+	if err != nil {
+		panic(err)
+	}
 	defer session.Close()
 
 	response, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
@@ -98,14 +131,14 @@ func (dao NodeDaoNeoImpl) FindNode(filename string, linenumber int) (Node, error
 			MATCH (a:STATEMENT {filename: $file, linenumber: $line})
 			RETURN a
 			`,
-			map[string]interface{}{"file": filename, "line": strconv.Itoa(linenumber)})
+			map[string]interface{}{"file": filename, "line": linenumber})
 		if err != nil {
 			return nil, err
 		}
 		if result.Next() {
 			if node, ok := result.Record().GetByIndex(0).(neo4j.Node); ok {
 				nodeFile := node.Props()["filename"].(string)
-				nodeLine, _ := strconv.Atoi(node.Props()["linenumber"].(string))
+				nodeLine := int(node.Props()["linenumber"].(int64))
 				for _, v := range node.Labels() {
 					switch v {
 					case "FUNCTIONCALL":
@@ -130,23 +163,16 @@ func (dao NodeDaoNeoImpl) FindNode(filename string, linenumber int) (Node, error
 
 }
 
-func (dao NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
-	session, driver := connectToNeo()
+func (dao *NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
+	session, err := dao.getSession()
+	if err != nil {
+		panic(err)
+	}
 	defer session.Close()
-	defer driver.Close()
 
 	//Connect
 	if strings.Contains(first.GetNodeType(), ":STATEMENT") {
 		response, err := session.WriteTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
-			//find first node and child
-
-			//find second node and the last node it its chain
-
-			//connect first node to second node,
-
-			//connect last node in second node's
-			//chain to the child of the first node
-
 			_, err := transaction.Run(
 				//query for getting nodes from db
 				//and adding relationship to connect the two graphs
@@ -158,7 +184,7 @@ func (dao NodeDaoNeoImpl) Connect(first, second Node) (string, error) {
 				DELETE toRemove
 				`,
 				map[string]interface{}{"firstFile": first.GetFilename(), "secondFile": second.GetFilename(),
-					"firstLine": strconv.Itoa(first.GetLineNumber()), "secondLine": strconv.Itoa(second.GetLineNumber())})
+					"firstLine": first.GetLineNumber(), "secondLine": second.GetLineNumber()})
 			if err != nil {
 				return nil, err
 			}

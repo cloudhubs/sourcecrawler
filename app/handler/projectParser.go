@@ -19,24 +19,52 @@ import (
 )
 
 func createTestNeoNodes() {
-	// node7 := db.StatementNode{"test.go", 7, "", nil}
-	// node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
-	// node5 := db.StatementNode{"test.go", 5, "", &node6}
-	// node4 := db.StatementNode{"test.go", 4, "my log regex", &node6}
-	// node3 := db.ConditionalNode{"test.go", 3, "myvar != nil", &node4, &node5}
-	// node2 := db.StatementNode{"test.go", 2, "", &node3}
-	// node1 := db.StatementNode{"test.go", 1, "", &node2}
+	node7 := db.StatementNode{"test.go", 7, "", nil}
+	node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
+	node5 := db.StatementNode{"test.go", 5, "", &node6}
+	node4 := db.StatementNode{"test.go", 4, "my log regex", &node6}
+	node3 := db.ConditionalNode{"test.go", 3, "myvar != nil", &node4, &node5}
+	node2 := db.StatementNode{"test.go", 2, "", &node3}
+	node1 := db.StatementNode{"test.go", 1, "", &node2}
 
 	dao := db.NodeDaoNeoImpl{}
-	// dao.CreateTree(&node1)
-	n1, err := dao.FindNode("test.go", 1)
+	//close driver when dao goes out of scope
+	defer dao.DisconnectFromNeo()
+	dao.CreateTree(&node1)
+
+	nodeG := db.StatementNode{"connect.go", 7, "", nil}
+	nodeF := db.StatementNode{"connect.go", 6, "", nil}
+	nodeE := db.ConditionalNode{"connect.go", 5, "yes?", &nodeF, &nodeG}
+	nodeD := db.StatementNode{"connect.go", 4, "", &nodeE}
+
+	nodeC := db.StatementNode{"connect.go", 3, "", nil}
+	nodeB := db.StatementNode{"connect.go", 2, "", &nodeC}
+	nodeA := db.StatementNode{"connect.go", 1, "", &nodeB}
+
+	//two trees representing a parent function that
+	//needs to be connected to a function it calls
+	dao.CreateTree(&nodeA)
+	dao.CreateTree(&nodeD)
+
+	//finding nodes given information, not necessary for testing connection
+	//since we have access to the nodes in memory, but useful when we don't
+	n1, err := dao.FindNode("connect.go", 1)
 	if err != nil {
 		panic(err)
 	}
-	n2, err := dao.FindNode("test.go", 7)
+	n2, err := dao.FindNode("connect.go", 4)
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println(n1.GetProperties())
+	fmt.Println(n2.GetProperties())
+	//Connect parent function to the called function,
+	//which redirects the last nodes in the called
+	//function to the child of the parent function
+	//
+	//Result should be
+	//node1 -> node4 ... node6 && node7 -> node2 -> node3
 	msg, err := dao.Connect(n1, n2)
 	if err != nil {
 		panic(err)
