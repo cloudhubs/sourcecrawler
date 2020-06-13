@@ -54,7 +54,7 @@ func (n *StatementNode) GetChildren() map[Node]string {
 }
 
 func (n *StatementNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: \"%v\"", n.Filename, n.LineNumber)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v", n.Filename, n.LineNumber)
 	if n.LogRegex != "" {
 		val = val + fmt.Sprintf(", logregex: \"%v\"", n.LogRegex)
 	}
@@ -84,7 +84,7 @@ func (n *ConditionalNode) GetChildren() map[Node]string {
 }
 
 func (n *ConditionalNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: \"%v\", condition: \"%v\"", n.Filename, n.LineNumber, n.Condition)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, condition: \"%v\"", n.Filename, n.LineNumber, n.Condition)
 	return "{ " + val + " }"
 }
 
@@ -108,7 +108,7 @@ func (n *FunctionNode) GetChildren() map[Node]string {
 }
 
 func (n *FunctionNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: \"%v\", function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
 	return "{ " + val + " }"
 }
 
