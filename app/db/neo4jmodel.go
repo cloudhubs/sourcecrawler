@@ -1,7 +1,10 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Node interface {
@@ -27,6 +30,30 @@ type FunctionNode struct {
 	LineNumber   int
 	FunctionName string
 	Child        Node
+}
+
+type Return struct {
+	Name       string
+	ReturnType string
+}
+
+type FunctionDeclNode struct {
+	Filename     string
+	LineNumber   int
+	FunctionName string
+	Receivers    map[string]string // for methods, name to type
+	Params       map[string]string // map of arg name to type
+	Returns      []Return          // not a map since you don't have to name return variables
+	Child        Node
+}
+
+// in the event of return fnCall() a FunctionNode will be its predecessor node
+// in the event of return fnCall(), fnCall2(), err two FunctionNodes precede it in the CFG
+// in the event of return varName, err nothing precedes it
+type ReturnNode struct {
+	Filename   string
+	LineNumber int
+	Expression string
 }
 
 type StatementNode struct {
@@ -121,5 +148,68 @@ func (n *FunctionNode) GetFilename() string {
 }
 
 func (n *FunctionNode) GetLineNumber() int {
+	return n.LineNumber
+}
+
+func (n *FunctionDeclNode) GetChildren() map[Node]string {
+	var m = map[Node]string{
+		n.Child: "",
+	}
+	return m
+}
+
+func (n *FunctionDeclNode) GetProperties() string {
+	rcv, err := json.Marshal(n.Receivers)
+	if err != nil {
+		rcv = []byte{}
+		log.Warn().Msg("could not marshal receivers")
+	}
+
+	params, err := json.Marshal(n.Params)
+	if err != nil {
+		params = []byte{}
+		log.Warn().Msg("could not marshal params")
+	}
+
+	returns, err := json.Marshal(n.Returns)
+	if err != nil {
+		params = []byte{}
+		log.Warn().Msg("could not marshal returns")
+	}
+
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\", receivers: \"%v\", parameters: \"%v\", returns: \"%v\"", n.Filename, n.LineNumber, n.FunctionName, string(rcv), string(params), string(returns))
+	return "{ " + val + " }"
+}
+
+func (n *FunctionDeclNode) GetNodeType() string {
+	return ":FUNCTIONCALL:STATEMENT"
+}
+
+func (n *FunctionDeclNode) GetFilename() string {
+	return n.Filename
+}
+
+func (n *FunctionDeclNode) GetLineNumber() int {
+	return n.LineNumber
+}
+
+func (n *ReturnNode) GetChildren() map[Node]string {
+	return nil
+}
+
+func (n *ReturnNode) GetProperties() string {
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, expression: \"%v\"", n.Filename, n.LineNumber, n.Expression)
+	return "{ " + val + " }"
+}
+
+func (n *ReturnNode) GetNodeType() string {
+	return ":RETURN:STATEMENT"
+}
+
+func (n *ReturnNode) GetFilename() string {
+	return n.Filename
+}
+
+func (n *ReturnNode) GetLineNumber() int {
 	return n.LineNumber
 }
