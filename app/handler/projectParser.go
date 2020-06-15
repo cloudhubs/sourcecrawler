@@ -93,10 +93,7 @@ func grabOS() string{
 	}
 }
 
-// Parse through a panic message and find originating file/line number
-//TODO: include function name and set to lowest child level for function (supply project root directory for info)
-//TODO:  need to include file name, line num, function name, for all local file function calls
-//TODO: will eventually query the results into neo4j
+// Parse through a panic message and find originating file/line number/function name
 func parsePanic(filesToParse []string, projectRoot string) []stackTraceStruct {
 
 	//Generates test stack traces (run once and redirect to log file)
@@ -193,11 +190,10 @@ func parsePanic(filesToParse []string, projectRoot string) []stackTraceStruct {
 			}
 		}
 
-		//TODO: read functions into a struct with line # + file, OR somehow grab function name
-		//interesting note - function that calls another function in another file
-		//  will only be 1 function in a stack trace line
-		//Process function name lines (doesn't contain .go)
+		//!-- NOTE: function that calls another function in another file
+		//         will only contain 1 function call in a stack trace line
 		//!-- NOTE: assuming there is no function named go() --!
+		//Process function name lines (doesn't contain .go)
 		if  !strings.Contains(logStr, ".go") &&
 			strings.Contains(logStr, "(") && strings.Contains(logStr, ")"){
 
