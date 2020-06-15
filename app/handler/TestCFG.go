@@ -22,9 +22,10 @@ func testConditional() bool {
 	}
 }
 
-//
+
+//test
 func testPanic() {
-	panic("Throwing error")
+	panic("bad")
 }
 
 func callPanic(){
