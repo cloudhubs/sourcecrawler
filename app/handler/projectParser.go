@@ -236,13 +236,6 @@ func parsePanic(filesToParse []string, projectRoot string) []stackTraceStruct {
 	//Add last entry
 	stackTrc = append(stackTrc, tempStackTrace)
 
-
-	//Test print the processed stack traces
-	for _, value := range stackTrc {
-		fmt.Printf("%d: %s in %s -- line %s from function %s\n",
-			value.id, value.msgLevel, value.fileName, value.lineNum, value.funcName)
-	}
-
 	return stackTrc
 }
 
@@ -338,9 +331,19 @@ func parseProject(projectRoot string) []model.LogType {
 	// findPanics(filesToParse)
 
 	//Parses panic stack trace message
-	parsePanic(filesToParse, projectRoot)
+	errorList := parsePanic(filesToParse, projectRoot)
+	printErrorList(errorList)
 
 	return logTypes
+}
+
+//Helper function to test print parsed info from stack trace
+func printErrorList(errorList []stackTraceStruct){
+	//Test print the processed stack traces
+	for _, value := range errorList {
+		fmt.Printf("%d: %s in %s -- line %s from function %s\n",
+			value.id, value.msgLevel, value.fileName, value.lineNum, value.funcName)
+	}
 }
 
 //Struct for quick access to the function declaration nodes
