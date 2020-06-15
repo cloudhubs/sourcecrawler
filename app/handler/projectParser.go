@@ -28,8 +28,44 @@ func createTestNeoNodes() {
 	node1 := db.StatementNode{"test.go", 1, "", &node2}
 
 	dao := db.NodeDaoNeoImpl{}
+	//close driver when dao goes out of scope
+	defer dao.DisconnectFromNeo()
 	dao.CreateTree(&node1)
 
+	nodeG := db.StatementNode{"connect.go", 7, "", nil}
+	nodeF := db.StatementNode{"connect.go", 6, "", nil}
+	nodeE := db.ConditionalNode{"connect.go", 5, "yes?", &nodeF, &nodeG}
+	nodeD := db.StatementNode{"connect.go", 4, "", &nodeE}
+
+	nodeC := db.StatementNode{"connect.go", 3, "", nil}
+	nodeB := db.StatementNode{"connect.go", 2, "", &nodeC}
+	nodeA := db.FunctionNode{"connect.go", 1, "func", &nodeB}
+
+	//two trees representing a parent function that
+	//needs to be connected to a function it calls
+	dao.CreateTree(&nodeA)
+	dao.CreateTree(&nodeD)
+
+	//finding nodes given information, not necessary for testing connection
+	//since we have access to the nodes in memory, but useful when we don't
+	n1, err := dao.FindNode("connect.go", 1)
+	if err != nil {
+		panic(err)
+	}
+	n2, err := dao.FindNode("connect.go", 4)
+	if err != nil {
+		panic(err)
+	}
+	//Connect parent function to the called function,
+	//which redirects the last nodes in the called
+	//function to the child of the parent function
+	//
+	//Result should be
+	//node1 -> node4 ... node6 && node7 -> node2 -> node3
+	err = dao.Connect(n1, n2)
+	if err != nil {
+		panic(err)
+	}
 }
 
 type varDecls struct {
@@ -653,23 +689,6 @@ func mapLogRegex(logInfo []model.LogType) map[int]string {
 	}
 
 	return regexMap
-}
-
-func connectNodes(caller, callee db.FunctionNode) {
-
-	/*
-		//query for getting nodes from db
-		MATCH (a:Node), (b:Node)
-		WHERE a.function = b.function
-		AND a.filename = $callerFile AND b.filename = $calleeFile
-		AND a.line = $callerLine AND b.line = $calleeLine
-
-		//and adding relationship to connect the two graphs
-		CREATE e = (a)-[r:CALLS]->(b)
-		RETURN e,
-		map[string]interface{}{"callerFile": caller.Filename, "calleeFile": callee.Filename,
-		"callerLine": caller.LineNumber, "calleeLine": callee.LineNumber}
-	*/
 }
 
 //Generates regex for a given log string
