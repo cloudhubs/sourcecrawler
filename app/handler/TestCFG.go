@@ -27,6 +27,14 @@ func testPanic() {
 	panic("Throwing error")
 }
 
+func callPanic(){
+	panic("THROWING ERROR")
+}
+
+func callOtherPanic(num int){
+	panic(num)
+}
+
 func main() {
 	go foo() // not handled at the moment
 	x := 1
@@ -107,5 +115,13 @@ func initcall() {
 		bar()
 	} else {
 		fmt.Println("something")
+	}
+}
+
+func testCondPanic(num int){
+	if num > 10{
+		callPanic()
+	}else{
+		callOtherPanic(num)
 	}
 }

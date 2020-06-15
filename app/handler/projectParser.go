@@ -84,11 +84,14 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 }
 
 // Parse through a panic message and find originating file/line number
-func parsePanic(filesToParse []string) {
+//TODO: include function name and set to lowest child level for function (supply project root directory for info)
+//TODO:  need to include file name, line num, function name, for all local file function calls
+//TODO: will eventually query the results into neo4j
+func parsePanic(filesToParse []string) []stackTraceStruct {
 
 	//Generates test stack traces (run once and redirect to log file)
 	// "go run main.go 2>stackTrace.log"
-	//generateStackTrace()
+	//testCondPanic(10)
 
 	//Open stack trace log file (assume there will be a log file named this)
 	file, err := os.Open("stackTrace.log")
@@ -100,9 +103,10 @@ func parsePanic(filesToParse []string) {
 	scanner := bufio.NewScanner(file)
 	stackTrc := []stackTraceStruct{}
 	tempStackTrace := stackTraceStruct{
-		msgType: "",
+		msgLevel: "",
 		fnLine:  map[string]string{},
 	}
+	fileLineNum := 1
 
 	//Scan through each line of log file and do analysis
 	for scanner.Scan() {
@@ -113,19 +117,19 @@ func parsePanic(filesToParse []string) {
 		if strings.Contains(logStr, "serving") {
 
 			//Make sure attributes aren't empty before adding it
-			if tempStackTrace.msgType != "" && len(tempStackTrace.fnLine) != 0 {
+			if tempStackTrace.msgLevel != "" && len(tempStackTrace.fnLine) != 0 {
 				stackTrc = append(stackTrc, tempStackTrace)
 			}
 
 			//New statement trace
 			tempStackTrace = stackTraceStruct{
-				msgType: "",
+				msgLevel: "",
 				fnLine:  map[string]string{},
 			}
 
 			//Assign panic type
 			if strings.Contains(logStr, "panic") {
-				tempStackTrace.msgType = "panic"
+				tempStackTrace.msgLevel = "panic"
 			}
 		}
 
@@ -144,12 +148,14 @@ func parsePanic(filesToParse []string) {
 			}
 
 			//Check for originating files where the exception was thrown (could be multiple files, parent calls, etc)
+			// We only want to match local files and not any extraneous files
 			for index := range filesToParse {
 				if strings.Contains(filesToParse[index], fileName) {
 					tempStackTrace.fnLine[fileName] = lineNum
 				}
 			}
 		}
+		fileLineNum++
 	}
 
 	//Add last entry
@@ -159,16 +165,8 @@ func parsePanic(filesToParse []string) {
 	for index := range stackTrc {
 		fmt.Println(stackTrc[index])
 	}
-}
 
-//Helper function to generate a sample panic msg
-func generateStackTrace() {
-	//num := 5
-	//if num != 5{
-	//	panic("BADBAD")
-	//}else{
-	//	panic("Test 3 panic")
-	//}
+	return stackTrc
 }
 
 //Parse project to create log types
@@ -285,10 +283,12 @@ type panicStruct struct {
 	lineNum  string
 }
 
-//Parsing a panic runtime stack trace
+//Parsing a panic runtime stack trace (id, messageLevel, file name and line #, function name)
 type stackTraceStruct struct {
-	msgType string
+	id int
+	msgLevel string
 	fnLine  map[string]string
+	funcName string
 }
 
 //Helper function to find origin of function (not used but may need later)
@@ -447,7 +447,7 @@ Current idea:
 */
 
 func usesParentArgs(parent *ast.FuncDecl, call *ast.CallExpr) []*ast.Ident {
-	fmt.Println("checking if", call, "depends on", parent.Name)
+	//fmt.Println("checking if", call, "depends on", parent.Name)
 	args := make([]*ast.Ident, 0)
 	if call == nil || parent == nil || parent.Type == nil || parent.Type.Params == nil {
 		return args
@@ -657,7 +657,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				logInfo = append(logInfo, currentLog)
 			}
 		}
-		fmt.Println()
+		//fmt.Println()
 	}
 
 	//Create CFG -- NEED to call after regex has been created
@@ -665,11 +665,11 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	ast.Inspect(node, func(n ast.Node) bool {
 		// Keep track of the current parent function the log statement is contained in
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
-			fmt.Println("checking funcDecl", funcDecl.Name)
+			//fmt.Println("checking funcDecl", funcDecl.Name)
 			cfg := FnCfgCreator{}
-			root := cfg.CreateCfg(funcDecl, base, fset, regexes)
-			printCfg(root, "")
-			fmt.Println()
+			/*root := */ cfg.CreateCfg(funcDecl, base, fset, regexes)
+			//printCfg(root, "")
+			//fmt.Println()
 		}
 		return true
 	})
