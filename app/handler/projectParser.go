@@ -858,7 +858,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	}
 
 	// Connect the function declaration to the sub cfg
-	if fn, ok := root.(*db.FunctionNode); ok {
+	if fn, ok := root.(*db.FunctionDeclNode); ok {
 		fn.Child = node
 	}
 
@@ -871,6 +871,9 @@ func printCfg(node db.Node, level string) {
 		return
 	}
 	switch node := node.(type) {
+	case *db.FunctionDeclNode:
+		fmt.Printf("%s(%v) %s(%v) (%v)\n", level, node.Receivers, node.FunctionName, node.Params, node.Returns)
+		printCfg(node.Child, level+"  ")
 	case *db.FunctionNode:
 		fmt.Printf("%s%s\n", level, node.FunctionName)
 		printCfg(node.Child, level)
@@ -882,6 +885,8 @@ func printCfg(node db.Node, level string) {
 		printCfg(node.TrueChild, level+"  ")
 		fmt.Println(level + "else")
 		printCfg(node.FalseChild, level+"  ")
+	case *db.ReturnNode:
+		fmt.Printf("%sreturn %s\n", level, node.Expression)
 	}
 }
 
@@ -1155,46 +1160,128 @@ func connectToLeaf(root db.Node, node db.Node) {
 	}
 }
 
+// Iterates over each item in a field list and does some operation passed to it
+func iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
+	if fieldList != nil {
+		for _, p := range fieldList.List {
+			if p != nil {
+				returnType := expressionString(p.Type)
+				for _, name := range p.Names {
+					varName := expressionString(name)
+					op(returnType, varName)
+				}
+			}
+		}
+	}
+}
+
+func getFuncParams(fieldList *ast.FieldList) map[string]string {
+	params := make(map[string]string)
+
+	iterateFields(fieldList, func(returnType, name string) {
+		params[name] = returnType
+	})
+
+	return params
+}
+
+func getFuncReturns(fieldList *ast.FieldList) []db.Return {
+	returns := make([]db.Return, 0)
+
+	iterateFields(fieldList, func(returnType, name string) {
+		returns = append(returns, db.Return{
+			Name:       name,
+			ReturnType: returnType,
+		})
+	})
+
+	return returns
+}
+
+func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes map[int]string) (first, current, prev db.Node) {
+	for _, expr := range exprs {
+		exprNode := getExprNode(expr, base, fset, false, regexes)
+		// Initialize first node pointer
+		if first == nil {
+			first = exprNode
+			prev = first
+		} else {
+			// Update current pointer
+			switch exprNode := exprNode.(type) {
+			case *db.FunctionNode:
+				current = exprNode
+			case *db.StatementNode:
+				current = exprNode
+			}
+
+			// Chain nodes together
+			if node, ok := prev.(*db.FunctionNode); ok && node != nil {
+				node.Child = current
+			}
+
+			prev = current
+		}
+	}
+	return
+}
+
 func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes map[int]string) (node db.Node) {
+	relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
+
 	switch stmt := stmt.(type) {
 	case *ast.ExprStmt:
 		node = getExprNode(stmt.X, base, fset, false, regexes)
 	case *ast.FuncDecl:
-		relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
-		node = db.Node(&db.FunctionNode{
+		receivers := getFuncParams(stmt.Recv)
+		var params map[string]string
+		var returns []db.Return
+		if stmt.Type != nil {
+			params = getFuncParams(stmt.Type.Params)
+			if stmt.Type.Results != nil {
+				returns = getFuncReturns(stmt.Type.Results)
+			}
+		} else {
+			params = make(map[string]string)
+			returns = make([]db.Return, 0)
+		}
+
+		node = db.Node(&db.FunctionDeclNode{
 			Filename:     filepath.ToSlash(relPath),
 			LineNumber:   fset.Position(stmt.Pos()).Line,
 			FunctionName: stmt.Name.Name,
+			Receivers:    receivers,
+			Params:       params,
+			Returns:      returns,
 		})
 	case *ast.AssignStmt:
 		// Found an assignment
-		var first db.Node
-		var current db.Node
-		var prev db.Node
-		for _, expr := range stmt.Rhs {
-			exprNode := getExprNode(expr, base, fset, false, regexes)
-			// Initialize first node pointer
-			if first == nil {
-				first = exprNode
-				prev = first
-			} else {
-				// Update current pointer
-				switch exprNode := exprNode.(type) {
-				case *db.FunctionNode:
-					current = exprNode
-				case *db.StatementNode:
-					current = exprNode
-				}
+		node, _, _ = chainExprNodes(stmt.Rhs, base, fset, regexes)
+	case *ast.ReturnStmt:
+		// Find all function calls contained in the return statement
+		node, _, _ = chainExprNodes(stmt.Results, base, fset, regexes)
 
-				// Chain nodes together
-				if node, ok := prev.(*db.FunctionNode); ok && node != nil {
-					node.Child = current
-				}
-
-				prev = current
+		var bldr strings.Builder
+		for i, result := range stmt.Results {
+			bldr.WriteString(fmt.Sprintf("%s", expressionString(result)))
+			if i < len(stmt.Results)-1 {
+				bldr.WriteString(", ")
 			}
 		}
-		node = first
+		expr := bldr.String()
+
+		ret := db.Node(&db.ReturnNode{
+			Filename:   filepath.ToSlash(relPath),
+			LineNumber: fset.Position(stmt.Pos()).Line,
+			Expression: expr,
+		})
+
+		if node != nil {
+			// Append the return statement to the last function call
+			connectToLeaf(node, ret)
+		} else {
+			node = ret
+			fmt.Println(node)
+		}
 	default:
 		// fmt.Println("\t\tdid not cast")
 	}
