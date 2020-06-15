@@ -1077,19 +1077,27 @@ func connectToLeaf(root db.Node, node db.Node) {
 	}
 }
 
-func getFuncParams(fieldList *ast.FieldList) map[string]string {
-	params := make(map[string]string)
-
+// Iterates over each item in a field list and does some operation passed to it
+func iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
 	if fieldList != nil {
 		for _, p := range fieldList.List {
 			if p != nil {
 				returnType := expressionString(p.Type)
 				for _, name := range p.Names {
-					params[expressionString(name)] = returnType
+					varName := expressionString(name)
+					op(returnType, varName)
 				}
 			}
 		}
 	}
+}
+
+func getFuncParams(fieldList *ast.FieldList) map[string]string {
+	params := make(map[string]string)
+
+	iterateFields(fieldList, func(returnType, name string) {
+		params[name] = returnType
+	})
 
 	return params
 }
@@ -1097,19 +1105,12 @@ func getFuncParams(fieldList *ast.FieldList) map[string]string {
 func getFuncReturns(fieldList *ast.FieldList) []db.Return {
 	returns := make([]db.Return, 0)
 
-	if fieldList != nil {
-		for _, p := range fieldList.List {
-			if p != nil {
-				returnType := expressionString(p.Type)
-				for _, name := range p.Names {
-					returns = append(returns, db.Return{
-						Name:       expressionString(name),
-						ReturnType: returnType,
-					})
-				}
-			}
-		}
-	}
+	iterateFields(fieldList, func(returnType, name string) {
+		returns = append(returns, db.Return{
+			Name:       name,
+			ReturnType: returnType,
+		})
+	})
 
 	return returns
 }
