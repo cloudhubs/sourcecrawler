@@ -780,7 +780,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	}
 
 	// Connect the function declaration to the sub cfg
-	if fn, ok := root.(*db.FunctionNode); ok {
+	if fn, ok := root.(*db.FunctionDeclNode); ok {
 		fn.Child = node
 	}
 
@@ -1077,16 +1077,70 @@ func connectToLeaf(root db.Node, node db.Node) {
 	}
 }
 
+func getFuncParams(fieldList *ast.FieldList) map[string]string {
+	params := make(map[string]string)
+
+	if fieldList != nil {
+		for _, p := range fieldList.List {
+			if p != nil {
+				returnType := expressionString(p.Type)
+				for _, name := range p.Names {
+					params[expressionString(name)] = returnType
+				}
+			}
+		}
+	}
+
+	return params
+}
+
+func getFuncReturns(fieldList *ast.FieldList) []db.Return {
+	returns := make([]db.Return, 0)
+
+	if fieldList != nil {
+		for _, p := range fieldList.List {
+			if p != nil {
+				returnType := expressionString(p.Type)
+				for _, name := range p.Names {
+					returns = append(returns, db.Return{
+						Name:       expressionString(name),
+						ReturnType: returnType,
+					})
+				}
+			}
+		}
+	}
+
+	return returns
+}
+
 func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes map[int]string) (node db.Node) {
 	switch stmt := stmt.(type) {
 	case *ast.ExprStmt:
 		node = getExprNode(stmt.X, base, fset, false, regexes)
 	case *ast.FuncDecl:
 		relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
-		node = db.Node(&db.FunctionNode{
+
+		receivers := getFuncParams(stmt.Recv)
+		var params map[string]string
+		var returns []db.Return
+		if stmt.Type != nil {
+			params = getFuncParams(stmt.Type.Params)
+			if stmt.Type.Results != nil {
+				returns = getFuncReturns(stmt.Type.Results)
+			}
+		} else {
+			params = make(map[string]string)
+			returns = make([]db.Return, 0)
+		}
+
+		node = db.Node(&db.FunctionDeclNode{
 			Filename:     filepath.ToSlash(relPath),
 			LineNumber:   fset.Position(stmt.Pos()).Line,
 			FunctionName: stmt.Name.Name,
+			Receivers:    receivers,
+			Params:       params,
+			Returns:      returns,
 		})
 	case *ast.AssignStmt:
 		// Found an assignment
