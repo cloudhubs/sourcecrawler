@@ -765,7 +765,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		}
 		return false
 	})
-	fmt.Println(cfg.Format(fset))
+	// fmt.Println(cfg.Format(fset))
 
 	// Empty function declaration
 	if len(cfg.Blocks) < 1 {
