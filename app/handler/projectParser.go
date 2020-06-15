@@ -107,6 +107,7 @@ func parsePanic(filesToParse []string) []stackTraceStruct {
 		fnLine:  map[string]string{},
 	}
 	fileLineNum := 1
+	id := 1
 
 	//Scan through each line of log file and do analysis
 	for scanner.Scan() {
@@ -118,7 +119,9 @@ func parsePanic(filesToParse []string) []stackTraceStruct {
 
 			//Make sure attributes aren't empty before adding it
 			if tempStackTrace.msgLevel != "" && len(tempStackTrace.fnLine) != 0 {
+				tempStackTrace.id = id
 				stackTrc = append(stackTrc, tempStackTrace)
+				id++
 			}
 
 			//New statement trace
@@ -152,18 +155,20 @@ func parsePanic(filesToParse []string) []stackTraceStruct {
 			for index := range filesToParse {
 				if strings.Contains(filesToParse[index], fileName) {
 					tempStackTrace.fnLine[fileName] = lineNum
+					break
 				}
 			}
 		}
 		fileLineNum++
+
 	}
 
 	//Add last entry
 	stackTrc = append(stackTrc, tempStackTrace)
 
 	//Test print the processed stack traces
-	for index := range stackTrc {
-		fmt.Println(stackTrc[index])
+	for _, value := range stackTrc {
+		fmt.Println(value.id, value.funcName, value.msgLevel, value.fnLine)
 	}
 
 	return stackTrc
