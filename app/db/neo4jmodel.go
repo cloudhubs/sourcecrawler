@@ -71,7 +71,7 @@ type ConditionalNode struct {
 	FalseChild Node
 }
 
-// statement nodes
+// STATEMENT NODES
 
 func (n *StatementNode) GetChildren() map[Node]string {
 	var m = map[Node]string{
@@ -100,7 +100,7 @@ func (n *StatementNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
-// conditional nodes
+// CONDITIONAL NODES
 
 func (n *ConditionalNode) GetChildren() map[Node]string {
 	var m = map[Node]string{
@@ -127,6 +127,8 @@ func (n *ConditionalNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+// FUNCTION (CALL) NODES
+
 func (n *FunctionNode) GetChildren() map[Node]string {
 	var m = map[Node]string{
 		n.Child: "",
@@ -150,6 +152,8 @@ func (n *FunctionNode) GetFilename() string {
 func (n *FunctionNode) GetLineNumber() int {
 	return n.LineNumber
 }
+
+// FUNCTION DECLARATION NODES
 
 func (n *FunctionDeclNode) GetChildren() map[Node]string {
 	var m = map[Node]string{
@@ -182,7 +186,7 @@ func (n *FunctionDeclNode) GetProperties() string {
 }
 
 func (n *FunctionDeclNode) GetNodeType() string {
-	return ":FUNCTIONCALL:STATEMENT"
+	return ":FUNCTIONDECL:STATEMENT"
 }
 
 func (n *FunctionDeclNode) GetFilename() string {
@@ -192,6 +196,8 @@ func (n *FunctionDeclNode) GetFilename() string {
 func (n *FunctionDeclNode) GetLineNumber() int {
 	return n.LineNumber
 }
+
+// RETURN NODES
 
 func (n *ReturnNode) GetChildren() map[Node]string {
 	return nil
