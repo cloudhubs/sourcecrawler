@@ -22,9 +22,18 @@ func testConditional() bool {
 	}
 }
 
-//
+
+//test
 func testPanic() {
-	panic("Throwing error")
+	panic("bad")
+}
+
+func callPanic(){
+	panic("THROWING ERROR")
+}
+
+func callOtherPanic(num int){
+	panic(num)
 }
 
 func main() {
@@ -107,5 +116,13 @@ func initcall() {
 		bar()
 	} else {
 		fmt.Println("something")
+	}
+}
+
+func testCondPanic(num int){
+	if num > 10{
+		callPanic()
+	}else{
+		callOtherPanic(num)
 	}
 }
