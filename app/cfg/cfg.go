@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -590,4 +591,51 @@ func callExprName(call *ast.CallExpr) string {
 		name = s[0]
 	}
 	return name
+}
+
+func ConnectStackTrace(fns []db.Node) {
+	for i, fn := range fns {
+		if i < len(fns)-1 {
+			//gather return statements to connect
+			returnStmts := getReturnNodes(fn)
+
+			//find reference to fn in parent fn
+			referenceNode, err := getReference(fn.(*db.FunctionDeclNode), fns[i+1])
+			if err != nil {
+				panic(err)
+			}
+
+			//get reference to parent's child
+			child := referenceNode.Child
+
+			//connect parent refernce to fn
+			referenceNode.Child = fn
+			//and return statements to parent child
+			for _, returnStmt := range returnStmts {
+				returnStmt.Child = child
+			}
+		}
+	}
+}
+
+func getReturnNodes(fn db.Node) []db.ReturnNode {
+	rets := []db.ReturnNode{}
+	for node := range fn.GetChildren() {
+		if node, ok := node.(*db.ReturnNode); ok {
+			rets = append(rets, *node)
+		} else {
+			rets = append(rets, getReturnNodes(node)...)
+		}
+	}
+	return rets
+}
+
+func getReference(fn *db.FunctionDeclNode, parent db.Node) (*db.FunctionNode, error) {
+	for node := range parent.GetChildren() {
+		if node, ok := node.(*db.FunctionNode); ok && node.FunctionName == fn.FunctionName {
+			return node, nil
+		}
+		return getReference(fn, node)
+	}
+	return nil, errors.New("No reference found")
 }

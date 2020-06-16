@@ -54,6 +54,7 @@ type ReturnNode struct {
 	Filename   string
 	LineNumber int
 	Expression string
+	Child      Node
 }
 
 type StatementNode struct {
