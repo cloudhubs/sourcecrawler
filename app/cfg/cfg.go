@@ -597,7 +597,7 @@ func ConnectStackTrace(fns []db.Node) {
 	for i, fn := range fns {
 		if i < len(fns)-1 {
 			//gather return statements to connect
-			returnStmts := getReturnNodes(fn)
+			returnStmts := getLeafNodes(fn)
 
 			//find reference to fn in parent fn
 			referenceNode, err := getReference(fn.(*db.FunctionDeclNode), fns[i+1])
@@ -612,19 +612,28 @@ func ConnectStackTrace(fns []db.Node) {
 			referenceNode.Child = fn
 			//and return statements to parent child
 			for _, returnStmt := range returnStmts {
-				returnStmt.Child = child
+				returnStmt.SetChild([]db.Node{child})
 			}
 		}
 	}
 }
 
-func getReturnNodes(fn db.Node) []db.ReturnNode {
-	rets := []db.ReturnNode{}
+func getLeafNodes(fn db.Node) []db.Node {
+	rets := []db.Node{}
 	for node := range fn.GetChildren() {
-		if node, ok := node.(*db.ReturnNode); ok {
-			rets = append(rets, *node)
-		} else {
-			rets = append(rets, getReturnNodes(node)...)
+		//if a child is nil (for conditionals
+		//either both will be nil or neither
+		//so only one needs to be checked)
+		//this is a return statement, otherwise,
+		//call this function on the node only
+		//once then break the loop
+		for child := range node.GetChildren() {
+			if child == nil {
+				rets = append(rets, node)
+			} else {
+				rets = append(rets, getLeafNodes(node)...)
+				break
+			}
 		}
 	}
 	return rets

@@ -13,6 +13,8 @@ type Node interface {
 	*/
 	GetChildren() map[Node]string
 
+	SetChild([]Node)
+
 	/*
 		Returns a string that contains this node's properties, in cypher's key-value format
 	*/
@@ -81,6 +83,10 @@ func (n *StatementNode) GetChildren() map[Node]string {
 	return m
 }
 
+func (n *StatementNode) SetChild(c []Node) {
+	n.Child = c[0]
+}
+
 func (n *StatementNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v", n.Filename, n.LineNumber)
 	if n.LogRegex != "" {
@@ -111,6 +117,11 @@ func (n *ConditionalNode) GetChildren() map[Node]string {
 	return m
 }
 
+func (n *ConditionalNode) SetChild(c []Node) {
+	n.TrueChild = c[0]
+	n.FalseChild = c[1]
+}
+
 func (n *ConditionalNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, condition: \"%v\"", n.Filename, n.LineNumber, n.Condition)
 	return "{ " + val + " }"
@@ -137,6 +148,10 @@ func (n *FunctionNode) GetChildren() map[Node]string {
 	return m
 }
 
+func (n *FunctionNode) SetChild(c []Node) {
+	n.Child = c[0]
+}
+
 func (n *FunctionNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
 	return "{ " + val + " }"
@@ -161,6 +176,9 @@ func (n *FunctionDeclNode) GetChildren() map[Node]string {
 		n.Child: "",
 	}
 	return m
+}
+func (n *FunctionDeclNode) SetChild(c []Node) {
+	n.Child = c[0]
 }
 
 func (n *FunctionDeclNode) GetProperties() string {
@@ -201,7 +219,14 @@ func (n *FunctionDeclNode) GetLineNumber() int {
 // RETURN NODES
 
 func (n *ReturnNode) GetChildren() map[Node]string {
-	return nil
+	var m = map[Node]string{
+		n.Child: "",
+	}
+	return m
+}
+
+func (n *ReturnNode) SetChild(c []Node) {
+	n.Child = c[0]
 }
 
 func (n *ReturnNode) GetProperties() string {

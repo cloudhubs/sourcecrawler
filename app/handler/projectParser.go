@@ -34,19 +34,19 @@ func createTestNeoNodes() {
 	// defer dao.DisconnectFromNeo()
 	// dao.CreateTree(&node1)
 
-	nodeG := db.ReturnNode{"connect.go", 7, "no", nil}
-	nodeF := db.ReturnNode{"connect.go", 6, "yes", nil}
+	nodeG := db.StatementNode{"connect.go", 7, "do nothing", nil}
+	nodeF := db.FunctionNode{"connect.go", 6, "main", nil}
 	nodeE := db.ConditionalNode{"connect.go", 5, "yes?", &nodeF, &nodeG}
 	nodeD := db.FunctionDeclNode{"connect.go", 4, "func", nil, nil, nil, &nodeE}
 
-	nodeC := db.ReturnNode{"connect.go", 3, "", nil}
-	nodeB := db.FunctionNode{"connect.go", 2, "func", &nodeC}
+	nodeC := db.StatementNode{"connect.go", 3, "the end", nil}
+	nodeB := db.StatementNode{"connect.go", 2, "", &nodeC}
 	nodeA := db.FunctionDeclNode{"connect.go", 1, "main", nil, nil, nil, &nodeB}
 
-	cfg.PrintCfg(&nodeA, "")
+	cfg.PrintCfg(&nodeD, "")
 	fmt.Println()
-	cfg.ConnectStackTrace([]db.Node{&nodeD, &nodeA})
-	cfg.PrintCfg(&nodeA, "")
+	cfg.ConnectStackTrace([]db.Node{&nodeA, &nodeD})
+	cfg.PrintCfg(&nodeD, "")
 }
 
 type varDecls struct {
