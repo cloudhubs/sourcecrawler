@@ -1,13 +1,11 @@
 package handler
 
 import (
-	"bufio"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"runtime"
 	"strings"
 )
@@ -41,7 +39,6 @@ func grabOS() string{
 
 // Parse through a panic message and find originating file/line number/function name
 //TODO:  take in a string of the stack trace error and parse thru
-//TODO: add array inside the struct that holds each stack trace in order. return the struct
 func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 
 	//Generates test stack traces (run once and redirect to log file)
@@ -55,6 +52,8 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	//Grab files to parse
 	filesToParse := gatherGoFiles(projectRoot)
 
+	stackStrs := splitStackTraceString(stackMessage)
+
 	//Helper map for quick lookup
 	localFilesMap := make(map[string]string)
 	for index := range filesToParse{
@@ -67,13 +66,13 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	functionsMap := functionDecls(filesToParse)
 
 	//Open stack trace log file (assume there will be a log file named this)
-	file, err := os.Open("stackTrace.log")
-	if err != nil {
-		fmt.Println("Error opening file")
-	}
+	//file, err := os.Open("stackTrace.log")
+	//if err != nil {
+	//	fmt.Println("Error opening file")
+	//}
 
 	//Parse through stack trace log file
-	scanner := bufio.NewScanner(file)
+	//scanner := bufio.NewScanner(file)
 	stackTrc := []stackTraceStruct{}
 	tempStackTrace := stackTraceStruct{
 		id:       1,
@@ -84,13 +83,12 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	}
 	fileLineNum := 1
 	id := 1
-	//doneAdding := false
 	tempFuncName := ""
-	//doneFn := false
+	functionFound := false
 
 	//Scan through each line of log file and do analysis
-	for scanner.Scan() {
-		logStr := scanner.Text()
+	for index := range stackStrs {
+		logStr := stackStrs[index]
 
 		//Check for beginning of new stack trace statement (create new trace struct for new statement)
 		// keyword "serving" is found in the first line of each new stack trace
@@ -101,8 +99,6 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 				len(tempStackTrace.lineNum) != 0 && len(tempStackTrace.funcName) != 0{
 				tempStackTrace.id = id
 				stackTrc = append(stackTrc, tempStackTrace)
-				//doneAdding = false //status of adding file + line number
-				//doneFn = false     //status of adding function name
 				id++
 			}
 
@@ -119,9 +115,6 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 			if strings.Contains(logStr, "panic") {
 				tempStackTrace.msgLevel = "panic"
 			}
-
-			//Read to skip the goroutine line
-			//scanner.Scan()
 		}
 
 		//Read the function line first
@@ -129,6 +122,8 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 		//Process function name lines (doesn't contain .go)
 		if  !strings.Contains(logStr, ".go") &&
 			strings.Contains(logStr, "(") && strings.Contains(logStr, ")"){
+
+			functionFound = false
 
 			startIndex := strings.LastIndex(logStr, ".")
 			endIndex := strings.LastIndex(logStr, "(")
@@ -149,28 +144,23 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 				if strings.Contains(logStr, "..."){
 					specialIndex := strings.Index(logStr, ".")
 					tempFuncName = logStr[specialIndex+1:endIndex]
-					//Add the first origin function (should be the correct function where error occured)
-					//if !doneFn {
-					//	tempStackTrace.funcName = tempFuncName
-					//	doneFn = true
-					//}
 				}else{
 					tempFuncName = logStr[startIndex+1:]
 				}
 			}
 
-			//Test print other function names
-			//fmt.Println("Function name:", tempFuncName)
-
-			//Test if a function is found
-			//fmt.Println("funct name:", tempFuncName)
+			//If found, add to list of function names
+			// bug with app.go function -- inside handleRequest issue with returning a function
 			if _, found := functionsMap[tempFuncName]; found{
-				fmt.Println("The function ", tempFuncName, "is in the local files", functionsMap[tempFuncName])
+				//fmt.Println("The function ", tempFuncName, "is in the local files", functionsMap[tempFuncName])
+				tempStackTrace.funcName = append(tempStackTrace.funcName, tempFuncName)
+				functionFound = true
 			}
+			//fmt.Println("funct name:", tempFuncName)
 		}
 
-		//Check if line contains a possible file name, store to map of fileName+LineNumber
-		if strings.Contains(logStr, ".go") {
+		//Read the file name/line number line - ONLY if a corresponding function is found
+		if functionFound && strings.Contains(logStr, ".go") {
 			fileName := logStr[strings.LastIndex(logStr, "/")+1 : strings.LastIndex(logStr, ":")]
 			indxLineNumStart := strings.LastIndex(logStr, ":")
 			lineNumLarge := logStr[indxLineNumStart+1:]
@@ -196,14 +186,24 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 		fileLineNum++
 	}
 
-	//for key, val := range functionsMap{
-	//	fmt.Println(key, val)
-	//}
-
 	//Add last entry
 	stackTrc = append(stackTrc, tempStackTrace)
 
+	//Print struct
+	for _, val := range stackTrc{
+		fmt.Printf("Stack Trace %d\n", val.id)
+
+		//Should have same # of elements
+		for index := range val.fileName{
+			fmt.Printf("Depth: %d %s %s %s\n", index, val.fileName[index], val.lineNum[index], val.funcName[index])
+		}
+	}
+
 	return stackTrc
+}
+
+func splitStackTraceString(sts string) []string{
+	return strings.Split(sts, "\n")
 }
 
 //Helper function to test print parsed info from stack trace

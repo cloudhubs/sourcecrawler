@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bufio"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -177,21 +178,18 @@ func parseProject(projectRoot string) []model.LogType {
 
 
 	//Get stack trace string
-	//file, err := os.Open("stackTrace.log")
-	//if err != nil {
-	//	log.Error().Msg("Error opening file")
-	//}
-	//scanner := bufio.NewScanner(file)
-	//stackString := ""
-	//
-	//
-	//for scanner.Scan() {
-	//	stackString += scanner.Text() + "\n"
-	//}
-	//fmt.Println(stackString)
+	file, err := os.Open("stackTrace.log")
+	if err != nil {
+		log.Error().Msg("Error opening file")
+	}
+	scanner := bufio.NewScanner(file)
+	stackTraceString := ""
+	for scanner.Scan() {
+		stackTraceString += scanner.Text() + "\n"
+	}
 
 	//Parses panic stack trace message
-	parsePanic(projectRoot, "")
+	parsePanic(projectRoot, stackTraceString)
 	//errorList := parsePanic(projectRoot, "")
 	//printErrorList(errorList)
 
