@@ -107,8 +107,6 @@ func gatherGoFiles(projectRoot string) []string{
 //Parse project to create log types
 func parseProject(projectRoot string) []model.LogType {
 
-	//fmt.Println("Project root is: " + projectRoot)
-
 	//Holds a slice of log types
 	logTypes := []model.LogType{}
 	variableDeclarations := varDecls{}

@@ -37,8 +37,9 @@ func grabOS() string{
 	}
 }
 
-// Parse through a panic message and find originating file/line number/function name
-//TODO:  take in a string of the stack trace error and parse thru
+//Parse through a panic message and find originating file/line number/function name
+// Takes in a string of the stack trace error and parse thru
+// ** Assuming that the stack trace message ends with a \n **
 func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 
 	//Generates test stack traces (run once and redirect to log file)
