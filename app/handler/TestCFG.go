@@ -25,7 +25,7 @@ func testConditional() bool {
 
 //test
 func testPanic() {
-	panic("bad")
+	log.Panic().Msg("Testing zerolog panic")
 }
 
 func callPanic(){
