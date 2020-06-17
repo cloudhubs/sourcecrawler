@@ -14,6 +14,80 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+type ConnectedCfgCreator struct {
+	funcs          []*ast.FuncDecl
+	base           string
+	fset           *token.FileSet
+	filesToRegexes map[*token.File]map[int]string
+	fnCfgCreator   *FnCfgCreator
+}
+
+func NewConnectedCfgCreator(
+	funcs []*ast.FuncDecl, base string, fset *token.FileSet, filesToRegexes map[*token.File]map[int]string,
+) *ConnectedCfgCreator {
+	return &ConnectedCfgCreator{
+		funcs:          funcs,
+		base:           base,
+		fset:           fset,
+		filesToRegexes: filesToRegexes,
+		fnCfgCreator:   NewFnCfgCreator(),
+	}
+}
+
+func (conn *ConnectedCfgCreator) getRegexesForPos(pos token.Pos) map[int]string {
+	file := conn.fset.File(pos)
+	ok := false
+
+	var regexes map[int]string
+	if regexes, ok = conn.filesToRegexes[file]; !ok {
+		regexes = make(map[int]string)
+	}
+
+	return regexes
+}
+
+func (conn *ConnectedCfgCreator) CreateConnectedCfg() []db.Node {
+	fnRoots := make([]db.Node, 0)
+
+	decls := make(map[string]*ast.FuncDecl)
+
+	for _, fn := range conn.funcs {
+		regexes := conn.getRegexesForPos(fn.Pos())
+
+		root := conn.fnCfgCreator.CreateCfg(fn, conn.base, conn.fset, regexes)
+		if root != nil {
+			decl := root.(*db.FunctionDeclNode)
+			decls[decl.FunctionName] = fn
+			fnRoots = append(fnRoots, root)
+		}
+	}
+
+	for _, fn := range fnRoots {
+		fn := fn.(*db.FunctionDeclNode)
+		conn.connectCallsToDecls(fn, decls)
+	}
+
+	return fnRoots
+}
+
+func (conn *ConnectedCfgCreator) connectCallsToDecls(parent db.Node, funcNameToDecl map[string]*ast.FuncDecl) {
+	if funcNameToDecl == nil || parent == nil {
+		return
+	}
+
+	for node := range parent.GetChildren() {
+		if call, ok := node.(*db.FunctionNode); ok {
+			if astDecl, ok := funcNameToDecl[call.FunctionName]; ok {
+				regexes := conn.getRegexesForPos(astDecl.Pos())
+
+				callDecl := conn.fnCfgCreator.CreateCfg(astDecl, conn.base, conn.fset, regexes)
+				ConnectCallToDecl(call, callDecl)
+			}
+		}
+		conn.connectCallsToDecls(node, funcNameToDecl)
+	}
+}
+
 // FnCfgCreator allows you to compute the CFG for a given function declaration
 type FnCfgCreator struct {
 	blocks map[*cfg.Block]db.Node
@@ -593,6 +667,10 @@ func callExprName(call *ast.CallExpr) string {
 	return name
 }
 
+func ConnectCallToDecl(call db.Node, decl db.Node) {
+	ConnectStackTrace([]db.Node{decl, call})
+}
+
 func ConnectStackTrace(fns []db.Node) {
 	for i, fn := range fns {
 		if i < len(fns)-1 {
@@ -640,11 +718,30 @@ func getLeafNodes(fn db.Node) []db.Node {
 }
 
 func getReference(fn *db.FunctionDeclNode, parent db.Node) (*db.FunctionNode, error) {
+	if refs := getReferences(fn, parent); len(refs) > 0 {
+		return refs[0], nil
+	} else {
+		return nil, errors.New("No reference found")
+	}
+}
+
+func getReferences(fn *db.FunctionDeclNode, parent db.Node) []*db.FunctionNode {
+	return getReferencesRecur(fn, parent, make([]*db.FunctionNode, 0))
+}
+
+func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.FunctionNode) []*db.FunctionNode {
+	if parent == nil {
+		return refs
+	}
 	for node := range parent.GetChildren() {
 		if node, ok := node.(*db.FunctionNode); ok && node.FunctionName == fn.FunctionName {
-			return node, nil
+			if node != nil {
+				refs = append(refs, node)
+			}
 		}
-		return getReference(fn, node)
+		if node != nil {
+			return getReferencesRecur(fn, node, refs)
+		}
 	}
-	return nil, errors.New("No reference found")
+	return refs
 }
