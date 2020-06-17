@@ -43,6 +43,7 @@ func (a *App) setRouters() {
 	a.Get("/parser", a.handleRequest(handler.GetAllLogTypes))
 	a.Post("/parser", a.handleRequest(handler.CreateProjectLogTypes))
 	a.Post("/matcher", a.handleRequest(handler.FindLogSource))
+	a.Post("/slicer", a.handleRequest(handler.SliceProgram))
 	a.Post("/neotest", a.handleRequest(handler.NeoTest))
 }
 
