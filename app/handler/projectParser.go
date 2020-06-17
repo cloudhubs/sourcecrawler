@@ -8,8 +8,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"reflect"
-	"runtime"
 	"sourcecrawler/app/cfg"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/logsource"
@@ -64,170 +62,8 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 	return -1, false
 }
 
-//Helper function to grab OS separator
-func grabOS() string {
-	if runtime.GOOS == "windows" {
-		return "\\"
-	} else {
-		return "/"
-	}
-}
-
-// Parse through a panic message and find originating file/line number/function name
-func parsePanic(filesToParse []string, projectRoot string) []stackTraceStruct {
-
-	//Generates test stack traces (run once and redirect to log file)
-	// "go run main.go 2>stackTrace.log"
-	//testCondPanic(15)
-	//testPanic()
-	separator := grabOS()
-
-	//Helper map for quick lookup
-	localFilesMap := make(map[string]string)
-	for index := range filesToParse {
-		shortFileName := filesToParse[index]
-		shortFileName = shortFileName[strings.LastIndex(shortFileName, separator)+1:]
-		localFilesMap[shortFileName] = "exists"
-	}
-
-	//Open stack trace log file (assume there will be a log file named this)
-	file, err := os.Open("stackTrace.log")
-	if err != nil {
-		fmt.Println("Error opening file")
-	}
-
-	//Parse through stack trace log file
-	scanner := bufio.NewScanner(file)
-	stackTrc := []stackTraceStruct{}
-	tempStackTrace := stackTraceStruct{
-		id:       1,
-		msgLevel: "",
-		fileName: "",
-		lineNum:  "",
-		funcName: "",
-	}
-	fileLineNum := 1
-	id := 1
-	doneAdding := false
-	tempFuncName := ""
-	doneFn := false
-
-	//Scan through each line of log file and do analysis
-	for scanner.Scan() {
-		logStr := scanner.Text()
-
-		//Check for beginning of new stack trace statement (create new trace struct for new statement)
-		// keyword "serving" is found in the first line of each new stack trace
-		if strings.Contains(logStr, "serving") {
-
-			//Make sure attributes aren't empty before adding it
-			if tempStackTrace.msgLevel != "" && tempStackTrace.fileName != "" &&
-				tempStackTrace.lineNum != "" && tempStackTrace.funcName != "" {
-				tempStackTrace.id = id
-				stackTrc = append(stackTrc, tempStackTrace)
-				doneAdding = false //status of adding file + line number
-				doneFn = false     //status of adding function name
-				id++
-			}
-
-			//New statement trace
-			tempStackTrace = stackTraceStruct{
-				id:       id,
-				msgLevel: "",
-				fileName: "",
-				lineNum:  "",
-				funcName: "",
-			}
-
-			//Assign panic type
-			if strings.Contains(logStr, "panic") {
-				tempStackTrace.msgLevel = "panic"
-			}
-		}
-
-		//Check if line contains a possible file name, store to map of fileName+LineNumber
-		if strings.Contains(logStr, ".go") {
-			fileName := logStr[strings.LastIndex(logStr, "/")+1 : strings.LastIndex(logStr, ":")]
-			indxLineNumStart := strings.LastIndex(logStr, ":")
-			lineNumLarge := logStr[indxLineNumStart+1:]
-
-			//If space in line number string with +0xaa, etc
-			var lineNum string
-			if strings.Contains(lineNumLarge, " ") {
-				lineNum = lineNumLarge[0:strings.Index(lineNumLarge, " ")]
-			} else {
-				lineNum = lineNumLarge
-			}
-
-			//Check for originating files where the exception was thrown (could be multiple files, parent calls, etc)
-			// We only want to match local files and not any extraneous files
-			if _, ok := localFilesMap[fileName]; ok {
-				if !doneAdding {
-					tempStackTrace.fileName = fileName
-					tempStackTrace.lineNum = lineNum
-					doneAdding = true
-				}
-			}
-		}
-
-		//!-- NOTE: function that calls another function in another file
-		//         will only contain 1 function call in a stack trace line
-		//!-- NOTE: assuming there is no function named go() --!
-		//Process function name lines (doesn't contain .go)
-		if !strings.Contains(logStr, ".go") &&
-			strings.Contains(logStr, "(") && strings.Contains(logStr, ")") {
-
-			startIndex := strings.LastIndex(logStr, ".")
-			endIndex := strings.LastIndex(logStr, "(")
-
-			//Functions with multiple calls (has multiple . operators)
-			if startIndex != -1 && endIndex != -1 && startIndex < endIndex {
-				tempFuncName = logStr[startIndex+1 : endIndex]
-			}
-
-			//Function is a single standalone function (only example currently is panic())
-			if startIndex == -1 {
-				tempFuncName = logStr[:endIndex]
-			}
-
-			//No parenthesis for function name OR a custom function(ex: .Serve or .callOtherPanic(...))
-			if startIndex > endIndex {
-				//Function with (...) as args (these are the ones that we are interested in) -- grab first on stack
-				if strings.Contains(logStr, "...") {
-					specialIndex := strings.Index(logStr, ".")
-					tempFuncName = logStr[specialIndex+1 : endIndex]
-					//Add the first origin function (should be the correct function where error occured)
-					if !doneFn {
-						tempStackTrace.funcName = tempFuncName
-						doneFn = true
-					}
-				} else {
-					tempFuncName = logStr[startIndex+1:]
-				}
-			}
-			//Test print other function names
-			//fmt.Println("Function name:", tempFuncName)
-		}
-
-		//Update file line number
-		fileLineNum++
-	}
-
-	//Add last entry
-	stackTrc = append(stackTrc, tempStackTrace)
-
-	return stackTrc
-}
-
-//Parse project to create log types
-func parseProject(projectRoot string) []model.LogType {
-
-	//fmt.Println("Project root is: " + projectRoot)
-
-	//Holds a slice of log types
-	logTypes := []model.LogType{}
-	variableDeclarations := varDecls{}
-	variablesUsedInLogs := map[string]struct{}{}
+//Gathers all go files to parse
+func gatherGoFiles(projectRoot string) []string {
 	filesToParse := []string{}
 	//gather all go files in project
 	filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
@@ -244,6 +80,18 @@ func parseProject(projectRoot string) []model.LogType {
 		}
 		return nil
 	})
+
+	return filesToParse
+}
+
+//Parse project to create log types
+func parseProject(projectRoot string) []model.LogType {
+
+	//Holds a slice of log types
+	logTypes := []model.LogType{}
+	variableDeclarations := varDecls{}
+	variablesUsedInLogs := map[string]struct{}{}
+	filesToParse := gatherGoFiles(projectRoot)
 
 	//parse each file to collect logs and the variables used in them
 	//as well as collecting variables declared in the file for later use
@@ -306,24 +154,23 @@ func parseProject(projectRoot string) []model.LogType {
 		}
 	}
 
-	//Check all function declarations
-	// funcDecList := functionDecls(filesToParse)
-	// findPanics(filesToParse)
+	//Get stack trace string
+	file, err := os.Open("stackTrace.log")
+	if err != nil {
+		log.Error().Msg("Error opening file")
+	}
+	scanner := bufio.NewScanner(file)
+	stackTraceString := ""
+	for scanner.Scan() {
+		stackTraceString += scanner.Text() + "\n"
+	}
 
 	//Parses panic stack trace message
-	errorList := parsePanic(filesToParse, projectRoot)
-	printErrorList(errorList)
+	parsePanic(projectRoot, stackTraceString)
+	//errorList := parsePanic(projectRoot, "")
+	//printErrorList(errorList)
 
 	return logTypes
-}
-
-//Helper function to test print parsed info from stack trace
-func printErrorList(errorList []stackTraceStruct) {
-	//Test print the processed stack traces
-	for _, value := range errorList {
-		fmt.Printf("%d: %s in %s -- line %s from function %s\n",
-			value.id, value.msgLevel, value.fileName, value.lineNum, value.funcName)
-	}
 }
 
 //Struct for quick access to the function declaration nodes
@@ -333,23 +180,6 @@ type fdeclStruct struct {
 	filePath string
 	lineNum  string
 	Name     string
-}
-
-//Stores the file path and line # (Node pointers there for extra info)
-type panicStruct struct {
-	node     ast.Node
-	pd       *ast.CallExpr
-	filePath string
-	lineNum  string
-}
-
-//Parsing a panic runtime stack trace (id, messageLevel, file name and line #, function name)
-type stackTraceStruct struct {
-	id       int
-	msgLevel string
-	fileName string
-	lineNum  string
-	funcName string
 }
 
 //Helper function to find origin of function (not used but may need later)
@@ -365,7 +195,7 @@ func findFuncOrigin(name string, funcDecList []fdeclStruct) {
  Determines if a function is called somewhere else based on its name (path and line number)
   -currently goes through all files and finds if it's used
 */
-func functionDecls(filesToParse []string) []fdeclStruct {
+func functionDecls(filesToParse []string) map[string][]string {
 
 	//Map of all function names with a [line number, file path]
 	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
@@ -382,16 +212,14 @@ func functionDecls(filesToParse []string) []fdeclStruct {
 		}
 
 		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
-		packageName := node.Name.Name + ":"
-		fmt.Print("Package name is " + packageName + " at line ")
-		fmt.Println(fset.Position(node.Pos()).Line)
+		//packageName := node.Name.Name + ":"
 
 		//Inspect AST for explicit function declarations
 		ast.Inspect(node, func(currNode ast.Node) bool {
 			fdNode, ok := currNode.(*ast.FuncDecl)
 			if ok {
 				//package name is appended to separate diff functions across packages
-				functionName := packageName + fdNode.Name.Name
+				functionName := fdNode.Name.Name
 				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
 				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
 
@@ -412,59 +240,22 @@ func functionDecls(filesToParse []string) []fdeclStruct {
 		})
 
 		//Inspect the AST Call Expressions (where they call a function)
-		ast.Inspect(node, func(currNode ast.Node) bool {
-			callExprNode, ok := currNode.(*ast.CallExpr)
-			if ok {
-				//Filter single function calls such as parseMsg(msg.Value)
-				functionName := packageName + fmt.Sprint(callExprNode.Fun)
-				if _, found := functMap[functionName]; found {
-					//fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
-					fmt.Println("")
-				}
-			}
-			return true
-		})
+		//ast.Inspect(node, func(currNode ast.Node) bool {
+		//	callExprNode, ok := currNode.(*ast.CallExpr)
+		//	if ok {
+		//		//Filter single function calls such as parseMsg(msg.Value)
+		//		//functionName := packageName + fmt.Sprint(callExprNode.Fun)
+		//		functionName := packageName
+		//		if _, found := functMap[functionName]; found {
+		//			//fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
+		//			//fmt.Println("")
+		//		}
+		//	}
+		//	return true
+		//})
 	}
 
-	return functCalls
-}
-
-//Finds all panic statements (not currently used, but may need later)
-func findPanics(filesToParse []string) []panicStruct {
-
-	panicList := []panicStruct{}
-
-	for _, file := range filesToParse {
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, file, nil, 0)
-		if err != nil {
-			log.Error().Err(err).Msg("Error parsing file " + file)
-		}
-
-		//Inspect call expressions
-		ast.Inspect(node, func(currNode ast.Node) bool {
-			callExprNode, ok := currNode.(*ast.CallExpr)
-			if ok {
-				//If it's a panic statement, add to the struct
-				if name := fmt.Sprint(callExprNode.Fun); name == "panic" {
-					lnNum := fmt.Sprint(fset.Position(callExprNode.Pos()).Line)
-					panicList = append(panicList, panicStruct{
-						node:     currNode,
-						pd:       callExprNode,
-						filePath: file,
-						lineNum:  lnNum,
-					})
-				}
-			}
-			return true
-		})
-
-		//Print file name/line number/panic
-		for _, value := range panicList {
-			fmt.Println(value.filePath, value.lineNum, fmt.Sprint(value.pd.Fun))
-		}
-	}
-	return panicList
+	return functMap
 }
 
 //This is just a struct
@@ -525,7 +316,7 @@ func usesParentArgs(parent *ast.FuncDecl, call *ast.CallExpr) []*ast.Ident {
 					if arg.Obj.Kind == ast.Var || arg.Obj.Kind == ast.Con {
 						// Found an argument used by the parent in the logging call expression
 						// or a constant we can find the value of
-						fmt.Println("\tcall expression uses", param)
+						//fmt.Println("\tcall expression uses", param)
 						args = append(args, arg)
 					}
 				}
@@ -695,7 +486,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				good = true
 
 			default:
-				fmt.Println("type arg", reflect.TypeOf(a), a)
+				//fmt.Println("type arg", reflect.TypeOf(a), a)
 			}
 			//if the type is known and handled,
 			//add it to the result array

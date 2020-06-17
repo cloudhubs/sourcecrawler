@@ -142,9 +142,11 @@ func (dao *NodeDaoNeoImpl) FindNode(filename string, linenumber int) (Node, erro
 				for i, v := range node.Labels() {
 					switch v {
 					case "FUNCTIONCALL":
-						return &FunctionNode{nodeFile, nodeLine, node.Props()["function"].(string), *new(Node)}, nil
+						return &FunctionNode{nodeFile, nodeLine,
+							node.Props()["function"].(string), *new(Node)}, nil
 					case "CONDITIONAL":
-						return &ConditionalNode{nodeFile, nodeLine, node.Props()["condition"].(string), *new(Node), *new(Node)}, nil
+						return &ConditionalNode{nodeFile, nodeLine,
+							node.Props()["condition"].(string), *new(Node), *new(Node)}, nil
 					default:
 						//only assign as statement if
 						//it's the last (only) label
