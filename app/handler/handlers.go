@@ -77,6 +77,8 @@ func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 }
 
+//Slices the program - first parses the stack trace, and then parses the project for log calls
+// -Afterwards it creates the CFG and attempts to connect each of the functions in the stack trace
 func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := struct {
 		StackTrace  string   `json:"stackTrace"`
@@ -88,4 +90,10 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	//Hold project root info from the request
+	projectRoot := model.ParseProjectRequest{}.ProjectRoot
+
+	//Parse stack trace
+	parsePanic(projectRoot, request.StackTrace)
 }

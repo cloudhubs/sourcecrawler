@@ -50,9 +50,8 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	//Grab separator
 	separator := grabOS()
 
-	//Grab files to parse
+	//Grab files to parse, split stack trace string, get project root
 	filesToParse := gatherGoFiles(projectRoot)
-
 	stackStrs := splitStackTraceString(stackMessage)
 
 	//Helper map for quick lookup
