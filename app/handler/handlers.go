@@ -146,8 +146,6 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	//TODO: function to match all log messages to a particular log type (match regex)
-	// returns a list of regex string
 	//1 -- parse stack trace for functions that led to exception
 	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
 	fmt.Println(parsedStack)
@@ -155,7 +153,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//2 -- Parse project for log statements with regex + line + file name
 	logTypes := parseProject(request.ProjectRoot)
 
-	//Matching log messages
+	//Matching log messages to a regex (only returns used regexes)
 	regexes := []string{}
 	for index := range request.LogMessages{
 		for _, value := range logTypes{
@@ -172,7 +170,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	stackFuncNodes := findFunctionNodes(filesToParse)
 	astFdNodes := []*ast.FuncDecl{} //Contains all the relevant function nodes used in the stack trace
 
-	//Add the function node if its used in the stack trace
+	//Adds function nodes that are used in the stack trace
 	for _, value := range parsedStack{
 		for index := range value.funcName{
 			fdNode := getFdASTNode(value.fileName[index], value.funcName[index], stackFuncNodes)
@@ -182,39 +180,18 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	//Check nil node
-	for _, value := range astFdNodes{
-		if value != nil{
-			fmt.Println("Nodes aren't nil")
-		}else{
-			fmt.Println("nil node")
-		}
-	}
-
 	//3 -- create CFG nodes for each function
 	regexMap := mapLogRegex(logTypes) //Create regexes based from the parseProject logTypes
 	fset := token.NewFileSet()
 	var decls []neoDb.Node
+	cfgCreator := cfg.FnCfgCreator{}
 
-	for _, goFile := range filesToParse {
-		file, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
-		if err != nil {
-			log.Error().Err(err).Msg("unable to parse file")
-		}
-
-		fmt.Println(file.Name.Name, request.ProjectRoot)
-		//logInfo, _ := findLogsInFile(file.Name.Name+".go", request.ProjectRoot)
-
-		cfgCreator := cfg.FnCfgCreator{}
-
-		//Only pass in the declarations that are used in the stack trace
-		for _, fdNode := range astFdNodes{
-			decls = append(decls, cfgCreator.CreateCfg(fdNode, request.ProjectRoot, fset, regexMap))
-		}
-
-		// fmt.Println("done parsing")
+	//Only pass in the FuncDecl nodes that are used in the stack trace
+	for _, fdNode := range astFdNodes{
+		decls = append(decls, cfgCreator.CreateCfg(fdNode, request.ProjectRoot, fset, regexMap))
 	}
-	//fmt.Println("finally done parsing")
+
+	//4 -- Connect the CFG nodes together?
 	decls = cfg.ConnectFnCfgs(decls)
 
 	//Test print the declarations
@@ -222,7 +199,4 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		cfg.PrintCfg(decl, "")
 		fmt.Println()
 	}
-
-	//4 -- Connect the CFG nodes together?
-
 }

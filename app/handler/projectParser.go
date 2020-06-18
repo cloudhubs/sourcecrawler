@@ -400,6 +400,14 @@ func findVariablesInFile(path string) varDecls {
 	}
 	vars := varDecls{}
 
+	//Check for nil node
+	if node == nil{
+		return varDecls{
+			asns:  nil,
+			decls: nil,
+		}
+	}
+
 	ast.Inspect(node, func(n ast.Node) bool {
 		//The following two blocks are related to finding variables
 		//and their values
@@ -440,6 +448,11 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 
 	//Helper structure to hold logTypes with function types (msg, msgf, err)
 	//lnTypes := make(map[model.LogType]string)
+
+	//Check for nil node
+	if node == nil{
+		return nil, nil
+	}
 
 	//Filter out nodes that do not contain a call to Msg or Msgf
 	//then call the recursive function isFromLog to determine
