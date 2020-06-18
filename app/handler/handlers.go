@@ -3,7 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"net/http"
 	"sourcecrawler/app/cfg"
@@ -103,7 +105,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
 
 	//2 -- Parse project for log statements with regex + line + file name
-	logInfo := parseProject(request.ProjectRoot)
+	/*logInfo :=*/ parseProject(request.ProjectRoot)
 
 	//Assign log messages (regex)
 	//for _, value := range logInfo{
@@ -135,14 +137,41 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 
 	//3 -- create CFG nodes for each function
-	cfgCreator := cfg.NewFnCfgCreator()
 	fset := token.NewFileSet()
-	regexMap := mapLogRegex(logInfo)
 
 	//TODO: currently error with nil memory address
-	for _, val := range astFdNodes {
-		cfgCreator.CreateCfg(val, request.ProjectRoot, fset, regexMap)
+	for _, goFile := range filesToParse {
+		file, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
+		if err != nil {
+			log.Error().Err(err).Msg("unable to parse file")
+		}
+
+		fmt.Println(file.Name.Name, request.ProjectRoot)
+		logInfo, _ := findLogsInFile(file.Name.Name+".go", request.ProjectRoot)
+		regexMap := mapLogRegex(logInfo)
+
+		cfgCreator := cfg.FnCfgCreator{}
+
+		ast.Inspect(f, func(node ast.Node) bool {
+			if fn, ok := node.(*ast.FuncDecl); ok {
+				// fmt.Println("parsing", fn)
+				decls = append(decls, cfgCreator.CreateCfg(fn, request.ProjectRoot, fset, regexMap))
+			}
+			return true
+		})
+		// fmt.Println("done parsing")
 	}
+	// fmt.Println("finally done parsing")
+
+	decls = cfg.ConnectFnCfgs(decls)
+
+	for _, decl := range decls {
+		cfg.PrintCfg(decl, "")
+		fmt.Println()
+	}
+	//for _, val := range astFdNodes {
+	//	cfgCreator.CreateCfg(val, request.ProjectRoot, fset, regexMap)
+	//}
 
 	//4 -- Connect the CFG nodes together?
 
