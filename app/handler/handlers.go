@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"go/ast"
 	"go/token"
 	"net/http"
 	"sourcecrawler/app/cfg"
@@ -66,6 +67,7 @@ func GetAllLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, types)
 }
 
+//Test Endpoint for create CFG
 func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := struct {
 		FilePath string `json:"filePath"`
@@ -84,7 +86,7 @@ func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := struct {
 		StackTrace  string   `json:"stackTrace"`
-		LogMessages []string `json:"logMessages"`
+		LogMessages []string `json:"logMessages"` //it holds raw log statements
 		ProjectRoot string `json:"projectRoot"`
 	}{}
 
@@ -95,31 +97,53 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	//fmt.Println("stack trace:",request.StackTrace)
-	//fmt.Println(request.LogMessages)
-	//fmt.Println("Project Root,", request.ProjectRoot)
-
+	//TODO: function to match all log messages to a particular log type (match regex)
+	// returns a list of regex string
 	//1 -- parse stack trace for functions that led to exception
 	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
-	fmt.Println(parsedStack)
 
 	//2 -- Parse project for log statements with regex + line + file name
-	logTypes := parseProject(request.ProjectRoot)
-	//fmt.Println(logTypes)
+	logInfo := parseProject(request.ProjectRoot)
 
 	//Assign log messages (regex)
-	for _, value := range logTypes{
-		request.LogMessages = append(request.LogMessages, value.Regex)
-		fmt.Println(value)
+	//for _, value := range logInfo{
+	//	request.LogMessages = append(request.LogMessages, value.Regex)
+	//	fmt.Println(value)
+	//}
+
+	filesToParse := gatherGoFiles(request.ProjectRoot)
+	stackFuncNodes := findFunctionNodes(filesToParse)
+	astFdNodes := []*ast.FuncDecl{}
+
+	//Add the function node if its used in the stack trace
+	for _, value := range parsedStack{
+		for index := range value.funcName{
+			fdNode := getFdASTNode(value.fileName[index], value.funcName[index], stackFuncNodes)
+			if fdNode != nil{
+				astFdNodes = append(astFdNodes,fdNode)
+			}
+		}
 	}
 
-	//3 -- Construct the CFG
-	regexMap := mapLogRegex(logTypes)
-	fset := token.NewFileSet()
-	cfgCreator := cfg.NewFnCfgCreator()
+	//Check nil node
+	for _, value := range astFdNodes{
+		if value != nil{
+			fmt.Println("Nodes aren't nil")
+		}else{
+			fmt.Println("nil node")
+		}
+	}
 
-	//TODO: pass a func decl node here (use functions from the stack trace?)
-	cfgCreator.CreateCfg(nil, request.ProjectRoot, fset, regexMap)
+	//3 -- create CFG nodes for each function
+	cfgCreator := cfg.NewFnCfgCreator()
+	fset := token.NewFileSet()
+	regexMap := mapLogRegex(logInfo)
+
+	//TODO: currently error with nil memory address
+	for _, val := range astFdNodes {
+		cfgCreator.CreateCfg(val, request.ProjectRoot, fset, regexMap)
+	}
 
 	//4 -- Connect the CFG nodes together?
+
 }

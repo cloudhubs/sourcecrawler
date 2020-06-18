@@ -438,6 +438,7 @@ func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes 
 }
 
 func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes map[int]string) (node db.Node) {
+
 	relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
 
 	switch stmt := stmt.(type) {

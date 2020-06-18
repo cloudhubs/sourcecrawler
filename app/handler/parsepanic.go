@@ -63,7 +63,7 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	}
 
 	//Helper map for quick function lookup
-	functionsMap := functionDecls(filesToParse)
+	functionsMap := functionDeclsMap(filesToParse)
 
 	//Open stack trace log file (assume there will be a log file named this)
 	//file, err := os.Open("stackTrace.log")
