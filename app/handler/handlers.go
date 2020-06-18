@@ -126,3 +126,16 @@ func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 }
+
+func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	request := struct {
+		StackTrace  string   `json:"stackTrace"`
+		LogMessages []string `json:"logMessages"`
+	}{}
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+}
