@@ -630,15 +630,10 @@ func getLeafNodes(fn db.Node) []db.Node {
 		//this is a return statement, otherwise,
 		//call this function on the node only
 		//once then break the loop
-		for child := range node.GetChildren() {
-			if child == node {
-				continue
-			} else if child == nil {
-				rets = append(rets, node)
-			} else {
-				rets = append(rets, getLeafNodes(child)...)
-				break
-			}
+		if len(node.GetChildren()) > 0 {
+			rets = append(rets, getLeafNodes(node)...)
+		} else {
+			rets = append(rets, node)
 		}
 	}
 	return rets
