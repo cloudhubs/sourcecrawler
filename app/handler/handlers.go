@@ -3,7 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"go/token"
 	"net/http"
+	"sourcecrawler/app/cfg"
 	"sourcecrawler/app/model"
 
 	"github.com/jinzhu/gorm"
@@ -83,6 +85,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := struct {
 		StackTrace  string   `json:"stackTrace"`
 		LogMessages []string `json:"logMessages"`
+		ProjectRoot string `json:"projectRoot"`
 	}{}
 
 	decoder := json.NewDecoder(r.Body)
@@ -90,10 +93,33 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	defer r.Body.Close()
 
-	//Hold project root info from the request
-	projectRoot := model.ParseProjectRequest{}.ProjectRoot
+	//fmt.Println("stack trace:",request.StackTrace)
+	//fmt.Println(request.LogMessages)
+	//fmt.Println("Project Root,", request.ProjectRoot)
 
-	//Parse stack trace
-	parsePanic(projectRoot, request.StackTrace)
+	//1 -- parse stack trace for functions that led to exception
+	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
+	fmt.Println(parsedStack)
+
+	//2 -- Parse project for log statements with regex + line + file name
+	logTypes := parseProject(request.ProjectRoot)
+	//fmt.Println(logTypes)
+
+	//Assign log messages (regex)
+	for _, value := range logTypes{
+		request.LogMessages = append(request.LogMessages, value.Regex)
+		fmt.Println(value)
+	}
+
+	//3 -- Construct the CFG
+	regexMap := mapLogRegex(logTypes)
+	fset := token.NewFileSet()
+	cfgCreator := cfg.NewFnCfgCreator()
+
+	//TODO: pass a func decl node here (use functions from the stack trace?)
+	cfgCreator.CreateCfg(nil, request.ProjectRoot, fset, regexMap)
+
+	//4 -- Connect the CFG nodes together?
 }

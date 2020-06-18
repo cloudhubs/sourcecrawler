@@ -149,6 +149,19 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 				}
 			}
 
+			//Case where a function returns another function (will have two sets of parens)
+			if strings.Index(logStr, "(") != strings.LastIndex(logStr, "("){
+				tempStr := logStr[strings.Index(logStr, ")"): strings.LastIndex(logStr, "(")]
+				firstNdx := strings.Index(tempStr, ".")+1
+
+				//If more than 1 function call together, then grab the first
+				if strings.Count(tempStr, ".") > 1{
+					tempFuncName = tempStr[firstNdx : strings.LastIndex(tempStr, ".")]
+				}else{
+					tempFuncName = tempStr[firstNdx:]
+				}
+			}
+
 			//If found, add to list of function names
 			// bug with app.go function -- inside handleRequest issue with returning a function
 			if _, found := functionsMap[tempFuncName]; found{
@@ -203,6 +216,22 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 }
 
 func splitStackTraceString(sts string) []string{
+
+	//Used to generate a JSON formatted stack trace for the POST request
+	//temp := strings.Split(sts, "\n")
+	//for index := range temp{
+	//	if strings.Contains(temp[index], "\""){
+	//		newStr := strings.ReplaceAll(temp[index], "\"", "")
+	//		fmt.Print(newStr + " \\n ")
+	//	} else if strings.Contains(temp[index], "\t"){
+	//		newStr := strings.ReplaceAll(temp[index], "\t", "")
+	//		fmt.Print(newStr + " \\n ")
+	//	} else{
+	//		fmt.Print(temp[index] + " \\n ")
+	//	}
+	//}
+	//fmt.Println()
+
 	return strings.Split(sts, "\n")
 }
 

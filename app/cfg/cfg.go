@@ -26,7 +26,7 @@ func NewFnCfgCreator() *FnCfgCreator {
 	}
 }
 
-// CreateCfg creates the CFG For a given function declaration, filepath and file, and a map of regexes containde within the file.
+// CreateCfg creates the CFG For a given function declaration, filepath and file, and a map of regexes contained within the file.
 func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.FileSet, regexes map[int]string) db.Node {
 	if fn == nil {
 		log.Warn().Msg("received a null function declaration")
@@ -39,6 +39,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		return nil
 	}
 
+	//Create a new map of blocks to nodes (not sure if NewFnCfgCreator replaces this?)
 	fnCfg.blocks = make(map[*cfg.Block]db.Node)
 
 	// Function declaration is the root node
