@@ -3,9 +3,8 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
-	"github.com/jinzhu/gorm"
-	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -15,6 +14,9 @@ import (
 	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	_ "strings"
+
+	"github.com/jinzhu/gorm"
+	"github.com/rs/zerolog/log"
 )
 
 func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -36,8 +38,13 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			log.Error().Err(err).Msg("unable to parse file")
 		}
 
-		fmt.Println(f.Name.Name, request.ProjectRoot)
-		logInfo, _ := findLogsInFile(f.Name.Name+".go", request.ProjectRoot)
+		var file string
+		s := strings.Split(goFile, request.ProjectRoot)
+		if len(s) > 1 {
+			file = s[1]
+		}
+		file = strings.Replace(file, "/", "", 1)
+		logInfo, _ := findLogsInFile(file, request.ProjectRoot)
 		regexes := mapLogRegex(logInfo)
 
 		c := cfg.FnCfgCreator{}
@@ -136,7 +143,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := struct {
 		StackTrace  string   `json:"stackTrace"`
 		LogMessages []string `json:"logMessages"` //it holds raw log statements
-		ProjectRoot string `json:"projectRoot"`
+		ProjectRoot string   `json:"projectRoot"`
 	}{}
 
 	decoder := json.NewDecoder(r.Body)
@@ -155,10 +162,10 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	//Matching log messages to a regex (only returns used regexes)
 	regexes := []string{}
-	for index := range request.LogMessages{
-		for _, value := range logTypes{
+	for index := range request.LogMessages {
+		for _, value := range logTypes {
 			matched, _ := regexp.MatchString(value.Regex, request.LogMessages[index])
-			if matched{
+			if matched {
 				regexes = append(regexes, value.Regex)
 				fmt.Println("Valid regexes:", value.Regex)
 				break
@@ -171,11 +178,11 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	astFdNodes := []*ast.FuncDecl{} //Contains all the relevant function nodes used in the stack trace
 
 	//Adds function nodes that are used in the stack trace
-	for _, value := range parsedStack{
-		for index := range value.funcName{
+	for _, value := range parsedStack {
+		for index := range value.funcName {
 			fdNode := getFdASTNode(value.fileName[index], value.funcName[index], stackFuncNodes)
-			if fdNode != nil{
-				astFdNodes = append(astFdNodes,fdNode)
+			if fdNode != nil {
+				astFdNodes = append(astFdNodes, fdNode)
 			}
 		}
 	}
@@ -187,7 +194,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	cfgCreator := cfg.FnCfgCreator{}
 
 	//Only pass in the FuncDecl nodes that are used in the stack trace
-	for _, fdNode := range astFdNodes{
+	for _, fdNode := range astFdNodes {
 		decls = append(decls, cfgCreator.CreateCfg(fdNode, request.ProjectRoot, fset, regexMap))
 	}
 
