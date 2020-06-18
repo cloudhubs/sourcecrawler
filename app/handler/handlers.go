@@ -41,14 +41,14 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		c := cfg.FnCfgCreator{}
 		ast.Inspect(f, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
-				fmt.Println("parsing", fn)
+				// fmt.Println("parsing", fn)
 				decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
 			}
 			return true
 		})
-		fmt.Println("done parsing")
+		// fmt.Println("done parsing")
 	}
-	fmt.Println("finally done parsing")
+	// fmt.Println("finally done parsing")
 
 	decls = cfg.ConnectFnCfgs(decls)
 
