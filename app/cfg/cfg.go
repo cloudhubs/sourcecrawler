@@ -667,7 +667,7 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 			}
 		}
 		if node != nil {
-			return getReferencesRecur(fn, node, refs)
+			refs = append(refs, getReferencesRecur(fn, node, refs)...)
 		}
 	}
 	return refs
@@ -676,15 +676,33 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 // ConnectRefsToDecl connects all function call node children
 // in `fn` and connects them to copies of `decl`
 func ConnectRefsToDecl(fn db.Node, decl db.Node) {
+	// rets := false
+	// if f, ok := fn.(*db.FunctionDeclNode); ok && f.FunctionName == "rets" {
+	// 	rets = true
+	// }
+	// bar := false
+	// if f, ok := decl.(*db.FunctionDeclNode); ok && f.FunctionName == "bar" {
+	// 	bar = true
+	// }
 	refs := getReferences(decl.(*db.FunctionDeclNode), fn)
+	// fmt.Println(fn.GetProperties(), len(refs), refs)
 	for _, ref := range refs {
+		if _, ok := ref.Child.(*db.FunctionDeclNode); ok {
+			continue
+		}
 		copy := CopyCfg(decl)
 		// fmt.Println("ref", ref, ref.Child)
 		child := ref.Child
 		ref.Child = copy
 		// fmt.Println("ref", ref, ref.Child)
 		for _, leaf := range getLeafNodes(copy) {
+			// if rets {
+			// 	fmt.Println("leaf:", leaf.GetProperties())
+			// }
 			if _, ok := leaf.(*db.ConditionalNode); ok || leaf == ref {
+				// if rets {
+				// 	fmt.Println("found conditional, skipping", c.GetProperties())
+				// }
 				continue
 			}
 			leaf.SetChild([]db.Node{child})
