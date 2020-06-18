@@ -676,33 +676,19 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 // ConnectRefsToDecl connects all function call node children
 // in `fn` and connects them to copies of `decl`
 func ConnectRefsToDecl(fn db.Node, decl db.Node) {
-	// rets := false
-	// if f, ok := fn.(*db.FunctionDeclNode); ok && f.FunctionName == "rets" {
-	// 	rets = true
-	// }
-	// bar := false
-	// if f, ok := decl.(*db.FunctionDeclNode); ok && f.FunctionName == "bar" {
-	// 	bar = true
-	// }
 	refs := getReferences(decl.(*db.FunctionDeclNode), fn)
-	// fmt.Println(fn.GetProperties(), len(refs), refs)
+
 	for _, ref := range refs {
 		if _, ok := ref.Child.(*db.FunctionDeclNode); ok {
 			continue
 		}
+
 		copy := CopyCfg(decl)
-		// fmt.Println("ref", ref, ref.Child)
 		child := ref.Child
 		ref.Child = copy
-		// fmt.Println("ref", ref, ref.Child)
+
 		for _, leaf := range getLeafNodes(copy) {
-			// if rets {
-			// 	fmt.Println("leaf:", leaf.GetProperties())
-			// }
 			if _, ok := leaf.(*db.ConditionalNode); ok || leaf == ref {
-				// if rets {
-				// 	fmt.Println("found conditional, skipping", c.GetProperties())
-				// }
 				continue
 			}
 			leaf.SetChild([]db.Node{child})
@@ -715,21 +701,15 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) {
 // should be checked for calls to that function and given
 // a copy of its declaration to reference for each call.
 func ConnectFnCfgs(funcs []db.Node) []db.Node {
-	// for i := 0; i < 3; i++ {
-	for j, fn := range funcs {
-		for k, otherFn := range funcs {
-			if j != k {
-				// if d.FunctionName == "test" {
-				// 	fmt.Println("connecting", fn.GetProperties(), otherFn.GetProperties())
-				// }
-				connectCallsToDecls(fn, otherFn)
-				// if d.FunctionName == "test" {
-				// 	PrintCfg(fn, "")
-				// }
+	for i := 0; i < 3; i++ {
+		for j, fn := range funcs {
+			for k, otherFn := range funcs {
+				if j != k {
+					connectCallsToDecls(fn, otherFn)
+				}
 			}
 		}
 	}
-	// }
 	return funcs
 }
 
@@ -739,12 +719,7 @@ func connectCallsToDecls(parent db.Node, decl db.Node) {
 	if decl == nil || parent == nil || !ok {
 		return
 	}
-
-	// fmt.Println("copy:", copy)
-	// PrintCfg(copy, "")
-	// fmt.Println(parent)
 	ConnectRefsToDecl(parent, decl)
-	// fmt.Println(parent)
 }
 
 // CopyCfg lets you copy a CFG beginning at its root
