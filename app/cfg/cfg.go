@@ -98,6 +98,11 @@ func PrintCfg(node db.Node, level string) {
 		PrintCfg(node.FalseChild, level+"  ")
 	case *db.ReturnNode:
 		fmt.Printf("%sreturn %s\n", level, node.Expression)
+		lv := ""
+		for i := 0; i < len(level)-2; i++ {
+			lv += " "
+		}
+		PrintCfg(node.Child, lv)
 	}
 }
 
@@ -671,25 +676,20 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 // ConnectRefsToDecl connects all function call node children
 // in `fn` and connects them to copies of `decl`
 func ConnectRefsToDecl(fn db.Node, decl db.Node) {
-	// fmt.Println("connecting", fn, "refs to", decl)
-	leaves := getLeafNodes(fn)
 	refs := getReferences(decl.(*db.FunctionDeclNode), fn)
-	// fmt.Println(len(refs), refs)
 	for _, ref := range refs {
+		copy := CopyCfg(decl)
 		// fmt.Println("ref", ref, ref.Child)
 		child := ref.Child
-		ref.Child = decl
+		ref.Child = copy
 		// fmt.Println("ref", ref, ref.Child)
-		for _, leaf := range leaves {
+		for _, leaf := range getLeafNodes(copy) {
 			if _, ok := leaf.(*db.ConditionalNode); ok || leaf == ref {
 				continue
 			}
-			// fmt.Println("ret", ret, ret.GetChildren())
 			leaf.SetChild([]db.Node{child})
-			// fmt.Println("ret", ret, ret.GetChildren())
 		}
 	}
-	// connectStackTraceFuncs([]db.Node{decl, call})
 }
 
 // ConnectFnCfgs takes as input all of the function declaration
@@ -697,18 +697,21 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) {
 // should be checked for calls to that function and given
 // a copy of its declaration to reference for each call.
 func ConnectFnCfgs(funcs []db.Node) []db.Node {
-	for i := 0; i < 3; i++ {
-		for j, fn := range funcs {
-			// fmt.Println("doing", fn)
-			for k, otherFn := range funcs {
-				if j != k {
-					// fmt.Println("connecting", fn, otherFn)
-					connectCallsToDecls(fn, otherFn)
-				}
+	// for i := 0; i < 3; i++ {
+	for j, fn := range funcs {
+		for k, otherFn := range funcs {
+			if j != k {
+				// if d.FunctionName == "test" {
+				// 	fmt.Println("connecting", fn.GetProperties(), otherFn.GetProperties())
+				// }
+				connectCallsToDecls(fn, otherFn)
+				// if d.FunctionName == "test" {
+				// 	PrintCfg(fn, "")
+				// }
 			}
-			PrintCfg(fn, "")
 		}
 	}
+	// }
 	return funcs
 }
 
@@ -719,11 +722,10 @@ func connectCallsToDecls(parent db.Node, decl db.Node) {
 		return
 	}
 
-	copy := CopyCfg(decl)
 	// fmt.Println("copy:", copy)
 	// PrintCfg(copy, "")
 	// fmt.Println(parent)
-	ConnectRefsToDecl(parent, copy)
+	ConnectRefsToDecl(parent, decl)
 	// fmt.Println(parent)
 }
 

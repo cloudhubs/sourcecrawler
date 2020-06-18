@@ -81,6 +81,9 @@ type ConditionalNode struct {
 // STATEMENT NODES
 
 func (n *StatementNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -122,6 +125,9 @@ func (n *StatementNode) SetLineNumber(line int) {
 // CONDITIONAL NODES
 
 func (n *ConditionalNode) GetChildren() map[Node]string {
+	if n.TrueChild == nil && n.FalseChild == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.TrueChild:  `{ takeIf: "true" }`,
 		n.FalseChild: `{ takeIf: "false" }`,
@@ -162,6 +168,9 @@ func (n *ConditionalNode) SetLineNumber(line int) {
 // FUNCTION (CALL) NODES
 
 func (n *FunctionNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -200,6 +209,9 @@ func (n *FunctionNode) SetLineNumber(line int) {
 // FUNCTION DECLARATION NODES
 
 func (n *FunctionDeclNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -255,6 +267,9 @@ func (n *FunctionDeclNode) SetLineNumber(line int) {
 // RETURN NODES
 
 func (n *ReturnNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
