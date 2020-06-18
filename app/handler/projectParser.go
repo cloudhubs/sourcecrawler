@@ -633,3 +633,56 @@ func createRegex(value string) string {
 	//Remove the double quotes
 	return reg[1 : len(reg)-1]
 }
+
+func findMustHaves(root db.Node, stackTrace []stackTraceStruct, regexs []string) []db.Node {
+	//must-have is on stack trace or contains a regex
+	return findMustHavesRecur(root, stackTrace, regexs)
+}
+
+func findMustHavesRecur(n db.Node, stackTrace []stackTraceStruct, regexs []string) []db.Node {
+	mustHave := []db.Node{}
+	if n, ok := n.(*db.FunctionNode); ok && n != nil {
+		if isInStack(n, stackTrace) || wasLogged(n, regexs) {
+			mustHave = append(mustHave, n)
+		}
+	}
+	for child := range n.GetChildren() {
+		mustHave = append(mustHave, findMustHavesRecur(child, stackTrace, regexs)...)
+	}
+	return mustHave
+}
+
+func isInStack(fn db.Node, stackTrace []stackTraceStruct) bool {
+	//traverse
+	for _, trace := range stackTrace {
+		for _, funcName := range trace.funcName {
+			if fn, ok := fn.(*db.FunctionNode); ok {
+				if fn.FunctionName == funcName {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func wasLogged(fn db.Node, regexs []string) bool {
+	//traverse children that are not function
+	//calls and see if any contain log statements seen
+	//in regexs
+	for child := range fn.GetChildren() {
+		//stop at function nodes
+		if _, ok := child.(*db.FunctionNode); ok {
+			continue
+		}
+		if child, ok := child.(*db.StatementNode); ok {
+			if strings.Contains(strings.Join(regexs, ","), child.LogRegex) {
+				return true
+			}
+		}
+		return wasLogged(child, regexs)
+	}
+	//if no children found a matching log statment
+	//this function is not logged
+	return false
+}
