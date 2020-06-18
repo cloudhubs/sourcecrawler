@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sourcecrawler/app/cfg"
 	"sourcecrawler/app/model"
+	neoDb "sourcecrawler/app/db"
 
 	"github.com/jinzhu/gorm"
 )
@@ -138,8 +139,8 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	//3 -- create CFG nodes for each function
 	fset := token.NewFileSet()
+	var decls []neoDb.Node
 
-	//TODO: currently error with nil memory address
 	for _, goFile := range filesToParse {
 		file, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
 		if err != nil {
@@ -152,7 +153,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 		cfgCreator := cfg.FnCfgCreator{}
 
-		ast.Inspect(f, func(node ast.Node) bool {
+		ast.Inspect(file, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// fmt.Println("parsing", fn)
 				decls = append(decls, cfgCreator.CreateCfg(fn, request.ProjectRoot, fset, regexMap))
@@ -169,9 +170,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		cfg.PrintCfg(decl, "")
 		fmt.Println()
 	}
-	//for _, val := range astFdNodes {
-	//	cfgCreator.CreateCfg(val, request.ProjectRoot, fset, regexMap)
-	//}
+
 
 	//4 -- Connect the CFG nodes together?
 
