@@ -99,6 +99,11 @@ func PrintCfg(node db.Node, level string) {
 		PrintCfg(node.FalseChild, level+"  ")
 	case *db.ReturnNode:
 		fmt.Printf("%sreturn %s\n", level, node.Expression)
+		lv := ""
+		for i := 0; i < len(level)-2; i++ {
+			lv += " "
+		}
+		PrintCfg(node.Child, lv)
 	}
 }
 
@@ -623,30 +628,163 @@ func ConnectStackTrace(fns []db.Node) {
 func getLeafNodes(fn db.Node) []db.Node {
 	rets := []db.Node{}
 	for node := range fn.GetChildren() {
+		if node == nil {
+			continue
+		}
 		//if a child is nil (for conditionals
 		//either both will be nil or neither
 		//so only one needs to be checked)
 		//this is a return statement, otherwise,
 		//call this function on the node only
 		//once then break the loop
-		for child := range node.GetChildren() {
-			if child == nil {
-				rets = append(rets, node)
-			} else {
-				rets = append(rets, getLeafNodes(node)...)
-				break
-			}
+		if len(node.GetChildren()) > 0 {
+			rets = append(rets, getLeafNodes(node)...)
+		} else {
+			rets = append(rets, node)
 		}
 	}
 	return rets
 }
 
 func getReference(fn *db.FunctionDeclNode, parent db.Node) (*db.FunctionNode, error) {
+	if refs := getReferences(fn, parent); len(refs) > 0 {
+		return refs[0], nil
+	} else {
+		return nil, errors.New("No reference found")
+	}
+}
+
+func getReferences(fn *db.FunctionDeclNode, parent db.Node) []*db.FunctionNode {
+	return getReferencesRecur(fn, parent, make([]*db.FunctionNode, 0))
+}
+
+func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.FunctionNode) []*db.FunctionNode {
+	if parent == nil {
+		return refs
+	}
 	for node := range parent.GetChildren() {
 		if node, ok := node.(*db.FunctionNode); ok && node.FunctionName == fn.FunctionName {
-			return node, nil
+			if node != nil {
+				refs = append(refs, node)
+			}
 		}
-		return getReference(fn, node)
+		if node != nil {
+			refs = append(refs, getReferencesRecur(fn, node, refs)...)
+		}
 	}
-	return nil, errors.New("No reference found")
+	return refs
+}
+
+// ConnectRefsToDecl connects all function call node children
+// in `fn` and connects them to copies of `decl`
+func ConnectRefsToDecl(fn db.Node, decl db.Node) {
+	refs := getReferences(decl.(*db.FunctionDeclNode), fn)
+
+	for _, ref := range refs {
+		if _, ok := ref.Child.(*db.FunctionDeclNode); ok {
+			continue
+		}
+
+		copy := CopyCfg(decl)
+		child := ref.Child
+		ref.Child = copy
+
+		for _, leaf := range getLeafNodes(copy) {
+			if _, ok := leaf.(*db.ConditionalNode); ok || leaf == ref {
+				continue
+			}
+			leaf.SetChild([]db.Node{child})
+		}
+	}
+}
+
+// ConnectFnCfgs takes as input all of the function declaration
+// roots where every other function declaration in the slice
+// should be checked for calls to that function and given
+// a copy of its declaration to reference for each call.
+func ConnectFnCfgs(funcs []db.Node) []db.Node {
+	for i := 0; i < 3; i++ {
+		for j, fn := range funcs {
+			for k, otherFn := range funcs {
+				if j != k {
+					connectCallsToDecls(fn, otherFn)
+				}
+			}
+		}
+	}
+	return funcs
+}
+
+// parent is the function whose children call decl
+func connectCallsToDecls(parent db.Node, decl db.Node) {
+	decl, ok := decl.(*db.FunctionDeclNode)
+	if decl == nil || parent == nil || !ok {
+		return
+	}
+	ConnectRefsToDecl(parent, decl)
+}
+
+// CopyCfg lets you copy a CFG beginning at its root
+func CopyCfg(root db.Node) db.Node {
+	if root == nil {
+		return nil
+	}
+	return copyCfgRecur(root, make(map[db.Node]db.Node))
+}
+
+func copyCfgRecur(node db.Node, copied map[db.Node]db.Node) (copy db.Node) {
+	if node == nil {
+		return nil
+	}
+
+	switch node := node.(type) {
+	case *db.FunctionDeclNode:
+		copy = &db.FunctionDeclNode{
+			FunctionName: node.FunctionName,
+			Receivers:    node.Receivers,
+			Params:       node.Params,
+			Returns:      node.Returns,
+			Child:        copyChild(node.Child, copied),
+		}
+	case *db.FunctionNode:
+		copy = &db.FunctionNode{
+			FunctionName: node.FunctionName,
+			Child:        copyChild(node.Child, copied),
+		}
+	case *db.ConditionalNode:
+		copy = &db.ConditionalNode{
+			Condition:  node.Condition,
+			TrueChild:  copyChild(node.TrueChild, copied),
+			FalseChild: copyChild(node.FalseChild, copied),
+		}
+	case *db.StatementNode:
+		copy = &db.StatementNode{
+			LogRegex: node.LogRegex,
+			Child:    copyChild(node.Child, copied),
+		}
+	case *db.ReturnNode:
+		copy = &db.ReturnNode{
+			Expression: node.Expression,
+			Child:      copyChild(node.Child, copied),
+		}
+	}
+
+	if copy != nil {
+		copy.SetLineNumber(node.GetLineNumber())
+		copy.SetFilename(node.GetFilename())
+	}
+	return copy
+}
+
+func copyChild(node db.Node, copied map[db.Node]db.Node) db.Node {
+	var copy db.Node
+	if node != nil {
+		if n, ok := copied[node]; ok {
+			copy = n
+		} else {
+			copy = copyCfgRecur(node, copied)
+			copied[node] = copy
+		}
+	}
+	return copy
 }

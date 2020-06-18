@@ -3,17 +3,63 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/jinzhu/gorm"
 	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"net/http"
+	"regexp"
 	"sourcecrawler/app/cfg"
-	"sourcecrawler/app/model"
 	neoDb "sourcecrawler/app/db"
-
-	"github.com/jinzhu/gorm"
+	"sourcecrawler/app/model"
+	_ "strings"
 )
+
+func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	request := model.ParseProjectRequest{}
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer r.Body.Close()
+
+	var decls []neoDb.Node
+
+	fset := token.NewFileSet()
+	for _, goFile := range gatherGoFiles(request.ProjectRoot) {
+		f, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
+		if err != nil {
+			log.Error().Err(err).Msg("unable to parse file")
+		}
+
+		fmt.Println(f.Name.Name, request.ProjectRoot)
+		logInfo, _ := findLogsInFile(f.Name.Name+".go", request.ProjectRoot)
+		regexes := mapLogRegex(logInfo)
+
+		c := cfg.FnCfgCreator{}
+		ast.Inspect(f, func(node ast.Node) bool {
+			if fn, ok := node.(*ast.FuncDecl); ok {
+				// fmt.Println("parsing", fn)
+				decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
+			}
+			return true
+		})
+		// fmt.Println("done parsing")
+	}
+	// fmt.Println("finally done parsing")
+
+	decls = cfg.ConnectFnCfgs(decls)
+
+	for _, decl := range decls {
+		cfg.PrintCfg(decl, "")
+		fmt.Println()
+	}
+
+}
 
 func NeoTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	createTestNeoNodes()
@@ -104,19 +150,27 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	// returns a list of regex string
 	//1 -- parse stack trace for functions that led to exception
 	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
+	fmt.Println(parsedStack)
 
 	//2 -- Parse project for log statements with regex + line + file name
-	/*logInfo :=*/ parseProject(request.ProjectRoot)
+	logTypes := parseProject(request.ProjectRoot)
 
-	//Assign log messages (regex)
-	//for _, value := range logInfo{
-	//	request.LogMessages = append(request.LogMessages, value.Regex)
-	//	fmt.Println(value)
-	//}
+	//Matching log messages
+	regexes := []string{}
+	for index := range request.LogMessages{
+		for _, value := range logTypes{
+			matched, _ := regexp.MatchString(value.Regex, request.LogMessages[index])
+			if matched{
+				regexes = append(regexes, value.Regex)
+				fmt.Println("Valid regexes:", value.Regex)
+				break
+			}
+		}
+	}
 
 	filesToParse := gatherGoFiles(request.ProjectRoot)
 	stackFuncNodes := findFunctionNodes(filesToParse)
-	astFdNodes := []*ast.FuncDecl{}
+	astFdNodes := []*ast.FuncDecl{} //Contains all the relevant function nodes used in the stack trace
 
 	//Add the function node if its used in the stack trace
 	for _, value := range parsedStack{
@@ -138,6 +192,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 
 	//3 -- create CFG nodes for each function
+	regexMap := mapLogRegex(logTypes) //Create regexes based from the parseProject logTypes
 	fset := token.NewFileSet()
 	var decls []neoDb.Node
 
@@ -148,29 +203,25 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Println(file.Name.Name, request.ProjectRoot)
-		logInfo, _ := findLogsInFile(file.Name.Name+".go", request.ProjectRoot)
-		regexMap := mapLogRegex(logInfo)
+		//logInfo, _ := findLogsInFile(file.Name.Name+".go", request.ProjectRoot)
 
 		cfgCreator := cfg.FnCfgCreator{}
 
-		ast.Inspect(file, func(node ast.Node) bool {
-			if fn, ok := node.(*ast.FuncDecl); ok {
-				// fmt.Println("parsing", fn)
-				decls = append(decls, cfgCreator.CreateCfg(fn, request.ProjectRoot, fset, regexMap))
-			}
-			return true
-		})
+		//Only pass in the declarations that are used in the stack trace
+		for _, fdNode := range astFdNodes{
+			decls = append(decls, cfgCreator.CreateCfg(fdNode, request.ProjectRoot, fset, regexMap))
+		}
+
 		// fmt.Println("done parsing")
 	}
-	// fmt.Println("finally done parsing")
-
+	//fmt.Println("finally done parsing")
 	decls = cfg.ConnectFnCfgs(decls)
 
+	//Test print the declarations
 	for _, decl := range decls {
 		cfg.PrintCfg(decl, "")
 		fmt.Println()
 	}
-
 
 	//4 -- Connect the CFG nodes together?
 

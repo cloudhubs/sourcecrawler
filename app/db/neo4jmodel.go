@@ -25,6 +25,10 @@ type Node interface {
 	GetFilename() string
 
 	GetLineNumber() int
+
+	SetFilename(filename string)
+
+	SetLineNumber(line int)
 }
 
 type FunctionNode struct {
@@ -77,6 +81,9 @@ type ConditionalNode struct {
 // STATEMENT NODES
 
 func (n *StatementNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -107,9 +114,20 @@ func (n *StatementNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+func (n *StatementNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *StatementNode) SetLineNumber(line int) {
+	n.LineNumber = line
+}
+
 // CONDITIONAL NODES
 
 func (n *ConditionalNode) GetChildren() map[Node]string {
+	if n.TrueChild == nil && n.FalseChild == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.TrueChild:  `{ takeIf: "true" }`,
 		n.FalseChild: `{ takeIf: "false" }`,
@@ -139,9 +157,20 @@ func (n *ConditionalNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+func (n *ConditionalNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *ConditionalNode) SetLineNumber(line int) {
+	n.LineNumber = line
+}
+
 // FUNCTION (CALL) NODES
 
 func (n *FunctionNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -169,9 +198,20 @@ func (n *FunctionNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+func (n *FunctionNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *FunctionNode) SetLineNumber(line int) {
+	n.LineNumber = line
+}
+
 // FUNCTION DECLARATION NODES
 
 func (n *FunctionDeclNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -216,9 +256,20 @@ func (n *FunctionDeclNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+func (n *FunctionDeclNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *FunctionDeclNode) SetLineNumber(line int) {
+	n.LineNumber = line
+}
+
 // RETURN NODES
 
 func (n *ReturnNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -244,4 +295,12 @@ func (n *ReturnNode) GetFilename() string {
 
 func (n *ReturnNode) GetLineNumber() int {
 	return n.LineNumber
+}
+
+func (n *ReturnNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *ReturnNode) SetLineNumber(line int) {
+	n.LineNumber = line
 }

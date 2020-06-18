@@ -45,6 +45,7 @@ func (a *App) setRouters() {
 	a.Post("/matcher", a.handleRequest(handler.FindLogSource))
 	a.Post("/slicer", a.handleRequest(handler.SliceProgram))
 	a.Post("/neotest", a.handleRequest(handler.NeoTest))
+	a.Post("/cfg", a.handleRequest(handler.ConnectedCfgTest))
 }
 
 // Get wraps the router for GET method
