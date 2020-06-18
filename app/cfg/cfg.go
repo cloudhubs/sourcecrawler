@@ -631,10 +631,12 @@ func getLeafNodes(fn db.Node) []db.Node {
 		//call this function on the node only
 		//once then break the loop
 		for child := range node.GetChildren() {
-			if child == nil {
+			if child == node {
+				continue
+			} else if child == nil {
 				rets = append(rets, node)
 			} else {
-				rets = append(rets, getLeafNodes(node)...)
+				rets = append(rets, getLeafNodes(child)...)
 				break
 			}
 		}
@@ -674,6 +676,7 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 // ConnectRefsToDecl connects all function call node children
 // in `fn` and connects them to copies of `decl`
 func ConnectRefsToDecl(fn db.Node, decl db.Node) {
+	// fmt.Println("connecting", fn, "refs to", decl)
 	leaves := getLeafNodes(fn)
 	refs := getReferences(decl.(*db.FunctionDeclNode), fn)
 	// fmt.Println(len(refs), refs)
@@ -699,11 +702,16 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) {
 // should be checked for calls to that function and given
 // a copy of its declaration to reference for each call.
 func ConnectFnCfgs(funcs []db.Node) []db.Node {
-	for i, fn := range funcs {
-		for j, otherFn := range funcs {
-			if i != j {
-				connectCallsToDecls(fn, otherFn)
+	for i := 0; i < 3; i++ {
+		for j, fn := range funcs {
+			// fmt.Println("doing", fn)
+			for k, otherFn := range funcs {
+				if j != k {
+					// fmt.Println("connecting", fn, otherFn)
+					connectCallsToDecls(fn, otherFn)
+				}
 			}
+			PrintCfg(fn, "")
 		}
 	}
 	return funcs
