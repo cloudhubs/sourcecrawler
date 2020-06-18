@@ -14,80 +14,6 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
-type ConnectedCfgCreator struct {
-	funcs          []*ast.FuncDecl
-	base           string
-	fset           *token.FileSet
-	filesToRegexes map[*token.File]map[int]string
-	fnCfgCreator   *FnCfgCreator
-}
-
-func NewConnectedCfgCreator(
-	funcs []*ast.FuncDecl, base string, fset *token.FileSet, filesToRegexes map[*token.File]map[int]string,
-) *ConnectedCfgCreator {
-	return &ConnectedCfgCreator{
-		funcs:          funcs,
-		base:           base,
-		fset:           fset,
-		filesToRegexes: filesToRegexes,
-		fnCfgCreator:   NewFnCfgCreator(),
-	}
-}
-
-func (conn *ConnectedCfgCreator) getRegexesForPos(pos token.Pos) map[int]string {
-	file := conn.fset.File(pos)
-	ok := false
-
-	var regexes map[int]string
-	if regexes, ok = conn.filesToRegexes[file]; !ok {
-		regexes = make(map[int]string)
-	}
-
-	return regexes
-}
-
-func (conn *ConnectedCfgCreator) CreateConnectedCfg() []db.Node {
-	fnRoots := make([]db.Node, 0)
-
-	decls := make(map[string]*ast.FuncDecl)
-
-	for _, fn := range conn.funcs {
-		regexes := conn.getRegexesForPos(fn.Pos())
-
-		root := conn.fnCfgCreator.CreateCfg(fn, conn.base, conn.fset, regexes)
-		if root != nil {
-			decl := root.(*db.FunctionDeclNode)
-			decls[decl.FunctionName] = fn
-			fnRoots = append(fnRoots, root)
-		}
-	}
-
-	for _, fn := range fnRoots {
-		fn := fn.(*db.FunctionDeclNode)
-		conn.connectCallsToDecls(fn, decls)
-	}
-
-	return fnRoots
-}
-
-func (conn *ConnectedCfgCreator) connectCallsToDecls(parent db.Node, funcNameToDecl map[string]*ast.FuncDecl) {
-	if funcNameToDecl == nil || parent == nil {
-		return
-	}
-
-	for node := range parent.GetChildren() {
-		if call, ok := node.(*db.FunctionNode); ok {
-			if astDecl, ok := funcNameToDecl[call.FunctionName]; ok {
-				regexes := conn.getRegexesForPos(astDecl.Pos())
-
-				callDecl := conn.fnCfgCreator.CreateCfg(astDecl, conn.base, conn.fset, regexes)
-				ConnectCallToDecl(call, callDecl)
-			}
-		}
-		conn.connectCallsToDecls(node, funcNameToDecl)
-	}
-}
-
 // FnCfgCreator allows you to compute the CFG for a given function declaration
 type FnCfgCreator struct {
 	blocks map[*cfg.Block]db.Node
@@ -667,10 +593,6 @@ func callExprName(call *ast.CallExpr) string {
 	return name
 }
 
-func ConnectCallToDecl(call db.Node, decl db.Node) {
-	ConnectStackTrace([]db.Node{decl, call})
-}
-
 func ConnectStackTrace(fns []db.Node) {
 	for i, fn := range fns {
 		if i < len(fns)-1 {
@@ -699,6 +621,9 @@ func ConnectStackTrace(fns []db.Node) {
 func getLeafNodes(fn db.Node) []db.Node {
 	rets := []db.Node{}
 	for node := range fn.GetChildren() {
+		if node == nil {
+			continue
+		}
 		//if a child is nil (for conditionals
 		//either both will be nil or neither
 		//so only one needs to be checked)
@@ -744,4 +669,122 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 		}
 	}
 	return refs
+}
+
+// ConnectRefsToDecl connects all function call node children
+// in `fn` and connects them to copies of `decl`
+func ConnectRefsToDecl(fn db.Node, decl db.Node) {
+	leaves := getLeafNodes(fn)
+	refs := getReferences(decl.(*db.FunctionDeclNode), fn)
+	// fmt.Println(len(refs), refs)
+	for _, ref := range refs {
+		// fmt.Println("ref", ref, ref.Child)
+		child := ref.Child
+		ref.Child = decl
+		// fmt.Println("ref", ref, ref.Child)
+		for _, leaf := range leaves {
+			if _, ok := leaf.(*db.ConditionalNode); ok || leaf == ref {
+				continue
+			}
+			// fmt.Println("ret", ret, ret.GetChildren())
+			leaf.SetChild([]db.Node{child})
+			// fmt.Println("ret", ret, ret.GetChildren())
+		}
+	}
+	// connectStackTraceFuncs([]db.Node{decl, call})
+}
+
+// ConnectFnCfgs takes as input all of the function declaration
+// roots where every other function declaration in the slice
+// should be checked for calls to that function and given
+// a copy of its declaration to reference for each call.
+func ConnectFnCfgs(funcs []db.Node) []db.Node {
+	for i, fn := range funcs {
+		for j, otherFn := range funcs {
+			if i != j {
+				connectCallsToDecls(fn, otherFn)
+			}
+		}
+	}
+	return funcs
+}
+
+// parent is the function whose children call decl
+func connectCallsToDecls(parent db.Node, decl db.Node) {
+	decl, ok := decl.(*db.FunctionDeclNode)
+	if decl == nil || parent == nil || !ok {
+		return
+	}
+
+	copy := CopyCfg(decl)
+	// fmt.Println("copy:", copy)
+	// PrintCfg(copy, "")
+	// fmt.Println(parent)
+	ConnectRefsToDecl(parent, copy)
+	// fmt.Println(parent)
+}
+
+// CopyCfg lets you copy a CFG beginning at its root
+func CopyCfg(root db.Node) db.Node {
+	if root == nil {
+		return nil
+	}
+	return copyCfgRecur(root, make(map[db.Node]db.Node))
+}
+
+func copyCfgRecur(node db.Node, copied map[db.Node]db.Node) (copy db.Node) {
+	if node == nil {
+		return nil
+	}
+
+	switch node := node.(type) {
+	case *db.FunctionDeclNode:
+		copy = &db.FunctionDeclNode{
+			FunctionName: node.FunctionName,
+			Receivers:    node.Receivers,
+			Params:       node.Params,
+			Returns:      node.Returns,
+			Child:        copyChild(node.Child, copied),
+		}
+	case *db.FunctionNode:
+		copy = &db.FunctionNode{
+			FunctionName: node.FunctionName,
+			Child:        copyChild(node.Child, copied),
+		}
+	case *db.ConditionalNode:
+		copy = &db.ConditionalNode{
+			Condition:  node.Condition,
+			TrueChild:  copyChild(node.TrueChild, copied),
+			FalseChild: copyChild(node.FalseChild, copied),
+		}
+	case *db.StatementNode:
+		copy = &db.StatementNode{
+			LogRegex: node.LogRegex,
+			Child:    copyChild(node.Child, copied),
+		}
+	case *db.ReturnNode:
+		copy = &db.ReturnNode{
+			Expression: node.Expression,
+			Child:      copyChild(node.Child, copied),
+		}
+	}
+
+	if copy != nil {
+		copy.SetLineNumber(node.GetLineNumber())
+		copy.SetFilename(node.GetFilename())
+	}
+	return copy
+}
+
+func copyChild(node db.Node, copied map[db.Node]db.Node) db.Node {
+	var copy db.Node
+	if node != nil {
+		if n, ok := copied[node]; ok {
+			copy = n
+		} else {
+			copy = copyCfgRecur(node, copied)
+			copied[node] = copy
+		}
+	}
+	return copy
 }
