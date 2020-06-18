@@ -306,10 +306,10 @@ func findFunctionNodes(filesToParse []string) []fdeclStruct {
 }
 
 //Takes in a file name + function name -> returns AST FuncDecl node
-func getFdASTNode(fileName string, functionName string, stackFuncNodes []fdeclStruct) *ast.FuncDecl{
+func getFdASTNode(fileName string, functionName string, stackFuncNodes []fdeclStruct) *ast.FuncDecl {
 
-	for _, val := range stackFuncNodes{
-		if strings.Contains(val.filePath, fileName) && functionName == val.Name{
+	for _, val := range stackFuncNodes {
+		if strings.Contains(val.filePath, fileName) && functionName == val.Name {
 			return val.fd
 		}
 	}
@@ -401,7 +401,7 @@ func findVariablesInFile(path string) varDecls {
 	vars := varDecls{}
 
 	//Check for nil node
-	if node == nil{
+	if node == nil {
 		return varDecls{
 			asns:  nil,
 			decls: nil,
@@ -437,7 +437,7 @@ func findVariablesInFile(path string) varDecls {
 // Returns logTypes with map struct
 func findLogsInFile(path string, base string) ([]model.LogType, map[string]struct{}) {
 	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+	node, err := parser.ParseFile(fset, base+"/"+path, nil, parser.ParseComments)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to parse file")
 	}
@@ -450,7 +450,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	//lnTypes := make(map[model.LogType]string)
 
 	//Check for nil node
-	if node == nil{
+	if node == nil {
 		return nil, nil
 	}
 
