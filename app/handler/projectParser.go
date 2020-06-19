@@ -437,7 +437,7 @@ func findVariablesInFile(path string) varDecls {
 // Returns logTypes with map struct
 func findLogsInFile(path string, base string) ([]model.LogType, map[string]struct{}) {
 	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, base+"/"+path, nil, parser.ParseComments)
+	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to parse file")
 	}

@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"go/ast"
 	"go/parser"
@@ -38,13 +37,7 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			log.Error().Err(err).Msg("unable to parse file")
 		}
 
-		var file string
-		s := strings.Split(goFile, request.ProjectRoot)
-		if len(s) > 1 {
-			file = s[1]
-		}
-		file = strings.Replace(file, "/", "", 1)
-		logInfo, _ := findLogsInFile(file, request.ProjectRoot)
+		logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
 		regexes := mapLogRegex(logInfo)
 
 		c := cfg.FnCfgCreator{}
