@@ -15,8 +15,13 @@ type SomeStruct struct {
 }
 
 func Unsafe(nilAssignment, badIndex bool) []string {
+	if nilAssignment && badIndex {
+		warning()
+	}
+
 	obj := getStruct(nilAssignment)
 	log.Info().Msgf("We are executing with message %v", obj.GetMessage())
+
 	var array []string
 	if badIndex {
 		array = getArray(obj.GetMessage(), 6)
@@ -38,6 +43,10 @@ func getArray(message string, index int) []string {
 	var strArr [5]string
 	strArr[index] = message
 	return strArr[:]
+}
+
+func warning() {
+	log.Warn().Msg("Program may not fail correctly")
 }
 
 func (s *SomeStruct) GetMessage() string {
