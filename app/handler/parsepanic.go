@@ -2,12 +2,13 @@ package handler
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"runtime"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 //Stores the file path and line # (Node pointers there for extra info)
@@ -21,18 +22,18 @@ type panicStruct struct {
 //Parsing a panic runtime stack trace (id, messageLevel, file name and line #, function name)
 // -the fileName + lineNum + funcName will be stored in parallel arrays - same index
 type stackTraceStruct struct {
-	id int
+	id       int
 	msgLevel string
 	fileName []string
-	lineNum []string
+	lineNum  []string
 	funcName []string
 }
 
 //Helper function to grab OS separator
-func grabOS() string{
-	if runtime.GOOS == "windows"{
+func grabOS() string {
+	if runtime.GOOS == "windows" {
 		return "\\"
-	}else{
+	} else {
 		return "/"
 	}
 }
@@ -56,7 +57,7 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 
 	//Helper map for quick lookup
 	localFilesMap := make(map[string]string)
-	for index := range filesToParse{
+	for index := range filesToParse {
 		shortFileName := filesToParse[index]
 		shortFileName = shortFileName[strings.LastIndex(shortFileName, separator)+1:]
 		localFilesMap[shortFileName] = "exists"
@@ -96,7 +97,7 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 
 			//Make sure attributes aren't empty before adding it
 			if tempStackTrace.msgLevel != "" && len(tempStackTrace.fileName) != 0 &&
-				len(tempStackTrace.lineNum) != 0 && len(tempStackTrace.funcName) != 0{
+				len(tempStackTrace.lineNum) != 0 && len(tempStackTrace.funcName) != 0 {
 				tempStackTrace.id = id
 				stackTrc = append(stackTrc, tempStackTrace)
 				id++
@@ -120,8 +121,8 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 		//Read the function line first
 		//!-- NOTE: assuming there is no function named go() --!
 		//Process function name lines (doesn't contain .go)
-		if  !strings.Contains(logStr, ".go") &&
-			strings.Contains(logStr, "(") && strings.Contains(logStr, ")"){
+		if !strings.Contains(logStr, ".go") &&
+			strings.Contains(logStr, "(") && strings.Contains(logStr, ")") {
 
 			functionFound = false
 
@@ -129,42 +130,42 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 			endIndex := strings.LastIndex(logStr, "(")
 
 			//Functions with multiple calls (has multiple . operators)
-			if startIndex != -1 && endIndex != -1 && startIndex < endIndex{
-				tempFuncName = logStr[startIndex+1:endIndex]
+			if startIndex != -1 && endIndex != -1 && startIndex < endIndex {
+				tempFuncName = logStr[startIndex+1 : endIndex]
 			}
 
 			//Function is a single standalone function (only example currently is panic())
-			if startIndex == -1{
+			if startIndex == -1 {
 				tempFuncName = logStr[:endIndex]
 			}
 
 			//No parenthesis for function name OR a custom function(ex: .Serve or .callOtherPanic(...))
 			if startIndex > endIndex {
 				//Function with (...) as args (these are the ones that we are interested in) -- grab first on stack
-				if strings.Contains(logStr, "..."){
+				if strings.Contains(logStr, "...") {
 					specialIndex := strings.Index(logStr, ".")
-					tempFuncName = logStr[specialIndex+1:endIndex]
-				}else{
+					tempFuncName = logStr[specialIndex+1 : endIndex]
+				} else {
 					tempFuncName = logStr[startIndex+1:]
 				}
 			}
 
 			//Case where a function returns another function (will have two sets of parens)
-			if strings.Index(logStr, "(") != strings.LastIndex(logStr, "("){
-				tempStr := logStr[strings.Index(logStr, ")"): strings.LastIndex(logStr, "(")]
-				firstNdx := strings.Index(tempStr, ".")+1
+			if strings.Index(logStr, "(") != strings.LastIndex(logStr, "(") {
+				tempStr := logStr[strings.Index(logStr, ")"):strings.LastIndex(logStr, "(")]
+				firstNdx := strings.Index(tempStr, ".") + 1
 
 				//If more than 1 function call together, then grab the first
-				if strings.Count(tempStr, ".") > 1{
-					tempFuncName = tempStr[firstNdx : strings.LastIndex(tempStr, ".")]
-				}else{
+				if strings.Count(tempStr, ".") > 1 {
+					tempFuncName = tempStr[firstNdx:strings.LastIndex(tempStr, ".")]
+				} else {
 					tempFuncName = tempStr[firstNdx:]
 				}
 			}
 
 			//If found, add to list of function names
 			// bug with app.go function -- inside handleRequest issue with returning a function
-			if _, found := functionsMap[tempFuncName]; found{
+			if _, found := functionsMap[tempFuncName]; found {
 				//fmt.Println("The function ", tempFuncName, "is in the local files", functionsMap[tempFuncName])
 				tempStackTrace.funcName = append(tempStackTrace.funcName, tempFuncName)
 				functionFound = true
@@ -203,19 +204,18 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	stackTrc = append(stackTrc, tempStackTrace)
 
 	//Print struct
-	for _, val := range stackTrc{
-		fmt.Printf("Stack Trace %d\n", val.id)
+	for _, val := range stackTrc {
 
 		//Should have same # of elements
-		for index := range val.fileName{
-			fmt.Printf("Depth: %d %s %s %s\n", index, val.fileName[index], val.lineNum[index], val.funcName[index])
+		for index := range val.fileName {
+			fmt.Printf("Depth: %d %s %s %s \n", index, val.fileName[index], val.lineNum[index], val.funcName[index])
 		}
 	}
 
 	return stackTrc
 }
 
-func splitStackTraceString(sts string) []string{
+func splitStackTraceString(sts string) []string {
 
 	//Used to generate a JSON formatted stack trace for the POST request
 	//temp := strings.Split(sts, "\n")
@@ -236,7 +236,7 @@ func splitStackTraceString(sts string) []string{
 }
 
 //Helper function to test print parsed info from stack trace
-func printErrorList(errorList []stackTraceStruct){
+func printErrorList(errorList []stackTraceStruct) {
 	//Test print the processed stack traces
 	for _, value := range errorList {
 		fmt.Printf("%d: %s in %s -- line %s from function %s\n",
@@ -281,4 +281,3 @@ func findPanics(filesToParse []string) []panicStruct {
 	}
 	return panicList
 }
-

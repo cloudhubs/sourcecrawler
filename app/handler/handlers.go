@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"go/ast"
 	"go/parser"
@@ -130,6 +131,24 @@ func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 }
 
+func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	request := struct {
+		NilAssignment bool `json:"nilAssignment"`
+		BadIndex      bool `json:"badIndex"`
+	}{}
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer r.Body.Close()
+
+	messages := Unsafe(request.NilAssignment, request.BadIndex)
+
+	respondJSON(w, http.StatusOK, messages)
+}
+
 //Slices the program - first parses the stack trace, and then parses the project for log calls
 // -Afterwards it creates the CFG and attempts to connect each of the functions in the stack trace
 func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -148,48 +167,104 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	//1 -- parse stack trace for functions that led to exception
 	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
-	fmt.Println(parsedStack)
 
 	//2 -- Parse project for log statements with regex + line + file name
 	logTypes := parseProject(request.ProjectRoot)
 
-	//Matching log messages to a regex (only returns used regexes)
+	// Matching log messages to a regex (only returns used regexes)
 	regexes := []string{}
 	for index := range request.LogMessages {
 		for _, value := range logTypes {
 			matched, _ := regexp.MatchString(value.Regex, request.LogMessages[index])
 			if matched {
 				regexes = append(regexes, value.Regex)
-				fmt.Println("Valid regexes:", value.Regex)
+				//fmt.Println("Valid regexes:", value.Regex)
 				break
 			}
 		}
 	}
 
+	// 3 -- Generate CFGs (including log information) for each function in the stack trace
+	var decls []neoDb.Node
+	fset := token.NewFileSet()
 	filesToParse := gatherGoFiles(request.ProjectRoot)
-	stackFuncNodes := findFunctionNodes(filesToParse)
-	astFdNodes := []*ast.FuncDecl{} //Contains all the relevant function nodes used in the stack trace
+	for _, goFile := range filesToParse {
 
-	//Adds function nodes that are used in the stack trace
-	for _, value := range parsedStack {
-		for index := range value.funcName {
-			fdNode := getFdASTNode(value.fileName[index], value.funcName[index], stackFuncNodes)
-			if fdNode != nil {
-				astFdNodes = append(astFdNodes, fdNode)
+		// only parse this file if it appears in the stack trace
+		shouldParseFile := false
+		for _, value := range parsedStack {
+			for _, stackFileName := range value.fileName {
+				if strings.Contains(goFile, stackFileName) {
+					shouldParseFile = true
+					break
+				}
 			}
 		}
+
+		if !shouldParseFile { // file not in stack trace, skip it
+			continue
+		}
+
+		// get ast root for this file
+		f, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
+		if err != nil {
+			log.Error().Err(err).Msg("unable to parse file")
+		}
+
+		// get map of linenumber -> regex for thsi file
+		logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
+		regexes := mapLogRegex(logInfo)
+
+		// extract CFGs for all relevant functions from this file
+		c := cfg.FnCfgCreator{}
+		ast.Inspect(f, func(node ast.Node) bool {
+			if fn, ok := node.(*ast.FuncDecl); ok {
+				// only add this function declaration if it is part of the stack trace
+				shouldAppendFunction := false
+				for _, value := range parsedStack {
+					for index, stackFuncName := range value.funcName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.fileName[index]) {
+							shouldAppendFunction = true
+							break
+						}
+					}
+				}
+
+				if shouldAppendFunction {
+					decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
+				}
+			}
+			return true
+		})
 	}
 
-	//3 -- create CFG nodes for each function
-	regexMap := mapLogRegex(logTypes) //Create regexes based from the parseProject logTypes
-	fset := token.NewFileSet()
-	var decls []neoDb.Node
-	cfgCreator := cfg.FnCfgCreator{}
+	//filesToParse := gatherGoFiles(request.ProjectRoot)
+	//stackFuncNodes := findFunctionNodes(filesToParse)
+	//astFdNodes := []*ast.FuncDecl{} //Contains all the relevant function nodes used in the stack trace
 
-	//Only pass in the FuncDecl nodes that are used in the stack trace
-	for _, fdNode := range astFdNodes {
-		decls = append(decls, cfgCreator.CreateCfg(fdNode, request.ProjectRoot, fset, regexMap))
-	}
+	//Adds function nodes that are used in the stack trace
+	// for _, value := range parsedStack {
+	// 	for index := range value.funcName {
+	// 		fdNode := getFdASTNode(value.fileName[index], value.funcName[index], stackFuncNodes)
+	// 		if fdNode != nil {
+	// 			astFdNodes = append(astFdNodes, fdNode)
+	// 		}
+	// 	}
+	// }
+
+	// //3 -- create CFG nodes for each function
+	// regexMap := mapLogRegex(logTypes) //Create regexes based from the parseProject logTypes
+	// fset := token.NewFileSet()
+	// var decls []neoDb.Node
+	// cfgCreator := cfg.FnCfgCreator{}
+
+	// //Only pass in the FuncDecl nodes that are used in the stack trace
+	// for _, fdNode := range astFdNodes {
+	// 	decls = append(decls, cfgCreator.CreateCfg(fdNode, request.ProjectRoot, fset, regexMap))
+	// }
+
+	// find all function declarations in this project
+	//allFuncDecls := findFunctionNodes(filesToParse)
 
 	//4 -- Connect the CFG nodes together?
 	decls = cfg.ConnectFnCfgs(decls)
