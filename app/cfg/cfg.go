@@ -804,3 +804,51 @@ func copyChild(node db.Node, copied map[db.Node]db.Node) db.Node {
 	}
 	return copy
 }
+
+func labelBranches(end db.EndConditionalNode) db.Node, error {
+	curr := end.GetParents()[0] //get one of the parents, doesn't matter which
+	next := curr.GetParents()[0]
+	top := nil
+	endCount := 1
+	//if a new endNode is found,
+	//require that many more conditional
+	//nodes to be found, until the topmost
+	//one is found
+	for endCount != 0 {
+		if _, isEnd := curr.(*db.EndConditionalNode); isEnd {
+			endCount++
+		}
+		if _, isCond := curr.(*db.ConditionalNode); isCond {
+			endCount--
+		}
+		if endCount != 0 {
+			if curr == next {
+				return nil, errors.New("reached top of tree without finding root conditional node")
+			}
+			curr = next
+			if len(next.GetParent()) > 0 {
+				next = next.GetParents()[0]
+			}
+		}
+	}
+	//now current is the top conditional node
+	//which will be returned from this function
+	top = curr
+	//recursively label all children up to end
+	//as "may"
+	labelBranchesRecur(top, end)
+
+	//return top conditional node as next node to label
+	return top, nil
+}
+
+func labelBranchesRecur(node, end db.Node) {
+	for _, child := range node.GetChildren() {
+		//stop recursion if child is already labeled
+		//or if it is the original end node
+		if child.Label == db.NoLabel && child != end{
+			child.Label = db.May
+			labelBranchesRecur(child, end)
+		}
+	}
+}
