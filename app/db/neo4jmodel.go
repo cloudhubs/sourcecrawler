@@ -78,6 +78,10 @@ type ConditionalNode struct {
 	FalseChild Node
 }
 
+type EndConditionalNode struct {
+	Child Node
+}
+
 // STATEMENT NODES
 
 func (n *StatementNode) GetChildren() map[Node]string {
@@ -303,4 +307,44 @@ func (n *ReturnNode) SetFilename(filename string) {
 
 func (n *ReturnNode) SetLineNumber(line int) {
 	n.LineNumber = line
+}
+
+// END CONDITIONAL NODES
+
+func (n *EndConditionalNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
+	var m = map[Node]string{
+		n.Child: "",
+	}
+	return m
+}
+
+func (n *EndConditionalNode) SetChild(c []Node) {
+	n.Child = c[0]
+}
+
+func (n *EndConditionalNode) GetProperties() string {
+	return ""
+}
+
+func (n *EndConditionalNode) GetNodeType() string {
+	return ":ENDCONDITIONAL:STATEMENT"
+}
+
+func (n *EndConditionalNode) GetFilename() string {
+	return ""
+}
+
+func (n *EndConditionalNode) GetLineNumber() int {
+	return 0
+}
+
+func (n *EndConditionalNode) SetFilename(filename string) {
+
+}
+
+func (n *EndConditionalNode) SetLineNumber(line int) {
+
 }
