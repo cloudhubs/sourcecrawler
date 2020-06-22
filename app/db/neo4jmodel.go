@@ -15,6 +15,8 @@ type Node interface {
 
 	SetChild([]Node)
 
+	GetParents() []Node
+
 	/*
 		Returns a string that contains this node's properties, in cypher's key-value format
 	*/
@@ -36,6 +38,7 @@ type FunctionNode struct {
 	LineNumber   int
 	FunctionName string
 	Child        Node
+	Parent       Node
 }
 
 type Return struct {
@@ -51,6 +54,7 @@ type FunctionDeclNode struct {
 	Params       map[string]string // map of arg name to type
 	Returns      []Return          // not a map since you don't have to name return variables
 	Child        Node
+	Parent       Node
 }
 
 // in the event of return fnCall() a FunctionNode will be its predecessor node
@@ -61,6 +65,7 @@ type ReturnNode struct {
 	LineNumber int
 	Expression string
 	Child      Node
+	Parent     Node
 }
 
 type StatementNode struct {
@@ -68,6 +73,7 @@ type StatementNode struct {
 	LineNumber int
 	LogRegex   string
 	Child      Node
+	Parent     Node
 }
 
 type ConditionalNode struct {
@@ -76,10 +82,12 @@ type ConditionalNode struct {
 	Condition  string
 	TrueChild  Node
 	FalseChild Node
+	Parent     Node
 }
 
 type EndConditionalNode struct {
-	Child Node
+	Child   Node
+	Parents []Node
 }
 
 // STATEMENT NODES
@@ -96,6 +104,13 @@ func (n *StatementNode) GetChildren() map[Node]string {
 
 func (n *StatementNode) SetChild(c []Node) {
 	n.Child = c[0]
+}
+
+func (n *StatementNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
 }
 
 func (n *StatementNode) GetProperties() string {
@@ -144,6 +159,13 @@ func (n *ConditionalNode) SetChild(c []Node) {
 	n.FalseChild = c[1]
 }
 
+func (n *ConditionalNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
 func (n *ConditionalNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, condition: \"%v\"", n.Filename, n.LineNumber, n.Condition)
 	return "{ " + val + " }"
@@ -185,6 +207,13 @@ func (n *FunctionNode) SetChild(c []Node) {
 	n.Child = c[0]
 }
 
+func (n *FunctionNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
 func (n *FunctionNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
 	return "{ " + val + " }"
@@ -223,6 +252,13 @@ func (n *FunctionDeclNode) GetChildren() map[Node]string {
 }
 func (n *FunctionDeclNode) SetChild(c []Node) {
 	n.Child = c[0]
+}
+
+func (n *FunctionDeclNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
 }
 
 func (n *FunctionDeclNode) GetProperties() string {
@@ -284,6 +320,13 @@ func (n *ReturnNode) SetChild(c []Node) {
 	n.Child = c[0]
 }
 
+func (n *ReturnNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
 func (n *ReturnNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, expression: \"%v\"", n.Filename, n.LineNumber, n.Expression)
 	return "{ " + val + " }"
@@ -323,6 +366,13 @@ func (n *EndConditionalNode) GetChildren() map[Node]string {
 
 func (n *EndConditionalNode) SetChild(c []Node) {
 	n.Child = c[0]
+}
+
+func (n *EndConditionalNode) GetParents() []Node {
+	if n.Parents == nil {
+		return []Node{}
+	}
+	return n.Parents
 }
 
 func (n *EndConditionalNode) GetProperties() string {
