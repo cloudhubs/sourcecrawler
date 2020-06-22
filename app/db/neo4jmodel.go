@@ -7,6 +7,19 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type ExecutionLabel int
+
+const (
+	NoLabel ExecutionLabel = iota
+	Must
+	May
+	MustNot
+)
+
+func (s ExecutionLabel) String() string {
+	return [...]string{"NoLabel", "Must", "May", "MustNot"}[s]
+}
+
 type Node interface {
 	/*
 		Returns a map that contains the child nodes as keys, and the relationship's labels as the value
@@ -39,6 +52,7 @@ type FunctionNode struct {
 	FunctionName string
 	Child        Node
 	Parent       Node
+	Label        ExecutionLabel
 }
 
 type Return struct {
@@ -55,6 +69,7 @@ type FunctionDeclNode struct {
 	Returns      []Return          // not a map since you don't have to name return variables
 	Child        Node
 	Parent       Node
+	Label        ExecutionLabel
 }
 
 // in the event of return fnCall() a FunctionNode will be its predecessor node
@@ -66,6 +81,7 @@ type ReturnNode struct {
 	Expression string
 	Child      Node
 	Parent     Node
+	Label      ExecutionLabel
 }
 
 type StatementNode struct {
@@ -74,6 +90,7 @@ type StatementNode struct {
 	LogRegex   string
 	Child      Node
 	Parent     Node
+	Label      ExecutionLabel
 }
 
 type ConditionalNode struct {
@@ -83,11 +100,13 @@ type ConditionalNode struct {
 	TrueChild  Node
 	FalseChild Node
 	Parent     Node
+	Label      ExecutionLabel
 }
 
 type EndConditionalNode struct {
 	Child   Node
 	Parents []Node
+	Label   ExecutionLabel
 }
 
 // STATEMENT NODES
