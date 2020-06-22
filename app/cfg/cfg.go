@@ -72,7 +72,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	// Connect the function declaration to the sub cfg
 	if fn, ok := root.(*db.FunctionDeclNode); ok {
 		fn.Child = node
-		fn.Parent = root	//Set parent to be root (the func declaration)
+		fn.Parent = root //Set parent to be root (the func declaration)
 	}
 
 	return root
@@ -169,7 +169,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// You should never encounter a "previous" conditional inside of a block since
 			// the conditional is always the last node in a CFG block if a conditional is present
 			prevNode.Child = current
-			prevNode.Parent = prev    //TODO: Not sure if this is the correct parent assignment?
+			prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
 		}
 		prev = current
 
@@ -824,10 +824,10 @@ func copyChild(node db.Node, copied map[db.Node]db.Node) db.Node {
 	return copy
 }
 
-func labelBranches(end db.EndConditionalNode) db.Node, error {
+func labelBranches(end db.EndConditionalNode) (db.Node, error) {
 	curr := end.GetParents()[0] //get one of the parents, doesn't matter which
 	next := curr.GetParents()[0]
-	top := nil
+	var top db.Node
 	endCount := 1
 	//if a new endNode is found,
 	//require that many more conditional
@@ -845,7 +845,7 @@ func labelBranches(end db.EndConditionalNode) db.Node, error {
 				return nil, errors.New("reached top of tree without finding root conditional node")
 			}
 			curr = next
-			if len(next.GetParent()) > 0 {
+			if len(next.GetParents()) > 0 {
 				next = next.GetParents()[0]
 			}
 		}
@@ -861,13 +861,15 @@ func labelBranches(end db.EndConditionalNode) db.Node, error {
 	return top, nil
 }
 
-func labelBranchesRecur(node, end db.Node) {
-	for _, child := range node.GetChildren() {
+func labelBranchesRecur(node db.Node, end db.EndConditionalNode) {
+	for child := range node.GetChildren() {
 		//stop recursion if child is already labeled
 		//or if it is the original end node
-		if child.Label == db.NoLabel && child != end{
-			child.Label = db.May
-			labelBranchesRecur(child, end)
+		if child, ok := child.(*db.EndConditionalNode); ok {
+			if child.GetLabel() == db.NoLabel && child != &end {
+				child.SetLabel(db.May)
+				labelBranchesRecur(child, end)
+			}
 		}
 	}
 }

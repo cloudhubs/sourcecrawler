@@ -18,6 +18,8 @@ import (
 )
 
 func createTestNeoNodes() {
+	//These literals don't have the right amount of values
+
 	// node7 := db.StatementNode{"test.go", 7, "", nil}
 	// node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
 	// node5 := db.StatementNode{"test.go", 5, "", &node6}
@@ -31,19 +33,19 @@ func createTestNeoNodes() {
 	// defer dao.DisconnectFromNeo()
 	// dao.CreateTree(&node1)
 
-	nodeG := db.StatementNode{"connect.go", 7, "do nothing", nil}
-	nodeF := db.FunctionNode{"connect.go", 6, "main", nil}
-	nodeE := db.ConditionalNode{"connect.go", 5, "yes?", &nodeF, &nodeG}
-	nodeD := db.FunctionDeclNode{"connect.go", 4, "func", nil, nil, nil, &nodeE}
+	// nodeG := db.StatementNode{"connect.go", 7, "do nothing", nil}
+	// nodeF := db.FunctionNode{"connect.go", 6, "main", nil}
+	// nodeE := db.ConditionalNode{"connect.go", 5, "yes?", &nodeF, &nodeG}
+	// nodeD := db.FunctionDeclNode{"connect.go", 4, "func", nil, nil, nil, &nodeE}
 
-	nodeC := db.StatementNode{"connect.go", 3, "the end", nil}
-	nodeB := db.StatementNode{"connect.go", 2, "", &nodeC}
-	nodeA := db.FunctionDeclNode{"connect.go", 1, "main", nil, nil, nil, &nodeB}
+	// nodeC := db.StatementNode{"connect.go", 3, "the end", nil}
+	// nodeB := db.StatementNode{"connect.go", 2, "", &nodeC}
+	// nodeA := db.FunctionDeclNode{"connect.go", 1, "main", nil, nil, nil, &nodeB}
 
-	cfg.PrintCfg(&nodeD, "")
-	fmt.Println()
-	cfg.ConnectStackTrace([]db.Node{&nodeA, &nodeD})
-	cfg.PrintCfg(&nodeD, "")
+	// cfg.PrintCfg(&nodeD, "")
+	// fmt.Println()
+	// cfg.ConnectStackTrace([]db.Node{&nodeA, &nodeD})
+	// cfg.PrintCfg(&nodeD, "")
 }
 
 type varDecls struct {
@@ -634,7 +636,7 @@ func createRegex(value string) string {
 }
 
 //TODO: propogate labels to parent nodes
-func propLabelNonCond(root db.Node, stackTrace []stackTraceStruct, regexs []string){
+func propLabelNonCond(root db.Node, stackTrace []stackTraceStruct, regexs []string) {
 
 }
 

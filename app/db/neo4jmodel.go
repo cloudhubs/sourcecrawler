@@ -42,6 +42,10 @@ type Node interface {
 
 	GetLineNumber() int
 
+	GetLabel() ExecutionLabel
+
+	SetLabel(l ExecutionLabel)
+
 	SetFilename(filename string)
 
 	SetLineNumber(line int)
@@ -133,7 +137,7 @@ func (n *StatementNode) GetParents() []Node {
 	return []Node{n.Parent}
 }
 
-func (n *StatementNode) SetParents(parent Node){
+func (n *StatementNode) SetParents(parent Node) {
 	n.Parent = parent
 }
 
@@ -155,6 +159,14 @@ func (n *StatementNode) GetFilename() string {
 
 func (n *StatementNode) GetLineNumber() int {
 	return n.LineNumber
+}
+
+func (n *StatementNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *StatementNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
 }
 
 func (n *StatementNode) SetFilename(filename string) {
@@ -190,7 +202,7 @@ func (n *ConditionalNode) GetParents() []Node {
 	return []Node{n.Parent}
 }
 
-func (n *ConditionalNode) SetParents(parent Node){
+func (n *ConditionalNode) SetParents(parent Node) {
 	n.Parent = parent
 }
 
@@ -205,6 +217,14 @@ func (n *ConditionalNode) GetNodeType() string {
 
 func (n *ConditionalNode) GetFilename() string {
 	return n.Filename
+}
+
+func (n *ConditionalNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *ConditionalNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
 }
 
 func (n *ConditionalNode) GetLineNumber() int {
@@ -242,7 +262,7 @@ func (n *FunctionNode) GetParents() []Node {
 	return []Node{n.Parent}
 }
 
-func (n *FunctionNode) SetParents(parent Node){
+func (n *FunctionNode) SetParents(parent Node) {
 	n.Parent = parent
 }
 
@@ -261,6 +281,14 @@ func (n *FunctionNode) GetFilename() string {
 
 func (n *FunctionNode) GetLineNumber() int {
 	return n.LineNumber
+}
+
+func (n *FunctionNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *FunctionNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
 }
 
 func (n *FunctionNode) SetFilename(filename string) {
@@ -293,7 +321,7 @@ func (n *FunctionDeclNode) GetParents() []Node {
 	return []Node{n.Parent}
 }
 
-func (n *FunctionDeclNode) SetParents(parent Node){
+func (n *FunctionDeclNode) SetParents(parent Node) {
 	n.Parent = parent
 }
 
@@ -332,6 +360,14 @@ func (n *FunctionDeclNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+func (n *FunctionDeclNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *FunctionDeclNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
+}
+
 func (n *FunctionDeclNode) SetFilename(filename string) {
 	n.Filename = filename
 }
@@ -363,6 +399,10 @@ func (n *ReturnNode) GetParents() []Node {
 	return []Node{n.Parent}
 }
 
+func (n *ReturnNode) SetParents(parent Node) {
+	n.Parent = parent
+}
+
 func (n *ReturnNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, expression: \"%v\"", n.Filename, n.LineNumber, n.Expression)
 	return "{ " + val + " }"
@@ -378,6 +418,14 @@ func (n *ReturnNode) GetFilename() string {
 
 func (n *ReturnNode) GetLineNumber() int {
 	return n.LineNumber
+}
+
+func (n *ReturnNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *ReturnNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
 }
 
 func (n *ReturnNode) SetFilename(filename string) {
@@ -411,6 +459,10 @@ func (n *EndConditionalNode) GetParents() []Node {
 	return n.Parents
 }
 
+func (n *EndConditionalNode) SetParents(parent Node) {
+	n.Parents = append(n.Parents, parent)
+}
+
 func (n *EndConditionalNode) GetProperties() string {
 	return ""
 }
@@ -421,6 +473,14 @@ func (n *EndConditionalNode) GetNodeType() string {
 
 func (n *EndConditionalNode) GetFilename() string {
 	return ""
+}
+
+func (n *EndConditionalNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *EndConditionalNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
 }
 
 func (n *EndConditionalNode) GetLineNumber() int {
