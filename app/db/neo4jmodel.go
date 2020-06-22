@@ -17,6 +17,7 @@ type Node interface {
 
 	GetParents() []Node
 
+	SetParents(parent Node)
 	/*
 		Returns a string that contains this node's properties, in cypher's key-value format
 	*/
@@ -90,9 +91,6 @@ type EndConditionalNode struct {
 	Parents []Node
 }
 
-
-
-
 // STATEMENT NODES
 
 func (n *StatementNode) GetChildren() map[Node]string {
@@ -114,6 +112,10 @@ func (n *StatementNode) GetParents() []Node {
 		return []Node{}
 	}
 	return []Node{n.Parent}
+}
+
+func (n *StatementNode) SetParents(parent Node){
+	n.Parent = parent
 }
 
 func (n *StatementNode) GetProperties() string {
@@ -169,6 +171,10 @@ func (n *ConditionalNode) GetParents() []Node {
 	return []Node{n.Parent}
 }
 
+func (n *ConditionalNode) SetParents(parent Node){
+	n.Parent = parent
+}
+
 func (n *ConditionalNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, condition: \"%v\"", n.Filename, n.LineNumber, n.Condition)
 	return "{ " + val + " }"
@@ -217,6 +223,10 @@ func (n *FunctionNode) GetParents() []Node {
 	return []Node{n.Parent}
 }
 
+func (n *FunctionNode) SetParents(parent Node){
+	n.Parent = parent
+}
+
 func (n *FunctionNode) GetProperties() string {
 	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
 	return "{ " + val + " }"
@@ -262,6 +272,10 @@ func (n *FunctionDeclNode) GetParents() []Node {
 		return []Node{}
 	}
 	return []Node{n.Parent}
+}
+
+func (n *FunctionDeclNode) SetParents(parent Node){
+	n.Parent = parent
 }
 
 func (n *FunctionDeclNode) GetProperties() string {

@@ -72,6 +72,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	// Connect the function declaration to the sub cfg
 	if fn, ok := root.(*db.FunctionDeclNode); ok {
 		fn.Child = node
+		fn.Parent = root	//Set parent to be root (the func declaration)
 	}
 
 	return root
@@ -120,7 +121,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 	// Convert each node in the block into a db.Node (if it is one we want to keep)
 	for i, node := range block.Nodes {
 		last := i == len(block.Nodes)-1
-		conditional = len(block.Succs) > 1 //2 succesors for conditional block
+		conditional = len(block.Succs) > 1 // 2 successors for conditional block
 
 		//Process node based on its type
 		switch node := node.(type) {
@@ -148,6 +149,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if prev != current {
 				// fmt.Println("prev not current, set child")
 				prevNode.Child = current
+				prevNode.Parent = prev //Set parent node as previous if not same as current
 			}
 
 			// May need to fast-forward to deepest child node here
@@ -167,6 +169,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// You should never encounter a "previous" conditional inside of a block since
 			// the conditional is always the last node in a CFG block if a conditional is present
 			prevNode.Child = current
+			prevNode.Parent = prev    //TODO: Not sure if this is the correct parent assignment?
 		}
 		prev = current
 
@@ -192,15 +195,19 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// and set the respective child pointers
 			if succ, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				conditional.TrueChild = succ
+				conditional.Parent = current //??
 			} else {
 				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+				conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
 			}
 
 			if fail, ok := fnCfg.blocks[block.Succs[1]]; ok {
 				conditional.FalseChild = fail
+				conditional.Parent = current //??
 			} else {
 				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1], base, fset, regexes)
+				conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
 			}
 
@@ -208,14 +215,17 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			switch node := prev.(type) {
 			case *db.FunctionNode:
 				node.Child = db.Node(conditional)
+				node.Parent = current //?
 			case *db.StatementNode:
 				node.Child = db.Node(conditional)
+				node.Parent = current //?
 			}
 		} else if len(block.Succs) == 1 && last {
 			// The last node was not a conditional but is the last statement, so
 			// retrieve the child sub-cfg of the next block if it exits,
 			// or otherwise compute it
 			var child db.Node
+
 			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				child = subCfg
 			} else {
@@ -227,8 +237,10 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			switch node := prev.(type) {
 			case *db.FunctionNode:
 				node.Child = child
+				node.Parent = current
 			case *db.StatementNode:
 				node.Child = child
+				node.Parent = current
 			}
 		}
 
@@ -371,8 +383,10 @@ func connectToLeaf(root db.Node, node db.Node) {
 		// Chain the nodes together
 		if current != nil {
 			current.Child = node
+			current.Parent = root //?
 		} else {
 			call.Child = node
+			call.Parent = root //??
 		}
 	}
 }
@@ -415,6 +429,7 @@ func getFuncReturns(fieldList *ast.FieldList) []db.Return {
 	return returns
 }
 
+//Connect expression nodes together
 func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes map[int]string) (first, current, prev db.Node) {
 	for _, expr := range exprs {
 		exprNode := getExprNode(expr, base, fset, false, regexes)
@@ -434,6 +449,7 @@ func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes 
 			// Chain nodes together
 			if node, ok := prev.(*db.FunctionNode); ok && node != nil {
 				node.Child = current
+				node.Parent = prev //??
 			}
 
 			prev = current
@@ -613,6 +629,7 @@ func ConnectStackTrace(fns []db.Node) {
 
 			//get reference to parent's child
 			child := referenceNode.Child
+			child.(*db.FunctionDeclNode).Parent = referenceNode //??
 
 			//connect parent refernce to fn
 			referenceNode.Child = fn
@@ -691,6 +708,8 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 		foundRef = true
 		copy := CopyCfg(decl)
 		child := ref.Child
+		child.SetParents(ref) //TODO: ??
+
 		ref.Child = copy
 
 		for _, leaf := range getLeafNodes(copy) {
