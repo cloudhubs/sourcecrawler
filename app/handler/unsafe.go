@@ -46,6 +46,10 @@ func getArray(message string, index int) []string {
 }
 
 func warning() {
+	warning2()
+}
+
+func warning2() {
 	log.Warn().Msg("Program may not fail correctly")
 }
 
