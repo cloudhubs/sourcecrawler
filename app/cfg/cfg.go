@@ -72,7 +72,8 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	// Connect the function declaration to the sub cfg
 	if fn, ok := root.(*db.FunctionDeclNode); ok {
 		fn.Child = node
-		fn.Parent = root //Set parent to be root (the func declaration)
+		//fn.Parent = root //Set parent to be root (the func declaration)
+		fn.Child.SetParents(fn)
 	}
 
 	return root
@@ -149,7 +150,8 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if prev != current {
 				// fmt.Println("prev not current, set child")
 				prevNode.Child = current
-				prevNode.Parent = prev //Set parent node as previous if not same as current
+				//prevNode.Parent = prev //Set parent node as previous if not same as current
+				prevNode.Child.SetParents(prevNode)
 			}
 
 			// May need to fast-forward to deepest child node here
@@ -169,7 +171,8 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// You should never encounter a "previous" conditional inside of a block since
 			// the conditional is always the last node in a CFG block if a conditional is present
 			prevNode.Child = current
-			prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
+			//prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
+			prevNode.Child.SetParents(prevNode)
 		}
 		prev = current
 
@@ -195,19 +198,23 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// and set the respective child pointers
 			if succ, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				conditional.TrueChild = succ
-				conditional.Parent = current //??
+				//conditional.Parent = current //??
+				conditional.TrueChild.SetParents(conditional)
 			} else {
 				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
-				conditional.Parent = current //??
+				//conditional.Parent = current //??
+				conditional.TrueChild.SetParents(conditional)
 				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
 			}
 
 			if fail, ok := fnCfg.blocks[block.Succs[1]]; ok {
 				conditional.FalseChild = fail
-				conditional.Parent = current //??
+				// conditional.Parent = current //??
+				conditional.FalseChild.SetParents(conditional)
 			} else {
 				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1], base, fset, regexes)
-				conditional.Parent = current //??
+				// conditional.Parent = current //??
+				conditional.FalseChild.SetParents(conditional)
 				fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
 			}
 
@@ -215,10 +222,12 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			switch node := prev.(type) {
 			case *db.FunctionNode:
 				node.Child = db.Node(conditional)
-				node.Parent = current //?
+				// node.Parent = current //?
+				node.Child.SetParents(node)
 			case *db.StatementNode:
 				node.Child = db.Node(conditional)
-				node.Parent = current //?
+				// node.Parent = current //?
+				node.Child.SetParents(node)
 			}
 		} else if len(block.Succs) == 1 && last {
 			// The last node was not a conditional but is the last statement, so
@@ -237,10 +246,12 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			switch node := prev.(type) {
 			case *db.FunctionNode:
 				node.Child = child
-				node.Parent = current
+				// node.Parent = current
+				node.Child.SetParents(node)
 			case *db.StatementNode:
 				node.Child = child
-				node.Parent = current
+				// node.Parent = current
+				node.Child.SetParents(node)
 			}
 		}
 
@@ -383,10 +394,12 @@ func connectToLeaf(root db.Node, node db.Node) {
 		// Chain the nodes together
 		if current != nil {
 			current.Child = node
-			current.Parent = root //?
+			// current.Parent = root //?
+			current.Child.SetParents(current)
 		} else {
 			call.Child = node
-			call.Parent = root //??
+			//call.Parent = root //??
+			call.Child.SetParents(call)
 		}
 	}
 }
@@ -449,7 +462,8 @@ func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes 
 			// Chain nodes together
 			if node, ok := prev.(*db.FunctionNode); ok && node != nil {
 				node.Child = current
-				node.Parent = prev //??
+				//node.Parent = prev //??
+				node.Child.SetParents(node)
 			}
 
 			prev = current
