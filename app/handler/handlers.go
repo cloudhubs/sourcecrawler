@@ -149,6 +149,55 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, messages)
 }
 
+//Test endpoint for propogating labels
+func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+
+	request := model.ParseProjectRequest{}
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer r.Body.Close()
+
+	var decls []neoDb.Node
+
+	//Create test cfgs for funcs
+	fset := token.NewFileSet()
+	filesToParse := gatherGoFiles(request.ProjectRoot)
+	testFile := ""
+
+	for _, file := range filesToParse{
+		if strings.Contains(file, "TestCFG.go"){
+			testFile = file
+		}
+	}
+	astFile, err := parser.ParseFile(fset, testFile, nil, 0)
+	if err != nil{
+		fmt.Println("Error parsing file")
+	}
+	fmt.Println("Project root", request.ProjectRoot)
+
+
+	//info for createcfg
+	logInfo, _ := findLogsInFile(testFile, request.ProjectRoot)
+	regexes := mapLogRegex(logInfo)
+
+	c := cfg.FnCfgCreator{}
+	ast.Inspect(astFile, func(currNode ast.Node) bool{
+		if fn, ok := currNode.(*ast.FuncDecl); ok {
+			if fn.Name.Name == "testNodeProp"{
+				fmt.Println(fn.Type, fn.Name.Name, fn.Body.List)
+				decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
+			}
+		}
+		return true
+	})
+
+	respondJSON(w, http.StatusOK, nil)
+}
+
 //Slices the program - first parses the stack trace, and then parses the project for log calls
 // -Afterwards it creates the CFG and attempts to connect each of the functions in the stack trace
 func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {

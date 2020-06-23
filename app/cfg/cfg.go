@@ -694,6 +694,7 @@ func copyChild(node db.Node, copied map[db.Node]db.Node) db.Node {
 	return copy
 }
 
+//Assumes starting at endIf node and tries to find topmost node
 func labelBranches(end db.EndConditionalNode) (db.Node, error) {
 	curr := end.GetParents()[0] //get one of the parents, doesn't matter which
 	next := curr.GetParents()[0]
@@ -745,35 +746,41 @@ func labelBranchesRecur(node db.Node, end db.EndConditionalNode) {
 }
 
 //Labels the non conditional nodes (needs testing)
+// Assume root is the exception node
+// start at exception, loop through iteratively through parents an endCondition node
+// Then pass to labelBranches and continue
 func labelNonCondNodes(root db.Node) {
 	if root == nil {
 		return
 	}
 
-	for childNode := range root.GetChildren() {
-		//End if child is nil
-		if childNode == nil {
-			continue
-		}
-
-		// Add label to different types of nodes if no label
-		// Types are placeholders in case we need specific functionality for each.
-		if childNode.GetLabel() == db.NoLabel {
-			switch root := root.(type) {
-			case *db.FunctionNode:
-				root.SetLabel(db.May)
-			case *db.FunctionDeclNode:
-				root.SetLabel(db.May)
-			case *db.StatementNode:
-				root.SetLabel(db.May)
-			case *db.ReturnNode:
-				root.SetLabel(db.May)
-			default:
-				fmt.Println("Default")
-			}
-		} else {
-			fmt.Println("Node", childNode.GetProperties(), "is already labeled")
-		}
-	}
+	//Go through each parent
+	//for _, node := range root.GetParents() {
+	//	//End if parent nodes are nil
+	//	if node == nil {
+	//		continue
+	//	}
+	//
+	//	// Add label to different types of nodes if no label
+	//	// Types are placeholders in case we need specific functionality for each.
+	//	if node.GetLabel() == db.NoLabel {
+	//		switch root := root.(type) {
+	//		case *db.FunctionNode:
+	//			root.SetLabel(db.Must)
+	//		case *db.FunctionDeclNode:
+	//			root.SetLabel(db.Must)
+	//		case *db.StatementNode:
+	//			root.SetLabel(db.Must)
+	//		case *db.ReturnNode:
+	//			root.SetLabel(db.Must)
+	//		case *db.EndConditionalNode:
+	//			//TODO: handle with other function
+	//		default:
+	//			fmt.Println("Default")
+	//		}
+	//	} else {
+	//		fmt.Println("Node", node.GetProperties(), "is already labeled")
+	//	}
+	//}
 
 }

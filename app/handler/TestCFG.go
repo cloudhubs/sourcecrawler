@@ -126,3 +126,22 @@ func testCondPanic(num int){
 		callOtherPanic(num)
 	}
 }
+
+func testNodeProp(str string) string {
+	createChild(str)
+
+	return str
+}
+
+func createChild(str string){
+	if str == "a"{
+		createChildOfChild()
+	}else{
+		//child node
+		createChildOfChild()
+	}
+}
+
+func createChildOfChild(){
+
+}
