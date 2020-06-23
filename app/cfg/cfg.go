@@ -873,3 +873,33 @@ func labelBranchesRecur(node db.Node, end db.EndConditionalNode) {
 		}
 	}
 }
+
+//Labels the non conditional nodes (needs testing)
+func labelNonCondNodes(root db.Node){
+	if root == nil {return}
+
+	for childNode := range root.GetChildren(){
+		//End if child is nil
+		if childNode == nil{continue}
+
+		// Add label to different types of nodes if no label
+		// Types are placeholders in case we need specific functionality for each.
+		if childNode.GetLabel() == db.NoLabel {
+			switch root := root.(type) {
+			case *db.FunctionNode:
+				root.SetLabel(db.May)
+			case *db.FunctionDeclNode:
+				root.SetLabel(db.May)
+			case *db.StatementNode:
+				root.SetLabel(db.May)
+			case *db.ReturnNode:
+				root.SetLabel(db.May)
+			default:
+				fmt.Println("Default")
+			}
+		}else{
+			fmt.Println("Node", childNode.GetProperties(), "is already labeled")
+		}
+	}
+
+}

@@ -635,11 +635,6 @@ func createRegex(value string) string {
 	return reg[1 : len(reg)-1]
 }
 
-//TODO: propogate labels to parent nodes
-func propLabelNonCond(root db.Node, stackTrace []stackTraceStruct, regexs []string) {
-
-}
-
 func findMustHaves(root db.Node, stackTrace []stackTraceStruct, regexs []string) []db.Node {
 	//must-have is on stack trace or contains a regex
 	return findMustHavesRecur(root, stackTrace, regexs)
