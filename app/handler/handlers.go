@@ -13,7 +13,7 @@ import (
 	"sourcecrawler/app/cfg"
 	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
-	_ "strings"
+	_ "strings" //
 
 	"github.com/jinzhu/gorm"
 	"github.com/rs/zerolog/log"
@@ -238,40 +238,97 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	//filesToParse := gatherGoFiles(request.ProjectRoot)
-	//stackFuncNodes := findFunctionNodes(filesToParse)
-	//astFdNodes := []*ast.FuncDecl{} //Contains all the relevant function nodes used in the stack trace
-
-	//Adds function nodes that are used in the stack trace
-	// for _, value := range parsedStack {
-	// 	for index := range value.funcName {
-	// 		fdNode := getFdASTNode(value.fileName[index], value.funcName[index], stackFuncNodes)
-	// 		if fdNode != nil {
-	// 			astFdNodes = append(astFdNodes, fdNode)
-	// 		}
-	// 	}
+	// // find all function declarations in this project
+	// allFuncDecls := findFunctionNodes(filesToParse)
+	// funcDeclMap := make(map[string]*ast.FuncDecl)
+	// for _, fn := range allFuncDecls {
+	// 	key := fmt.Sprintf("%v", fn.Name)
+	// 	funcDeclMap[key] = fn.fd
 	// }
 
-	// //3 -- create CFG nodes for each function
-	// regexMap := mapLogRegex(logTypes) //Create regexes based from the parseProject logTypes
-	// fset := token.NewFileSet()
-	// var decls []neoDb.Node
-	// cfgCreator := cfg.FnCfgCreator{}
-
-	// //Only pass in the FuncDecl nodes that are used in the stack trace
-	// for _, fdNode := range astFdNodes {
-	// 	decls = append(decls, cfgCreator.CreateCfg(fdNode, request.ProjectRoot, fset, regexMap))
-	// }
-
-	// find all function declarations in this project
-	//allFuncDecls := findFunctionNodes(filesToParse)
-
-	//4 -- Connect the CFG nodes together?
+	//4 -- Connect the CFG nodes together
 	decls = cfg.ConnectFnCfgs(decls)
+
+	funcLabels := map[string]string{}
+	funcCalls := []neoDb.Node{}
+	mustHaves := []neoDb.Node{}
+	mayHaves := []neoDb.Node{}
+
+	for _, root := range decls {
+		newFuncs, newLabels := FindMustHaves(root, parsedStack, regexes)
+		funcLabels = mergeLabelMaps(funcLabels, newLabels)
+		funcCalls = append(funcCalls, newFuncs...)
+	}
+
+	mustHaves, mayHaves = filterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
 
 	//Test print the declarations
 	for _, decl := range decls {
 		cfg.PrintCfg(decl, "")
 		fmt.Println()
 	}
+
+	response := struct {
+		MustHaveFunctions []string `json:"mustHaveFunctions"`
+		MayHaveFunctions  []string `json:"mayHaveFunctions"`
+	}{}
+
+	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
+	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+// Returns the function names of the passed-in function call nodes
+func convertNodesToStrings(elements []neoDb.Node) []string {
+	encountered := map[string]bool{}
+	result := []string{}
+	for _, v := range elements {
+		node := v.(*neoDb.FunctionNode)
+		if encountered[node.FunctionName] == true {
+			// Do not add duplicate.
+		} else {
+			// Record this element as an encountered element.
+			encountered[node.FunctionName] = true
+			// Append to result slice.
+			result = append(result, node.FunctionName)
+		}
+	}
+	// Return the new slice.
+	return result
+}
+
+// given a list of function calls in `funcCalls` and a map of their labels in `funcLabels`,
+// append the names of all must-have functions to `mustHaves`, and all the may-have functions to `mayHaves`
+func filterMustMay(funcCalls []neoDb.Node, mustHaves []neoDb.Node, mayHaves []neoDb.Node, funcLabels map[string]string) ([]neoDb.Node, []neoDb.Node) {
+	for _, fn := range funcCalls {
+		node := fn.(*neoDb.FunctionNode)
+		if label := funcLabels[node.FunctionName]; label == "must" {
+			mustHaves = append(mustHaves, node)
+		} else {
+			mayHaves = append(mayHaves, node)
+		}
+	}
+	return mustHaves, mayHaves
+}
+
+func mergeLabelMaps(labelMaps ...map[string]string) map[string]string {
+	res := map[string]string{}
+	// go through each map
+	for _, currMap := range labelMaps {
+		// get each function/label from this map
+		for fnName, newLabel := range currMap {
+			// have we added this function before?
+			if existLabel, ok := res[fnName]; ok {
+				// added this before, see if we need to overwrite it
+				if newLabel == "must" || (newLabel == "may" && existLabel != "must") {
+					res[fnName] = newLabel
+				}
+			} else {
+				// not added before, so just add the function/label
+				res[fnName] = newLabel
+			}
+		}
+	}
+	return res
 }

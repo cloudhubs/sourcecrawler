@@ -635,27 +635,27 @@ func createRegex(value string) string {
 	return reg[1 : len(reg)-1]
 }
 
-//TODO: propogate labels to parent nodes
-func propLabelNonCond(root db.Node, stackTrace []stackTraceStruct, regexs []string) {
-
-}
-
-func findMustHaves(root db.Node, stackTrace []stackTraceStruct, regexs []string) []db.Node {
+func FindMustHaves(root db.Node, stackTrace []stackTraceStruct, regexs []string) ([]db.Node, map[string]string) {
 	//must-have is on stack trace or contains a regex
-	return findMustHavesRecur(root, stackTrace, regexs)
+	funcLabels := make(map[string]string)
+	return findMustHavesRecur(root, stackTrace, regexs, &funcLabels), funcLabels
 }
 
-func findMustHavesRecur(n db.Node, stackTrace []stackTraceStruct, regexs []string) []db.Node {
-	mustHave := []db.Node{}
+func findMustHavesRecur(n db.Node, stackTrace []stackTraceStruct, regexs []string, funcLabels *map[string]string) []db.Node {
+	funcCalls := []db.Node{}
+
 	if n, ok := n.(*db.FunctionNode); ok && n != nil {
+		funcCalls = append(funcCalls, n)
 		if isInStack(n, stackTrace) || wasLogged(n, regexs) {
-			mustHave = append(mustHave, n)
+			(*funcLabels)[n.FunctionName] = "must"
+		} else {
+			(*funcLabels)[n.FunctionName] = "may"
 		}
 	}
 	for child := range n.GetChildren() {
-		mustHave = append(mustHave, findMustHavesRecur(child, stackTrace, regexs)...)
+		funcCalls = append(funcCalls, findMustHavesRecur(child, stackTrace, regexs, funcLabels)...)
 	}
-	return mustHave
+	return funcCalls
 }
 
 func isInStack(fn db.Node, stackTrace []stackTraceStruct) bool {
