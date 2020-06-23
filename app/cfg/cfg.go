@@ -55,6 +55,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		}
 		return false
 	})
+	// fmt.Println(fn.Name.Name)
 	// fmt.Println(cfg.Format(fset))
 
 	// Empty function declaration
@@ -106,11 +107,14 @@ func PrintCfg(node db.Node, level string) {
 			lv += " "
 		}
 		PrintCfg(node.Child, lv)
+	case *db.EndConditionalNode:
+		fmt.Printf("%sendIf\n", level)
+		PrintCfg(node.Child, level)
 	}
 }
 
 func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes map[int]string) (root db.Node) {
-	if block == nil || block.Nodes == nil {
+	if block == nil {
 		return nil
 	}
 
@@ -118,6 +122,18 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 	var prev db.Node
 	var current db.Node
 	// fmt.Println(block.Succs)
+
+	// Add an endIf node as the root if the block is if.done or for.done
+	if strings.Contains(block.String(), "if.done") || strings.Contains(block.String(), "for.done") {
+		if endIf, ok := fnCfg.blocks[block]; ok {
+			current = endIf
+		} else {
+			current = &db.EndConditionalNode{}
+			fnCfg.blocks[block] = current
+		}
+		prev = current
+		root = current
+	}
 
 	// Convert each node in the block into a db.Node (if it is one we want to keep)
 	for i, node := range block.Nodes {
@@ -151,7 +167,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 				// fmt.Println("prev not current, set child")
 				prevNode.Child = current
 				//prevNode.Parent = prev //Set parent node as previous if not same as current
-				prevNode.Child.SetParents(prevNode)
+				// prevNode.Child.SetParents(prevNode)
 			}
 
 			// May need to fast-forward to deepest child node here
@@ -171,8 +187,11 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// You should never encounter a "previous" conditional inside of a block since
 			// the conditional is always the last node in a CFG block if a conditional is present
 			prevNode.Child = current
+			prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
+		case *db.EndConditionalNode:
+			prevNode.Child = current
 			//prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
-			prevNode.Child.SetParents(prevNode)
+			// prevNode.Child.SetParents(prevNode)
 		}
 		prev = current
 
@@ -247,25 +266,51 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			case *db.FunctionNode:
 				node.Child = child
 				// node.Parent = current
-				node.Child.SetParents(node)
+				// node.Child.SetParents(node)
 			case *db.StatementNode:
 				node.Child = child
 				// node.Parent = current
-				node.Child.SetParents(node)
+				// node.Child.SetParents(node)
 			}
 		}
 
 		current = nil
 	}
 
-	// The root was nil, so try to get the next block.
-	// If the block is part of a for statement it would infinitely recurse, so leave it nil.
-	if root == nil && len(block.Succs) == 1 && !strings.Contains(block.String(), "for") {
-		if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
-			root = subCfg
-		} else {
-			root = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
-			fnCfg.blocks[block.Succs[0]] = root
+	if len(block.Succs) == 1 {
+		// The root was nil, so try to get the next block.
+		// If the block is part of a for statement it would infinitely recurse, so leave it nil.
+		if root == nil && !strings.Contains(block.String(), "for.post") {
+			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
+				root = subCfg
+			} else {
+				root = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+				fnCfg.blocks[block.Succs[0]] = root
+			}
+		} else if root != nil && len(root.GetChildren()) < 1 && strings.Contains(block.String(), "if.done") {
+			// End of a conditional, so make the successor node a child of the endif node
+			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
+				root.SetChild([]db.Node{subCfg})
+			} else {
+				subCfg = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+				fnCfg.blocks[block.Succs[0]] = subCfg
+				root.SetChild([]db.Node{subCfg})
+			}
+		} else if prev != nil && strings.Contains(block.String(), "for.body") {
+			// Fast-forward through the post block and the loop block
+			// and then get the for.done node and chain it with an endIf
+			post := block.Succs[0]
+			loop := post.Succs[0]
+			if len(loop.Succs) > 1 {
+				if subCfg, ok := fnCfg.blocks[loop.Succs[1]]; ok {
+					prev.SetChild([]db.Node{subCfg})
+				} else {
+					subCfg = fnCfg.constructSubCfg(loop.Succs[1], base, fset, regexes)
+					fnCfg.blocks[loop.Succs[1]] = subCfg
+					prev.SetChild([]db.Node{subCfg})
+				}
+			}
+
 		}
 	}
 
@@ -463,7 +508,7 @@ func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes 
 			if node, ok := prev.(*db.FunctionNode); ok && node != nil {
 				node.Child = current
 				//node.Parent = prev //??
-				node.Child.SetParents(node)
+				// node.Child.SetParents(node)
 			}
 
 			prev = current
