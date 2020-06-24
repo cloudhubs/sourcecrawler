@@ -88,7 +88,7 @@ func labelBranches(end db.EndConditionalNode) (db.Node, error) {
 	if len(end.GetParents()) != 0 {
 		curr = end.GetParents()[0] //get one of the parents, doesn't matter which
 		next = curr.GetParents()[0]
-	}else{
+	} else {
 		return nil, fmt.Errorf("error, no parent nodes")
 	}
 
