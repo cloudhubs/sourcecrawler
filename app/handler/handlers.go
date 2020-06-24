@@ -161,8 +161,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	var decls []neoDb.Node
-
 	//Create test cfgs for funcs
 	fset := token.NewFileSet()
 	filesToParse := gatherGoFiles(request.ProjectRoot)
@@ -177,23 +175,38 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	if err != nil{
 		fmt.Println("Error parsing file")
 	}
-	fmt.Println("Project root", request.ProjectRoot)
 
 
 	//info for createcfg
+	var decls []neoDb.Node
 	logInfo, _ := findLogsInFile(testFile, request.ProjectRoot)
 	regexes := mapLogRegex(logInfo)
-
 	c := cfg.FnCfgCreator{}
+
+
 	ast.Inspect(astFile, func(currNode ast.Node) bool{
 		if fn, ok := currNode.(*ast.FuncDecl); ok {
-			if fn.Name.Name == "testNodeProp"{
-				fmt.Println(fn.Type, fn.Name.Name, fn.Body.List)
+			if fn.Name.Name == "testNodeProp" || fn.Name.Name == "createChild" ||
+				fn.Name.Name == "createChildOfChild"{
 				decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
 			}
 		}
 		return true
 	})
+
+
+	//Label each node in the cfg
+	for _, node := range decls{
+		cfg.LabelNonCondNodes(node)
+		//for child, _ := range node.GetChildren() {
+		//	cfg.LabelNonCondNodes(child)
+		//}
+	}
+
+	//Test print
+	for _, node := range decls{
+		cfg.PrintCfg(node, "")
+	}
 
 	respondJSON(w, http.StatusOK, nil)
 }

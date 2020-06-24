@@ -127,10 +127,8 @@ func testCondPanic(num int){
 	}
 }
 
-func testNodeProp(str string) string {
+func testNodeProp(str string) {
 	createChild(str)
-
-	return str
 }
 
 func createChild(str string){
@@ -143,5 +141,5 @@ func createChild(str string){
 }
 
 func createChildOfChild(){
-
+	panic("panic")
 }
