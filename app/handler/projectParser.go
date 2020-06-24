@@ -644,16 +644,18 @@ func FindMustHaves(root db.Node, stackTrace []stackTraceStruct, regexs []string)
 func findMustHavesRecur(n db.Node, stackTrace []stackTraceStruct, regexs []string, funcLabels *map[string]string) []db.Node {
 	funcCalls := []db.Node{}
 
-	if n, ok := n.(*db.FunctionNode); ok && n != nil {
-		funcCalls = append(funcCalls, n)
-		if isInStack(n, stackTrace) || wasLogged(n, regexs) {
-			(*funcLabels)[n.FunctionName] = "must"
-		} else {
-			(*funcLabels)[n.FunctionName] = "may"
+	if n != nil {
+		if n, ok := n.(*db.FunctionNode); ok{
+			funcCalls = append(funcCalls, n)
+			if isInStack(n, stackTrace) || wasLogged(n, regexs) {
+				(*funcLabels)[n.FunctionName] = "must"
+			} else {
+				(*funcLabels)[n.FunctionName] = "may"
+			}
 		}
-	}
-	for child := range n.GetChildren() {
-		funcCalls = append(funcCalls, findMustHavesRecur(child, stackTrace, regexs, funcLabels)...)
+		for child := range n.GetChildren() {
+			funcCalls = append(funcCalls, findMustHavesRecur(child, stackTrace, regexs, funcLabels)...)
+		}
 	}
 	return funcCalls
 }

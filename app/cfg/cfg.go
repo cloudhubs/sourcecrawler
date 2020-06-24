@@ -221,8 +221,10 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			} else {
 				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
 				//conditional.Parent = current //??
-				conditional.TrueChild.SetParents(conditional)
-				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
+				if conditional.TrueChild != nil {
+					conditional.TrueChild.SetParents(conditional)
+					fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
+				}
 			}
 
 			if fail, ok := fnCfg.blocks[block.Succs[1]]; ok {
@@ -232,8 +234,10 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			} else {
 				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1], base, fset, regexes)
 				// conditional.Parent = current //??
-				conditional.FalseChild.SetParents(conditional)
-				fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
+				if conditional.FalseChild != nil {
+					conditional.FalseChild.SetParents(conditional)
+					fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
+				}
 			}
 
 			// Set the predecessor's child to be the conditional (which may be some initialization call)
