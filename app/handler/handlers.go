@@ -260,6 +260,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
 
 	//Test print the declarations
+	fmt.Println()
 	for _, decl := range decls {
 		cfg.PrintCfg(decl, "")
 		fmt.Println()
@@ -274,21 +275,25 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
-	//hardcode exception node
-	//var exceptionNode neoDb.Node
+	//make test exception node
+	var exceptionNode neoDb.Node
+
 	for _, node := range decls{
-		for child, _ := range node.GetChildren(){
-			fmt.Println(child.GetProperties())
-		}
+		exceptionNode = cfg.GrabTestNode(node)
+	}
+	if exceptionNode != nil {
+		fmt.Println("Exception node", exceptionNode.GetProperties())
 	}
 
 	//Label each node in the cfg
-	for _, node := range decls{
-		cfg.LabelNonCondNodes(node)
-		//for child, _ := range node.GetChildren() {
-		//	cfg.LabelNonCondNodes(child)
-		//}
-	}
+	cfg.LabelParentNodes(exceptionNode)
+
+	//for _, node := range decls{
+	//	cfg.LabelNonCondNodes(node)
+	//	for child, _ := range node.GetChildren() {
+	//		cfg.LabelNonCondNodes(child)
+	//	}
+	//}
 
 	respondJSON(w, http.StatusOK, response)
 }
