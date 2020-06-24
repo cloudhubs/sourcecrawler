@@ -71,6 +71,63 @@ var cases = []func() labelTestCase{
 			Labels: labels,
 		}
 	},
+	func() labelTestCase {
+		labels := make(map[db.Node]db.ExecutionLabel, 0)
+
+		leaf := &db.FunctionNode{}
+		outerEndIf := &db.EndConditionalNode{Child: leaf}
+		leaf.SetParents(outerEndIf)
+
+		labels[leaf] = db.Must
+		labels[outerEndIf] = db.Must
+
+		// outer true branch
+		trueEndIf := &db.EndConditionalNode{Child: outerEndIf}
+		trueTrue := &db.FunctionNode{Child: trueEndIf}
+		trueFalse := &db.StatementNode{Child: trueEndIf}
+		trueEndIf.SetParents(trueTrue)
+		trueEndIf.SetParents(trueFalse)
+		trueCond := &db.ConditionalNode{TrueChild: trueTrue, FalseChild: trueFalse}
+		trueTrue.SetParents(trueCond)
+		trueFalse.SetParents(trueCond)
+		trueNode2 := &db.StatementNode{Child: trueCond}
+		trueNode1 := &db.FunctionNode{Child: trueNode2}
+		trueNode2.SetParents(trueNode1)
+
+		labels[trueEndIf] = db.May
+		labels[trueTrue] = db.May
+		labels[trueFalse] = db.May
+		labels[trueCond] = db.May
+		labels[trueNode2] = db.May
+		labels[trueNode1] = db.May
+
+		// outer false branch
+		falseEndIf := &db.EndConditionalNode{Child: outerEndIf}
+		falseTrue := &db.StatementNode{Child: falseEndIf}
+		falseFalse := &db.StatementNode{Child: falseEndIf}
+		falseEndIf.SetParents(falseTrue)
+		falseEndIf.SetParents(falseFalse)
+		falseNode1 := &db.ConditionalNode{TrueChild: falseTrue, FalseChild: falseFalse}
+		falseTrue.SetParents(falseNode1)
+		falseFalse.SetParents(falseNode1)
+
+		outerEndIf.SetParents(trueEndIf)
+		outerEndIf.SetParents(falseEndIf)
+
+		labels[falseEndIf] = db.May
+		labels[falseTrue] = db.May
+		labels[falseFalse] = db.May
+		labels[falseNode1] = db.May
+
+		root := &db.ConditionalNode{TrueChild: trueNode1, FalseChild: falseNode1}
+		labels[root] = db.Must
+
+		return labelTestCase{
+			Name:   "nested-if-else-extra",
+			Root:   root,
+			Labels: labels,
+		}
+	},
 }
 
 func TestLabelNonCondNodes(t *testing.T) {

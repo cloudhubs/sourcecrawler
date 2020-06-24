@@ -52,7 +52,7 @@ func labelBranches(end db.EndConditionalNode) (db.Node, error) {
 	if len(end.GetParents()) != 0 {
 		curr = end.GetParents()[0] //get one of the parents, doesn't matter which
 		next = curr.GetParents()[0]
-	}else{
+	} else {
 		return nil, fmt.Errorf("error, no parent nodes")
 	}
 
@@ -131,18 +131,18 @@ func LabelNonCondNodes(root db.Node) {
 		LabelNonCondNodes(root.TrueChild) //should arrive at an end conditional node and fall into case below
 		LabelNonCondNodes(root.FalseChild)
 	case *db.EndConditionalNode: //TODO: Bug with wrong labeling of returns inside a conditional
-		topNode, err := labelBranches(*root)	//special case if its an endIf node
-		if err != nil || topNode == nil{
+		topNode, err := labelBranches(*root) //special case if its an endIf node
+		if err != nil || topNode == nil {
 			fmt.Println("Error retrieving topmost node")
-		}else{
-			fmt.Println("Topmost node is",topNode.GetProperties())
+		} else {
+			fmt.Println("Topmost node is", topNode.GetProperties())
 		}
 	default:
 		//fmt.Println("default")
 	}
 
 	//Label current node if not labeled(the exception node)
-	if root.GetLabel() == db.NoLabel{
+	if root.GetLabel() == db.NoLabel {
 		switch nodeType := root.(type) {
 		case *db.ReturnNode:
 			root.SetLabel(db.Must)
@@ -154,7 +154,7 @@ func LabelNonCondNodes(root db.Node) {
 			root.SetLabel(db.Must) //Set label to must for non-end conditional nodes
 			//fmt.Println("Labeling -> ", root.GetProperties())
 		}
-	}else{
+	} else {
 		fmt.Println("Node", root.GetProperties(), " is already labeled")
 	}
 
