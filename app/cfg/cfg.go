@@ -310,10 +310,16 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// End of a conditional, so make the successor node a child of the endif node
 			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				root.SetChild([]db.Node{subCfg})
+				if subCfg != nil {
+					subCfg.SetParents(root)
+				}
 			} else {
 				subCfg = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
 				fnCfg.blocks[block.Succs[0]] = subCfg
 				root.SetChild([]db.Node{subCfg})
+				if subCfg != nil {
+					subCfg.SetParents(root)
+				}
 			}
 		} else if prev != nil && strings.Contains(block.String(), "for.body") {
 			// Fast-forward through the post block and the loop block
@@ -323,10 +329,16 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if len(loop.Succs) > 1 {
 				if subCfg, ok := fnCfg.blocks[loop.Succs[1]]; ok {
 					prev.SetChild([]db.Node{subCfg})
+					if subCfg != nil {
+						subCfg.SetParents(prev)
+					}
 				} else {
 					subCfg = fnCfg.constructSubCfg(loop.Succs[1], base, fset, regexes)
 					fnCfg.blocks[loop.Succs[1]] = subCfg
 					prev.SetChild([]db.Node{subCfg})
+					if subCfg != nil {
+						subCfg.SetParents(prev)
+					}
 				}
 			}
 
