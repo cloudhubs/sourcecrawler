@@ -275,7 +275,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
 	//hardcode exception node
-	var exceptionNode neoDb.Node
+	//var exceptionNode neoDb.Node
 	for _, node := range decls{
 		for child, _ := range node.GetChildren(){
 			fmt.Println(child.GetProperties())
