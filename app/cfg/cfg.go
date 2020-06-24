@@ -857,7 +857,7 @@ func LabelNonCondNodes(root db.Node) {
 
 
 
-	//TODO: Can't get each depth of child node of iteratively to pass into this function
+	//TODO: Can't get every child of every level connected with parents iteratively
 	// causes some parent nodes to be unlabeled if there are nested children nodes
 	//for index := range root.GetParents() {
 	//
