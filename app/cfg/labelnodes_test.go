@@ -134,7 +134,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 	for _, testCase := range cases {
 		test := testCase()
 		t.Run(test.Name, func(t *testing.T) {
-			LabelNonCondNodes(test.Root)
+			LabelParentNodes(test.Root)
 			traverse(test.Root, func(node db.Node) {
 				if test.Labels[node] != node.GetLabel() {
 					t.Errorf("%s had label %s, but %s was expected", node.GetProperties(), node.GetLabel(), test.Labels[node])

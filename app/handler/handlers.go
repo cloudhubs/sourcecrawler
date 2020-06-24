@@ -275,25 +275,34 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
-	//make test exception node
+	//Grabbing a test node (arbitrary)
 	var exceptionNode neoDb.Node
-
-	for _, node := range decls{
-		exceptionNode = cfg.GrabTestNode(node)
+	for node := range decls[1].GetChildren(){
+		for test := range node.GetChildren(){
+			for test2 := range test.GetChildren(){
+				for test3 := range test2.GetChildren(){
+					exceptionNode = test3
+					break
+				}
+				break
+			}
+			break
+		}
+		break
 	}
-	if exceptionNode != nil {
+	if exceptionNode != nil{
 		fmt.Println("Exception node", exceptionNode.GetProperties())
 	}
 
 	//Label each node in the cfg
 	cfg.LabelParentNodes(exceptionNode)
 
-	//for _, node := range decls{
-	//	cfg.LabelNonCondNodes(node)
-	//	for child, _ := range node.GetChildren() {
-	//		cfg.LabelNonCondNodes(child)
-	//	}
-	//}
+	//Post-processing print
+	fmt.Println()
+	for _, decl := range decls {
+		cfg.PrintCfg(decl, "")
+		fmt.Println()
+	}
 
 	respondJSON(w, http.StatusOK, response)
 }
