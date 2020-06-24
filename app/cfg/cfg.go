@@ -88,21 +88,21 @@ func PrintCfg(node db.Node, level string) {
 	}
 	switch node := node.(type) {
 	case *db.FunctionDeclNode:
-		fmt.Printf("%s(%v) %s(%v) (%v)\n", level, node.Receivers, node.FunctionName, node.Params, node.Returns)
+		fmt.Printf("%s(%v) %s(%v) (%v) (%v)\n", level, node.Receivers, node.FunctionName, node.Params, node.Returns, node.Label)
 		PrintCfg(node.Child, level+"  ")
 	case *db.FunctionNode:
-		fmt.Printf("%s%s\n", level, node.FunctionName)
+		fmt.Printf("%s%s (%v)\n", level, node.FunctionName, node.Label)
 		PrintCfg(node.Child, level)
 	case *db.StatementNode:
-		fmt.Printf("%s%s\n", level, node.LogRegex)
+		fmt.Printf("%s%s (%v)\n", level, node.LogRegex, node.Label)
 		PrintCfg(node.Child, level)
 	case *db.ConditionalNode:
-		fmt.Printf("%sif %s\n", level, node.Condition)
+		fmt.Printf("%sif %s (%v)\n", level, node.Condition, node.Label)
 		PrintCfg(node.TrueChild, level+"  ")
 		fmt.Println(level + "else")
 		PrintCfg(node.FalseChild, level+"  ")
 	case *db.ReturnNode:
-		fmt.Printf("%sreturn %s\n", level, node.Expression)
+		fmt.Printf("%sreturn %s (%v)\n", level, node.Expression, node.Label)
 		lv := ""
 		for i := 0; i < len(level)-2; i++ {
 			lv += " "

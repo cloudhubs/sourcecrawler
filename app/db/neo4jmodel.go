@@ -142,7 +142,7 @@ func (n *StatementNode) SetParents(parent Node) {
 }
 
 func (n *StatementNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v", n.Filename, n.LineNumber)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, label: %v", n.Filename, n.LineNumber, n.Label)
 	if n.LogRegex != "" {
 		val = val + fmt.Sprintf(", logregex: \"%v\"", n.LogRegex)
 	}
@@ -207,7 +207,8 @@ func (n *ConditionalNode) SetParents(parent Node) {
 }
 
 func (n *ConditionalNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, condition: \"%v\"", n.Filename, n.LineNumber, n.Condition)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, condition: \"%v\", label: %v",
+		n.Filename, n.LineNumber, n.Condition, n.Label)
 	return "{ " + val + " }"
 }
 
@@ -267,7 +268,8 @@ func (n *FunctionNode) SetParents(parent Node) {
 }
 
 func (n *FunctionNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\", label: %v",
+		n.Filename, n.LineNumber, n.FunctionName, n.Label)
 	return "{ " + val + " }"
 }
 
@@ -344,7 +346,8 @@ func (n *FunctionDeclNode) GetProperties() string {
 		log.Warn().Msg("could not marshal returns")
 	}
 
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\", receivers: \"%v\", parameters: \"%v\", returns: \"%v\"", n.Filename, n.LineNumber, n.FunctionName, string(rcv), string(params), string(returns))
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\", receivers: \"%v\", parameters: \"%v\", returns: \"%v\", label: %v",
+		n.Filename, n.LineNumber, n.FunctionName, string(rcv), string(params), string(returns), n.Label)
 	return "{ " + val + " }"
 }
 
@@ -404,7 +407,8 @@ func (n *ReturnNode) SetParents(parent Node) {
 }
 
 func (n *ReturnNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, expression: \"%v\"", n.Filename, n.LineNumber, n.Expression)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, expression: \"%v\", label: %v",
+		n.Filename, n.LineNumber, n.Expression, n.Label)
 	return "{ " + val + " }"
 }
 
