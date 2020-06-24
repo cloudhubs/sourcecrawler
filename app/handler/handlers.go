@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jinzhu/gorm"
+	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -14,9 +16,6 @@ import (
 	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	_ "strings" //
-
-	"github.com/jinzhu/gorm"
-	"github.com/rs/zerolog/log"
 )
 
 func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -151,8 +150,11 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 //Test endpoint for propogating labels
 func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-
-	request := model.ParseProjectRequest{}
+	request := struct {
+		StackTrace  string   `json:"stackTrace"`
+		LogMessages []string `json:"logMessages"` //it holds raw log statements
+		ProjectRoot string   `json:"projectRoot"`
+	}{}
 
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&request); err != nil {
@@ -161,39 +163,124 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	//Create test cfgs for funcs
-	fset := token.NewFileSet()
-	filesToParse := gatherGoFiles(request.ProjectRoot)
-	testFile := ""
+	//1 -- parse stack trace for functions that led to exception
+	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
 
-	for _, file := range filesToParse{
-		if strings.Contains(file, "TestCFG.go"){
-			testFile = file
-		}
-	}
-	astFile, err := parser.ParseFile(fset, testFile, nil, 0)
-	if err != nil{
-		fmt.Println("Error parsing file")
-	}
+	//2 -- Parse project for log statements with regex + line + file name
+	logTypes := parseProject(request.ProjectRoot)
 
-
-	//info for createcfg
-	var decls []neoDb.Node
-	logInfo, _ := findLogsInFile(testFile, request.ProjectRoot)
-	regexes := mapLogRegex(logInfo)
-	c := cfg.FnCfgCreator{}
-
-
-	ast.Inspect(astFile, func(currNode ast.Node) bool{
-		if fn, ok := currNode.(*ast.FuncDecl); ok {
-			if fn.Name.Name == "testNodeProp" || fn.Name.Name == "createChild" ||
-				fn.Name.Name == "createChildOfChild"{
-				decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
+	// Matching log messages to a regex (only returns used regexes)
+	regexes := []string{}
+	for index := range request.LogMessages {
+		for _, value := range logTypes {
+			matched, _ := regexp.MatchString(value.Regex, request.LogMessages[index])
+			if matched {
+				regexes = append(regexes, value.Regex)
+				//fmt.Println("Valid regexes:", value.Regex)
+				break
 			}
 		}
-		return true
-	})
+	}
 
+	// 3 -- Generate CFGs (including log information) for each function in the stack trace
+	var decls []neoDb.Node
+	fset := token.NewFileSet()
+	filesToParse := gatherGoFiles(request.ProjectRoot)
+	for _, goFile := range filesToParse {
+
+		// only parse this file if it appears in the stack trace
+		shouldParseFile := false
+		for _, value := range parsedStack {
+			for _, stackFileName := range value.fileName {
+				if strings.Contains(goFile, stackFileName) {
+					shouldParseFile = true
+					break
+				}
+			}
+		}
+
+		if !shouldParseFile { // file not in stack trace, skip it
+			continue
+		}
+
+		// get ast root for this file
+		f, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
+		if err != nil {
+			log.Error().Err(err).Msg("unable to parse file")
+		}
+
+		// get map of linenumber -> regex for thsi file
+		logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
+		regexes := mapLogRegex(logInfo)
+
+		// extract CFGs for all relevant functions from this file
+		c := cfg.FnCfgCreator{}
+		ast.Inspect(f, func(node ast.Node) bool {
+			if fn, ok := node.(*ast.FuncDecl); ok {
+				// only add this function declaration if it is part of the stack trace
+				shouldAppendFunction := false
+				for _, value := range parsedStack {
+					for index, stackFuncName := range value.funcName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.fileName[index]) {
+							shouldAppendFunction = true
+							break
+						}
+					}
+				}
+
+				if shouldAppendFunction {
+					decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
+				}
+			}
+			return true
+		})
+	}
+
+	// // find all function declarations in this project
+	// allFuncDecls := findFunctionNodes(filesToParse)
+	// funcDeclMap := make(map[string]*ast.FuncDecl)
+	// for _, fn := range allFuncDecls {
+	// 	key := fmt.Sprintf("%v", fn.Name)
+	// 	funcDeclMap[key] = fn.fd
+	// }
+
+	//4 -- Connect the CFG nodes together
+	decls = cfg.ConnectFnCfgs(decls)
+
+	//Filter must/may haves
+	funcLabels := map[string]string{}
+	funcCalls := []neoDb.Node{}
+	mustHaves := []neoDb.Node{}
+	mayHaves := []neoDb.Node{}
+	for _, root := range decls {
+		newFuncs, newLabels := FindMustHaves(root, parsedStack, regexes)
+		funcLabels = cfg.MergeLabelMaps(funcLabels, newLabels)
+		funcCalls = append(funcCalls, newFuncs...)
+	}
+	mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
+
+	//Test print the declarations
+	for _, decl := range decls {
+		cfg.PrintCfg(decl, "")
+		fmt.Println()
+	}
+
+	//Request response for must/may functions
+	response := struct {
+		MustHaveFunctions []string `json:"mustHaveFunctions"`
+		MayHaveFunctions  []string `json:"mayHaveFunctions"`
+	}{}
+
+	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
+	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
+
+	//hardcode exception node
+	var exceptionNode neoDb.Node
+	for _, node := range decls{
+		for child, _ := range node.GetChildren(){
+			fmt.Println(child.GetProperties())
+		}
+	}
 
 	//Label each node in the cfg
 	for _, node := range decls{
@@ -203,12 +290,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		//}
 	}
 
-	//Test print
-	for _, node := range decls{
-		cfg.PrintCfg(node, "")
-	}
-
-	respondJSON(w, http.StatusOK, nil)
+	respondJSON(w, http.StatusOK, response)
 }
 
 //Slices the program - first parses the stack trace, and then parses the project for log calls
@@ -318,11 +400,11 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	for _, root := range decls {
 		newFuncs, newLabels := FindMustHaves(root, parsedStack, regexes)
-		funcLabels = mergeLabelMaps(funcLabels, newLabels)
+		funcLabels = cfg.MergeLabelMaps(funcLabels, newLabels)
 		funcCalls = append(funcCalls, newFuncs...)
 	}
 
-	mustHaves, mayHaves = filterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
+	mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
 
 	//Test print the declarations
 	for _, decl := range decls {
@@ -360,37 +442,3 @@ func convertNodesToStrings(elements []neoDb.Node) []string {
 	return result
 }
 
-// given a list of function calls in `funcCalls` and a map of their labels in `funcLabels`,
-// append the names of all must-have functions to `mustHaves`, and all the may-have functions to `mayHaves`
-func filterMustMay(funcCalls []neoDb.Node, mustHaves []neoDb.Node, mayHaves []neoDb.Node, funcLabels map[string]string) ([]neoDb.Node, []neoDb.Node) {
-	for _, fn := range funcCalls {
-		node := fn.(*neoDb.FunctionNode)
-		if label := funcLabels[node.FunctionName]; label == "must" {
-			mustHaves = append(mustHaves, node)
-		} else {
-			mayHaves = append(mayHaves, node)
-		}
-	}
-	return mustHaves, mayHaves
-}
-
-func mergeLabelMaps(labelMaps ...map[string]string) map[string]string {
-	res := map[string]string{}
-	// go through each map
-	for _, currMap := range labelMaps {
-		// get each function/label from this map
-		for fnName, newLabel := range currMap {
-			// have we added this function before?
-			if existLabel, ok := res[fnName]; ok {
-				// added this before, see if we need to overwrite it
-				if newLabel == "must" || (newLabel == "may" && existLabel != "must") {
-					res[fnName] = newLabel
-				}
-			} else {
-				// not added before, so just add the function/label
-				res[fnName] = newLabel
-			}
-		}
-	}
-	return res
-}

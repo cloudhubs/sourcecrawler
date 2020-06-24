@@ -4,7 +4,43 @@ import (
 	"errors"
 	"fmt"
 	"sourcecrawler/app/db"
+	neoDb "sourcecrawler/app/db"
 )
+
+// given a list of function calls in `funcCalls` and a map of their labels in `funcLabels`,
+// append the names of all must-have functions to `mustHaves`, and all the may-have functions to `mayHaves`
+func FilterMustMay(funcCalls []neoDb.Node, mustHaves []neoDb.Node, mayHaves []neoDb.Node, funcLabels map[string]string) ([]neoDb.Node, []neoDb.Node) {
+	for _, fn := range funcCalls {
+		node := fn.(*neoDb.FunctionNode)
+		if label := funcLabels[node.FunctionName]; label == "must" {
+			mustHaves = append(mustHaves, node)
+		} else {
+			mayHaves = append(mayHaves, node)
+		}
+	}
+	return mustHaves, mayHaves
+}
+
+func MergeLabelMaps(labelMaps ...map[string]string) map[string]string {
+	res := map[string]string{}
+	// go through each map
+	for _, currMap := range labelMaps {
+		// get each function/label from this map
+		for fnName, newLabel := range currMap {
+			// have we added this function before?
+			if existLabel, ok := res[fnName]; ok {
+				// added this before, see if we need to overwrite it
+				if newLabel == "must" || (newLabel == "may" && existLabel != "must") {
+					res[fnName] = newLabel
+				}
+			} else {
+				// not added before, so just add the function/label
+				res[fnName] = newLabel
+			}
+		}
+	}
+	return res
+}
 
 //Assumes starting at endIf node and tries to find topmost node
 func labelBranches(end db.EndConditionalNode) (db.Node, error) {
@@ -121,8 +157,6 @@ func LabelNonCondNodes(root db.Node) {
 	}else{
 		fmt.Println("Node", root.GetProperties(), " is already labeled")
 	}
-
-
 
 	//TODO: Can't get every child of every level connected with parents iteratively
 	// causes some parent nodes to be unlabeled if there are nested children nodes
