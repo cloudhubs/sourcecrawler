@@ -131,12 +131,8 @@ func TestLabelNonCondNodes(t *testing.T) {
 		},
 	}
 
-	tests := make([]labelTestCase, 0)
 	for _, testCase := range cases {
-		tests = append(tests, testCase())
-	}
-
-	for _, test := range tests {
+		test := testCase()
 		t.Run(test.Name, func(t *testing.T) {
 			LabelNonCondNodes(test.Root)
 			traverse(test.Root, func(node db.Node) {
