@@ -49,7 +49,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			t1 := &db.FunctionNode{}
 			f1 := &db.FunctionNode{}
 			endIf1.SetParents(t1)
-			endIf1.SetParents(t1)
+			endIf1.SetParents(f1)
 			cond1 := &db.ConditionalNode{TrueChild: t1, FalseChild: f1}
 			t1.SetParents(cond1)
 			f1.SetParents(cond1)
