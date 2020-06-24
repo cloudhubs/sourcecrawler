@@ -73,7 +73,9 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	if fn, ok := root.(*db.FunctionDeclNode); ok {
 		fn.Child = node
 		//fn.Parent = root //Set parent to be root (the func declaration)
-		fn.Child.SetParents(fn)
+		if fn.Child != nil {
+			fn.Child.SetParents(fn)
+		}
 	}
 
 	return root
@@ -166,7 +168,9 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 				// fmt.Println("prev not current, set child")
 				prevNode.Child = current
 				//prevNode.Parent = prev //Set parent node as previous if not same as current
-				// prevNode.Child.SetParents(prevNode)
+				if prevNode.Child != nil {
+					prevNode.Child.SetParents(prevNode)
+				}
 			}
 
 			// May need to fast-forward to deepest child node here
@@ -186,11 +190,15 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// You should never encounter a "previous" conditional inside of a block since
 			// the conditional is always the last node in a CFG block if a conditional is present
 			prevNode.Child = current
-			prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
+			if prevNode.Child != nil {
+				prevNode.Child.SetParents(prevNode)
+			}
 		case *db.EndConditionalNode:
 			prevNode.Child = current
 			//prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
-			// prevNode.Child.SetParents(prevNode)
+			if prevNode.Child != nil {
+				prevNode.Child.SetParents(prevNode)
+			}
 		}
 		prev = current
 
@@ -217,27 +225,27 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if succ, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				conditional.TrueChild = succ
 				//conditional.Parent = current //??
-				conditional.TrueChild.SetParents(conditional)
 			} else {
 				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
 				//conditional.Parent = current //??
-				if conditional.TrueChild != nil {
-					conditional.TrueChild.SetParents(conditional)
-					fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
-				}
+				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
+			}
+			// set true child's parent
+			if conditional.TrueChild != nil {
+				conditional.TrueChild.SetParents(conditional)
 			}
 
 			if fail, ok := fnCfg.blocks[block.Succs[1]]; ok {
 				conditional.FalseChild = fail
 				// conditional.Parent = current //??
-				conditional.FalseChild.SetParents(conditional)
 			} else {
 				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1], base, fset, regexes)
 				// conditional.Parent = current //??
-				if conditional.FalseChild != nil {
-					conditional.FalseChild.SetParents(conditional)
-					fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
-				}
+				fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
+			}
+			// set false child's parent
+			if conditional.FalseChild != nil {
+				conditional.FalseChild.SetParents(conditional)
 			}
 
 			// Set the predecessor's child to be the conditional (which may be some initialization call)
@@ -245,11 +253,15 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			case *db.FunctionNode:
 				node.Child = db.Node(conditional)
 				// node.Parent = current //?
-				node.Child.SetParents(node)
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			case *db.StatementNode:
 				node.Child = db.Node(conditional)
 				// node.Parent = current //?
-				node.Child.SetParents(node)
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			}
 		} else if len(block.Succs) == 1 && last {
 			// The last node was not a conditional but is the last statement, so
@@ -269,11 +281,15 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			case *db.FunctionNode:
 				node.Child = child
 				// node.Parent = current
-				// node.Child.SetParents(node)
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			case *db.StatementNode:
 				node.Child = child
 				// node.Parent = current
-				// node.Child.SetParents(node)
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			}
 		}
 
@@ -443,11 +459,15 @@ func connectToLeaf(root db.Node, node db.Node) {
 		if current != nil {
 			current.Child = node
 			// current.Parent = root //?
-			current.Child.SetParents(current)
+			if current.Child != nil {
+				current.Child.SetParents(current)
+			}
 		} else {
 			call.Child = node
 			//call.Parent = root //??
-			call.Child.SetParents(call)
+			if call.Child != nil {
+				call.Child.SetParents(call)
+			}
 		}
 	}
 }
@@ -511,7 +531,9 @@ func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes 
 			if node, ok := prev.(*db.FunctionNode); ok && node != nil {
 				node.Child = current
 				//node.Parent = prev //??
-				// node.Child.SetParents(node)
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			}
 
 			prev = current

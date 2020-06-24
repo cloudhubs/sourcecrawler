@@ -460,6 +460,9 @@ func (n *EndConditionalNode) GetParents() []Node {
 }
 
 func (n *EndConditionalNode) SetParents(parent Node) {
+	if n.Parents == nil {
+		n.Parents = make([]Node, 2)
+	}
 	n.Parents = append(n.Parents, parent)
 }
 
