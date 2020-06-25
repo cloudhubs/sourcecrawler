@@ -146,6 +146,7 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 	//Check for nodes without parents
 	if len(end.GetParents()) != 0 {
 		curr = end.GetParents()[0] //get one of the parents, doesn't matter which
+		next = curr
 		if len(curr.GetParents()) != 0{
 			next = curr.GetParents()[0]
 		}
@@ -181,11 +182,8 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 	top = curr
 	top.SetLabel(db.Must)
 	//recursively label all children up to end
-	//as "may"
-	hadLog := labelBranchesRecur(top, end, nil)
-	if hadLog {
-		top.SetLabel(db.Must)
-	}
+	//as "may" or "must" when logs occurred
+	labelBranchesRecur(top, end, printedLogs)
 
 	//return top conditional node as next node to label
 	return top, nil
@@ -194,9 +192,7 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 // Returns true if it found a log statement in the branch and sets to must on the way back up
 // printedLogs is the LogTypes corresponding to the logs that were all printed at runtime
 func labelBranchesRecur(node db.Node, end *db.EndConditionalNode, printedLogs []model.LogType) bool {
-	for _,log := range printedLogs {
-		fmt.Println(log)
-	}
+	hadLog := false
 	for child := range node.GetChildren() {
 		//stop recursion if child is already labeled
 		//or if it is the original end node
@@ -207,10 +203,9 @@ func labelBranchesRecur(node db.Node, end *db.EndConditionalNode, printedLogs []
 		}
 
 		if child.GetLabel() == db.NoLabel {
-			hadLog := labelBranchesRecur(child, end, printedLogs)
+			hadLog = labelBranchesRecur(child, end, printedLogs)
 			if hadLog {
 				child.SetLabel(db.Must)
-				return true
 			}else {
 				child.SetLabel(db.May)
 			}
@@ -218,14 +213,14 @@ func labelBranchesRecur(node db.Node, end *db.EndConditionalNode, printedLogs []
 
 	}
 	if stmt, ok := node.(*db.StatementNode); ok {
-		fmt.Println("It's a statement")
 		for _, log := range printedLogs {
-			fmt.Println("There are logs to check")
 			if log.LineNumber == stmt.LineNumber && strings.Contains(log.FilePath, stmt.Filename) {
-				fmt.Println("HEY, LISTEN",node.GetProperties())
 				return true
 			}
 		}
+	}
+	if hadLog {
+		return true
 	}
 	return false
 }

@@ -1,7 +1,6 @@
 package cfg
 
 import (
-	"fmt"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	"testing"
@@ -193,10 +192,6 @@ func TestLabelNonCondNodes(t *testing.T) {
 					FilePath:   "/some/path/to/file.go",
 					Regex:      "this is a log message: .*",
 				},
-			}
-
-			for _,log := range logs {
-				fmt.Println(log)
 			}
 
 			return labelTestCase{
