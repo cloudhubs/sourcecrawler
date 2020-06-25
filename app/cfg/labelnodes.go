@@ -6,6 +6,7 @@ import (
 	"sourcecrawler/app/db"
 	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
+	"strings"
 )
 
 func GrabTestNode() (db.Node, db.Node) {
@@ -145,7 +146,9 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 	//Check for nodes without parents
 	if len(end.GetParents()) != 0 {
 		curr = end.GetParents()[0] //get one of the parents, doesn't matter which
-		next = curr.GetParents()[0]
+		if len(curr.GetParents()) != 0{
+			next = curr.GetParents()[0]
+		}
 	} else {
 		return nil, fmt.Errorf("error, no parent nodes")
 	}
@@ -191,27 +194,38 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 // Returns true if it found a log statement in the branch and sets to must on the way back up
 // printedLogs is the LogTypes corresponding to the logs that were all printed at runtime
 func labelBranchesRecur(node db.Node, end *db.EndConditionalNode, printedLogs []model.LogType) bool {
+	for _,log := range printedLogs {
+		fmt.Println(log)
+	}
 	for child := range node.GetChildren() {
 		//stop recursion if child is already labeled
 		//or if it is the original end node
-		if child, ok := child.(*db.EndConditionalNode); ok {
-			if child.GetLabel() == db.NoLabel && child != end {
-				child.SetLabel(db.May)
-				hadLog := labelBranchesRecur(child, end, printedLogs)
-				if hadLog {
-					child.SetLabel(db.Must)
-				}
+		if _, ok := child.(*db.EndConditionalNode); ok {
+			if child == end {
+				continue
 			}
 		}
+
+		if child.GetLabel() == db.NoLabel {
+			hadLog := labelBranchesRecur(child, end, printedLogs)
+			if hadLog {
+				child.SetLabel(db.Must)
+				return true
+			}else {
+				child.SetLabel(db.May)
+			}
+		}
+
 	}
 	if stmt, ok := node.(*db.StatementNode); ok {
+		fmt.Println("It's a statement")
 		for _, log := range printedLogs {
-			if log.LineNumber == stmt.LineNumber && log.FilePath == stmt.Filename {
+			fmt.Println("There are logs to check")
+			if log.LineNumber == stmt.LineNumber && strings.Contains(log.FilePath, stmt.Filename) {
+				fmt.Println("HEY, LISTEN",node.GetProperties())
 				return true
 			}
 		}
-		child.SetLabel(db.May)
-		labelBranchesRecur(child, end,printedLogs)
 	}
 	return false
 }

@@ -141,7 +141,7 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, base str
 		//next node please
 		for child := range node.GetChildren(){
 			//repeat
-			fnCfg.ConnectExternalFunctions(child, seenFns, base, regexes)
+			ConnectExternalFunctions(child, seenFns, base, regexes)
 		}
 	}
 }

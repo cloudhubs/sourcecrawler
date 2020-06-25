@@ -600,40 +600,6 @@ func mapLogRegex(logInfo []model.LogType) map[int]string {
 	return regexMap
 }
 
-//Generates regex for a given log string
-func CreateRegex(value string) string {
-	//Regex value currently
-	reg := value
-
-	//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
-	if strings.Contains(reg, "(") {
-		reg = strings.ReplaceAll(reg, "(", "\\(")
-	}
-	if strings.Contains(reg, ")") {
-		reg = strings.ReplaceAll(reg, ")", "\\)")
-	}
-
-	//Converting %d, %s, %v to regex num, removing single quotes
-	if strings.Contains(reg, "%d") {
-		reg = strings.ReplaceAll(reg, "%d", "\\d")
-	}
-	if strings.Contains(reg, "%s") {
-		reg = strings.ReplaceAll(reg, "%s", ".*")
-	}
-	if strings.Contains(reg, "%v") {
-		reg = strings.ReplaceAll(reg, "%v", ".*")
-	}
-	if strings.Contains(reg, "'") {
-		reg = strings.ReplaceAll(reg, "'", "")
-	}
-	if strings.Contains(reg, "%+v") {
-		reg = strings.ReplaceAll(reg, "%+v", ".+")
-	}
-
-	//Remove the double quotes
-	return reg[1 : len(reg)-1]
-}
-
 func FindMustHaves(root db.Node, stackTrace []stackTraceStruct, regexs []string) ([]db.Node, map[string]string) {
 	//must-have is on stack trace or contains a regex
 	funcLabels := make(map[string]string)

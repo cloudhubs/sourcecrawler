@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"fmt"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	"testing"
@@ -152,9 +153,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 		func() labelTestCase {
 			endIf := &db.EndConditionalNode{}
 			root := &db.ConditionalNode{TrueChild: endIf, FalseChild: endIf}
-			endIf.SetParents(endIf)
-			endIf.SetParents(endIf)
-
+			endIf.SetParents(root)
 			labels := make(map[db.Node]db.ExecutionLabel)
 			labels[root] = db.Must
 			labels[endIf] = db.Must
@@ -184,16 +183,21 @@ func TestLabelNonCondNodes(t *testing.T) {
 			f1.SetParents(root)
 			labels := make(map[db.Node]db.ExecutionLabel)
 			labels[end] = db.Must
-			labels[t1] = db.MustNot
+			labels[t1] = db.MustNot //this is not handled yet
 			labels[f1] = db.Must
 			labels[root] = db.Must
 
-			logs := make([]model.LogType, 0)
-			logs = append(logs, model.LogType{
-				LineNumber: 67,
-				FilePath:   "/some/path/to/file.go",
-				Regex:      "this is a log message: .*",
-			})
+			logs := []model.LogType{
+				{
+					LineNumber: 67,
+					FilePath:   "/some/path/to/file.go",
+					Regex:      "this is a log message: .*",
+				},
+			}
+
+			for _,log := range logs {
+				fmt.Println(log)
+			}
 
 			return labelTestCase{
 				Name:   "log-if-else",

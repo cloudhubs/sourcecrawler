@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"sourcecrawler/app/handler"
 	"strings"
 )
 
@@ -41,17 +40,50 @@ func GetLogRegexFromInfo(filename string, lineNumber int) string{
 							switch v := arg.(type){
 							case *ast.BasicLit:
 								//create regex
-								regex = handler.CreateRegex(v.Value)
+								regex = CreateRegex(v.Value)
 							}
 						}
 
 						//stop
 						return false
 					}
-					return true
 				}
 			}
 		}
+		return true
 	})
 	return regex
+}
+
+func CreateRegex(value string) string {
+	//Regex value currently
+	reg := value
+
+	//Converting current regex strings to regex format (parenthesis, %d,%s,%v,',%+v)
+	if strings.Contains(reg, "(") {
+		reg = strings.ReplaceAll(reg, "(", "\\(")
+	}
+	if strings.Contains(reg, ")") {
+		reg = strings.ReplaceAll(reg, ")", "\\)")
+	}
+
+	//Converting %d, %s, %v to regex num, removing single quotes
+	if strings.Contains(reg, "%d") {
+		reg = strings.ReplaceAll(reg, "%d", "\\d")
+	}
+	if strings.Contains(reg, "%s") {
+		reg = strings.ReplaceAll(reg, "%s", ".*")
+	}
+	if strings.Contains(reg, "%v") {
+		reg = strings.ReplaceAll(reg, "%v", ".*")
+	}
+	if strings.Contains(reg, "'") {
+		reg = strings.ReplaceAll(reg, "'", "")
+	}
+	if strings.Contains(reg, "%+v") {
+		reg = strings.ReplaceAll(reg, "%+v", ".+")
+	}
+
+	//Remove the double quotes
+	return reg[1 : len(reg)-1]
 }
