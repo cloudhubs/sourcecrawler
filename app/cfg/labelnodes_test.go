@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"sourcecrawler/app/db"
+	"sourcecrawler/app/model"
 	"testing"
 )
 
@@ -9,6 +10,7 @@ type labelTestCase struct {
 	Name   string
 	Root   db.Node
 	Labels map[db.Node]db.ExecutionLabel
+	Logs   []model.LogType
 }
 
 func TestLabelNonCondNodes(t *testing.T) {
@@ -16,14 +18,14 @@ func TestLabelNonCondNodes(t *testing.T) {
 		func() labelTestCase {
 			endIf := &db.EndConditionalNode{}
 			t := &db.FunctionNode{Child: endIf}
-			f := &db.StatementNode{Child: endIf}
+			f := &db.FunctionNode{Child: endIf}
 			endIf.SetParents(t)
 			endIf.SetParents(f)
 			root := &db.ConditionalNode{TrueChild: t, FalseChild: f}
 			t.SetParents(root)
 			f.SetParents(root)
 
-			labels := make(map[db.Node]db.ExecutionLabel, 0)
+			labels := make(map[db.Node]db.ExecutionLabel)
 			labels[root] = db.Must
 			labels[t] = db.May
 			labels[f] = db.May
@@ -33,12 +35,13 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Name:   "if-else",
 				Root:   root,
 				Labels: labels,
+				Logs:   make([]model.LogType, 0),
 			}
 		},
 		func() labelTestCase {
 			endIf2 := &db.EndConditionalNode{}
-			t2 := &db.StatementNode{Child: endIf2}
-			f2 := &db.StatementNode{Child: endIf2}
+			t2 := &db.FunctionNode{Child: endIf2}
+			f2 := &db.FunctionNode{Child: endIf2}
 			endIf2.SetParents(t2)
 			endIf2.SetParents(f2)
 			cond2 := &db.ConditionalNode{TrueChild: t2, FalseChild: f2}
@@ -55,7 +58,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			f1.SetParents(cond1)
 
 			root := &db.FunctionDeclNode{Child: cond1}
-			labels := make(map[db.Node]db.ExecutionLabel, 0)
+			labels := make(map[db.Node]db.ExecutionLabel)
 			labels[endIf2] = db.Must
 			labels[t2] = db.May
 			labels[f2] = db.May
@@ -70,10 +73,11 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Name:   "chained-if-else",
 				Root:   root,
 				Labels: labels,
+				Logs:   make([]model.LogType, 0),
 			}
 		},
 		func() labelTestCase {
-			labels := make(map[db.Node]db.ExecutionLabel, 0)
+			labels := make(map[db.Node]db.ExecutionLabel)
 
 			leaf := &db.FunctionNode{}
 			outerEndIf := &db.EndConditionalNode{Child: leaf}
@@ -85,13 +89,13 @@ func TestLabelNonCondNodes(t *testing.T) {
 			// outer true branch
 			trueEndIf := &db.EndConditionalNode{Child: outerEndIf}
 			trueTrue := &db.FunctionNode{Child: trueEndIf}
-			trueFalse := &db.StatementNode{Child: trueEndIf}
+			trueFalse := &db.FunctionNode{Child: trueEndIf}
 			trueEndIf.SetParents(trueTrue)
 			trueEndIf.SetParents(trueFalse)
 			trueCond := &db.ConditionalNode{TrueChild: trueTrue, FalseChild: trueFalse}
 			trueTrue.SetParents(trueCond)
 			trueFalse.SetParents(trueCond)
-			trueNode2 := &db.StatementNode{Child: trueCond}
+			trueNode2 := &db.FunctionNode{Child: trueCond}
 			trueNode1 := &db.FunctionNode{Child: trueNode2}
 			trueNode2.SetParents(trueNode1)
 
@@ -104,8 +108,8 @@ func TestLabelNonCondNodes(t *testing.T) {
 
 			// outer false branch
 			falseEndIf := &db.EndConditionalNode{Child: outerEndIf}
-			falseTrue := &db.StatementNode{Child: falseEndIf}
-			falseFalse := &db.StatementNode{Child: falseEndIf}
+			falseTrue := &db.FunctionNode{Child: falseEndIf}
+			falseFalse := &db.FunctionNode{Child: falseEndIf}
 			falseEndIf.SetParents(falseTrue)
 			falseEndIf.SetParents(falseFalse)
 			falseNode1 := &db.ConditionalNode{TrueChild: falseTrue, FalseChild: falseFalse}
@@ -127,6 +131,57 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Name:   "nested-if-else-extra",
 				Root:   root,
 				Labels: labels,
+				Logs:   make([]model.LogType, 0),
+			}
+		},
+		func() labelTestCase {
+			endIf := &db.EndConditionalNode{}
+			root := &db.ConditionalNode{TrueChild: endIf, FalseChild: endIf}
+			endIf.SetParents(endIf)
+			endIf.SetParents(endIf)
+
+			labels := make(map[db.Node]db.ExecutionLabel)
+			labels[root] = db.Must
+			labels[endIf] = db.Must
+
+			return labelTestCase{
+				Name:   "dead-if-else",
+				Root:   root,
+				Labels: labels,
+				Logs:   make([]model.LogType, 0),
+			}
+		},
+		func() labelTestCase {
+			end := &db.EndConditionalNode{}
+			t1 := &db.FunctionNode{Child: end}
+			f1 := &db.StatementNode{
+				Filename:   "/some/path/to/file.go",
+				LogRegex:   "this is a log message: .*",
+				LineNumber: 67,
+				Child:      end,
+			}
+			end.SetParents(t1)
+			end.SetParents(f1)
+
+			root := &db.ConditionalNode{TrueChild: t1, FalseChild: f1}
+			labels := make(map[db.Node]db.ExecutionLabel)
+			labels[end] = db.Must
+			labels[t1] = db.MustNot
+			labels[f1] = db.Must
+			labels[root] = db.Must
+
+			logs := make([]model.LogType, 0)
+			logs = append(logs, model.LogType{
+				LineNumber: 67,
+				FilePath:   "/some/path/to/file.go",
+				Regex:      "this is a log message: .*",
+			})
+
+			return labelTestCase{
+				Name:   "log-if-else",
+				Root:   root,
+				Labels: labels,
+				Logs:   logs,
 			}
 		},
 	}
@@ -134,10 +189,15 @@ func TestLabelNonCondNodes(t *testing.T) {
 	for _, testCase := range cases {
 		test := testCase()
 		t.Run(test.Name, func(t *testing.T) {
-			LabelParentNodes(test.Root)
+			LabelParentNodes(test.Root, test.Logs)
 			traverse(test.Root, func(node db.Node) {
 				if test.Labels[node] != node.GetLabel() {
-					t.Errorf("%s had label %s, but %s was expected", node.GetProperties(), node.GetLabel(), test.Labels[node])
+					t.Errorf(
+						"%s had label %s, but %s was expected",
+						node.GetProperties(),
+						node.GetLabel().String(),
+						test.Labels[node].String(),
+					)
 				}
 			})
 		})

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jinzhu/gorm"
-	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -16,6 +14,9 @@ import (
 	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	_ "strings" //
+
+	"github.com/jinzhu/gorm"
+	"github.com/rs/zerolog/log"
 )
 
 func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -277,10 +278,10 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	//Grabbing a test node (arbitrary)
 	var exceptionNode neoDb.Node
-	for node := range decls[1].GetChildren(){
-		for test := range node.GetChildren(){
-			for test2 := range test.GetChildren(){
-				for test3 := range test2.GetChildren(){
+	for node := range decls[1].GetChildren() {
+		for test := range node.GetChildren() {
+			for test2 := range test.GetChildren() {
+				for test3 := range test2.GetChildren() {
 					exceptionNode = test3
 					break
 				}
@@ -290,7 +291,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 		break
 	}
-	if exceptionNode != nil{
+	if exceptionNode != nil {
 		fmt.Println("Exception node", exceptionNode.GetProperties())
 	}
 
@@ -337,7 +338,8 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 
 	//Label each node in the cfg
-	cfg.LabelParentNodes(endIf2)
+	// cfg.LabelParentNodes(endIf2)
+	cfg.LabelParentNodes(endIf2, make([]model.LogType, 0))
 
 	//Post-processing print
 	fmt.Println("AFTER============")

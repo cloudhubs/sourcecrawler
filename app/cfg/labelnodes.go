@@ -5,29 +5,29 @@ import (
 	"fmt"
 	"sourcecrawler/app/db"
 	neoDb "sourcecrawler/app/db"
+	"sourcecrawler/app/model"
 	"strings"
-
 	//"strings"
 )
 
-func GrabTestNode(root db.Node) db.Node{
+func GrabTestNode(root db.Node) db.Node {
 	var testNode db.Node
-	for n1 := range root.GetChildren(){
+	for n1 := range root.GetChildren() {
 		//fmt.Println(n1.GetProperties())
-		for n2 := range n1.GetChildren(){
+		for n2 := range n1.GetChildren() {
 			//fmt.Println(n2.GetProperties())
-			for n3 := range n2.GetChildren(){
+			for n3 := range n2.GetChildren() {
 				//fmt.Println(n3.GetProperties())
-				for n4 := range n3.GetChildren(){
+				for n4 := range n3.GetChildren() {
 					//fmt.Println(n4.GetProperties())
-					for n5 := range n4.GetChildren(){
+					for n5 := range n4.GetChildren() {
 						//fmt.Println(n5.GetProperties())
-						for n6 := range n5.GetChildren(){
+						for n6 := range n5.GetChildren() {
 							//fmt.Println(n6.GetProperties())
-							for n7 := range n6.GetChildren(){
+							for n7 := range n6.GetChildren() {
 								//fmt.Println(n7.GetProperties())
-								for n8 := range n7.GetChildren(){
-									if n8 != nil && strings.Contains(n8.GetProperties(), "warning"){
+								for n8 := range n7.GetChildren() {
+									if n8 != nil && strings.Contains(n8.GetProperties(), "warning") {
 										testNode = n8
 										return testNode
 									}
@@ -79,7 +79,7 @@ func MergeLabelMaps(labelMaps ...map[string]string) map[string]string {
 }
 
 //Assumes starting at endIf node and tries to find topmost node
-func labelBranches(end db.EndConditionalNode) (db.Node, error) {
+func labelBranches(end db.EndConditionalNode, printedLogs []model.LogType) (db.Node, error) {
 
 	var curr db.Node
 	var next db.Node
@@ -120,30 +120,46 @@ func labelBranches(end db.EndConditionalNode) (db.Node, error) {
 	top = curr
 	//recursively label all children up to end
 	//as "may"
-	labelBranchesRecur(top, end)
+	hadLog := labelBranchesRecur(top, end, nil)
+	if hadLog {
+		top.SetLabel(db.Must)
+	}
 
 	//return top conditional node as next node to label
 	return top, nil
 }
 
-func labelBranchesRecur(node db.Node, end db.EndConditionalNode) {
+// Returns true if it found a log statement in the branch and sets to must on the way back up
+// printedLogs is the LogTypes corresponding to the logs that were all printed at runtime
+func labelBranchesRecur(node db.Node, end db.EndConditionalNode, printedLogs []model.LogType) bool {
 	for child := range node.GetChildren() {
 		//stop recursion if child is already labeled
 		//or if it is the original end node
 		if child, ok := child.(*db.EndConditionalNode); ok {
 			if child.GetLabel() == db.NoLabel && child != &end {
 				child.SetLabel(db.May)
-				labelBranchesRecur(child, end)
+				hadLog := labelBranchesRecur(child, end, printedLogs)
+				if hadLog {
+					child.SetLabel(db.Must)
+				}
 			}
 		}
 	}
+	if stmt, ok := node.(*db.StatementNode); ok {
+		for _, log := range printedLogs {
+			if log.LineNumber == stmt.LineNumber && log.FilePath == stmt.Filename {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 //Labels the non conditional nodes (needs testing)
 // Assume root is the exception node
 // start at exception, loop through iteratively through parents an endCondition node
 // Then pass to labelBranches and continue
-func LabelParentNodes(root db.Node) {
+func LabelParentNodes(root db.Node, printedLogs []model.LogType) {
 	if root == nil {
 		fmt.Println("error root is nil")
 		return
@@ -194,14 +210,14 @@ func LabelParentNodes(root db.Node) {
 					node.SetLabel(db.May)
 					node.TrueChild.SetLabel(db.May)
 					node.FalseChild.SetLabel(db.May)
-					if trueNode != nil{
+					if trueNode != nil {
 						trueNode.SetLabel(db.May)
 					}
-					if falseNode != nil{
+					if falseNode != nil {
 						falseNode.SetLabel(db.May)
 					}
 				case *db.EndConditionalNode:
-					topNode, err := labelBranches(*node) //special case if its an endIf node
+					topNode, err := labelBranches(*node, printedLogs) //special case if its an endIf node
 					if err != nil || topNode == nil {
 						fmt.Println("Error retrieving topmost node")
 					} else {
@@ -215,7 +231,7 @@ func LabelParentNodes(root db.Node) {
 
 			//If it's an end conditional, set the next parent to the topmost node of the conditional
 			// and continue
-			switch node.(type){
+			switch node.(type) {
 			case *db.EndConditionalNode:
 				if top != nil {
 					node = top
@@ -225,12 +241,12 @@ func LabelParentNodes(root db.Node) {
 
 			// Check if parent node exists and set to next
 			// If no more parents, it is done processing
-			if len(node.GetParents()) == 1{
+			if len(node.GetParents()) == 1 {
 				node = node.GetParents()[0]
-			}else if len(node.GetParents()) == 2{
+			} else if len(node.GetParents()) == 2 {
 				trueNode = node.GetParents()[0]
 				falseNode = node.GetParents()[1]
-			}else {
+			} else {
 				break
 			}
 		}
@@ -238,14 +254,14 @@ func LabelParentNodes(root db.Node) {
 }
 
 //recursive version -- temporary
-func LabelParentNodesRecur(root db.Node){
+func LabelParentNodesRecur(root db.Node, printedLogs []model.LogType) {
 
 	if root == nil {
 		fmt.Println("error root is nil")
 		return
 	}
 
-	if len(root.GetParents()) == 0{
+	if len(root.GetParents()) == 0 {
 		fmt.Println("No parent nodes connected")
 	}
 
@@ -255,33 +271,33 @@ func LabelParentNodesRecur(root db.Node){
 	//Currently using a recursive version to process parent nodes when coming back up from recursive calls
 	switch root := root.(type) {
 	case *db.FunctionNode:
-		LabelParentNodesRecur(root.Child)
+		LabelParentNodesRecur(root.Child, printedLogs)
 		//fmt.Println("function node",root.GetProperties())
 	case *db.FunctionDeclNode:
-		LabelParentNodesRecur(root.Child)
+		LabelParentNodesRecur(root.Child, printedLogs)
 		//fmt.Println("FuncDecl",root.GetProperties())
 	case *db.StatementNode:
-		LabelParentNodesRecur(root.Child)
+		LabelParentNodesRecur(root.Child, printedLogs)
 		//fmt.Println("statement",root.GetProperties())
 	case *db.ReturnNode:
-		LabelParentNodesRecur(root.Child)
+		LabelParentNodesRecur(root.Child, printedLogs)
 		//fmt.Println("return",root.GetProperties())
 	case *db.ConditionalNode:
-		LabelParentNodesRecur(root.TrueChild) //should arrive at an end conditional node and fall into case below
-		LabelParentNodesRecur(root.FalseChild)
+		LabelParentNodesRecur(root.TrueChild, printedLogs) //should arrive at an end conditional node and fall into case below
+		LabelParentNodesRecur(root.FalseChild, printedLogs)
 	case *db.EndConditionalNode: //TODO: Bug with wrong labeling of returns inside a conditional
-		topNode, err := labelBranches(*root)	//special case if its an endIf node
-		if err != nil || topNode == nil{
+		topNode, err := labelBranches(*root, printedLogs) //special case if its an endIf node
+		if err != nil || topNode == nil {
 			fmt.Println("Error retrieving topmost node")
-		}else{
-			fmt.Println("Topmost node is",topNode.GetProperties())
+		} else {
+			fmt.Println("Topmost node is", topNode.GetProperties())
 		}
 	default:
 		//fmt.Println("default")
 	}
 
 	//Label current node if not labeled(the exception node)
-	if root.GetLabel() == db.NoLabel{
+	if root.GetLabel() == db.NoLabel {
 		switch nodeType := root.(type) {
 		case *db.ReturnNode:
 			root.SetLabel(db.Must)
@@ -293,7 +309,7 @@ func LabelParentNodesRecur(root db.Node){
 			root.SetLabel(db.Must) //Set label to must for non-end conditional nodes
 			//fmt.Println("Labeling -> ", root.GetProperties())
 		}
-	}else{
+	} else {
 		fmt.Println("Node", root.GetProperties(), " is already labeled")
 	}
 }
