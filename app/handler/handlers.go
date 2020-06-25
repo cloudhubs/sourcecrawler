@@ -296,7 +296,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Label each node in the cfg
-	cfg.LabelParentNodes(exceptionNode, make(map[int]string))
+	cfg.LabelParentNodes(exceptionNode, make([]model.LogType, 0))
 
 	//Post-processing print
 	fmt.Println()

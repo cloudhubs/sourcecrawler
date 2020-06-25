@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sourcecrawler/app/db"
 	neoDb "sourcecrawler/app/db"
+	"sourcecrawler/app/model"
 	"strings"
 	//"strings"
 )
@@ -78,7 +79,7 @@ func MergeLabelMaps(labelMaps ...map[string]string) map[string]string {
 }
 
 //Assumes starting at endIf node and tries to find topmost node
-func labelBranches(end db.EndConditionalNode, regexs map[int]string) (db.Node, error) {
+func labelBranches(end db.EndConditionalNode, printedLogs []model.LogType) (db.Node, error) {
 
 	var curr db.Node
 	var next db.Node
@@ -129,14 +130,15 @@ func labelBranches(end db.EndConditionalNode, regexs map[int]string) (db.Node, e
 }
 
 // Returns true if it found a log statement in the branch and sets to must on the way back up
-func labelBranchesRecur(node db.Node, end db.EndConditionalNode, regexs map[int]string) bool {
+// printedLogs is the LogTypes corresponding to the logs that were all printed at runtime
+func labelBranchesRecur(node db.Node, end db.EndConditionalNode, printedLogs []model.LogType) bool {
 	for child := range node.GetChildren() {
 		//stop recursion if child is already labeled
 		//or if it is the original end node
 		if child, ok := child.(*db.EndConditionalNode); ok {
 			if child.GetLabel() == db.NoLabel && child != &end {
 				child.SetLabel(db.May)
-				hadLog := labelBranchesRecur(child, end, regexs)
+				hadLog := labelBranchesRecur(child, end, printedLogs)
 				if hadLog {
 					child.SetLabel(db.Must)
 				}
@@ -144,8 +146,10 @@ func labelBranchesRecur(node db.Node, end db.EndConditionalNode, regexs map[int]
 		}
 	}
 	if stmt, ok := node.(*db.StatementNode); ok {
-		if regex, ok := regexs[stmt.GetLineNumber()]; ok && regex == stmt.LogRegex {
-			return true
+		for _, log := range printedLogs {
+			if log.LineNumber == stmt.LineNumber && log.FilePath == stmt.Filename {
+				return true
+			}
 		}
 	}
 	return false
@@ -155,7 +159,7 @@ func labelBranchesRecur(node db.Node, end db.EndConditionalNode, regexs map[int]
 // Assume root is the exception node
 // start at exception, loop through iteratively through parents an endCondition node
 // Then pass to labelBranches and continue
-func LabelParentNodes(root db.Node, regexs map[int]string) {
+func LabelParentNodes(root db.Node, printedLogs []model.LogType) {
 	if root == nil {
 		fmt.Println("error root is nil")
 		return
@@ -213,7 +217,7 @@ func LabelParentNodes(root db.Node, regexs map[int]string) {
 						falseNode.SetLabel(db.May)
 					}
 				case *db.EndConditionalNode:
-					topNode, err := labelBranches(*node, regexs) //special case if its an endIf node
+					topNode, err := labelBranches(*node, printedLogs) //special case if its an endIf node
 					if err != nil || topNode == nil {
 						fmt.Println("Error retrieving topmost node")
 					} else {
@@ -250,7 +254,7 @@ func LabelParentNodes(root db.Node, regexs map[int]string) {
 }
 
 //recursive version -- temporary
-func LabelParentNodesRecur(root db.Node, regexs map[int]string) {
+func LabelParentNodesRecur(root db.Node, printedLogs []model.LogType) {
 
 	if root == nil {
 		fmt.Println("error root is nil")
@@ -267,22 +271,22 @@ func LabelParentNodesRecur(root db.Node, regexs map[int]string) {
 	//Currently using a recursive version to process parent nodes when coming back up from recursive calls
 	switch root := root.(type) {
 	case *db.FunctionNode:
-		LabelParentNodesRecur(root.Child, regexs)
+		LabelParentNodesRecur(root.Child, printedLogs)
 		//fmt.Println("function node",root.GetProperties())
 	case *db.FunctionDeclNode:
-		LabelParentNodesRecur(root.Child, regexs)
+		LabelParentNodesRecur(root.Child, printedLogs)
 		//fmt.Println("FuncDecl",root.GetProperties())
 	case *db.StatementNode:
-		LabelParentNodesRecur(root.Child, regexs)
+		LabelParentNodesRecur(root.Child, printedLogs)
 		//fmt.Println("statement",root.GetProperties())
 	case *db.ReturnNode:
-		LabelParentNodesRecur(root.Child, regexs)
+		LabelParentNodesRecur(root.Child, printedLogs)
 		//fmt.Println("return",root.GetProperties())
 	case *db.ConditionalNode:
-		LabelParentNodesRecur(root.TrueChild, regexs) //should arrive at an end conditional node and fall into case below
-		LabelParentNodesRecur(root.FalseChild, regexs)
+		LabelParentNodesRecur(root.TrueChild, printedLogs) //should arrive at an end conditional node and fall into case below
+		LabelParentNodesRecur(root.FalseChild, printedLogs)
 	case *db.EndConditionalNode: //TODO: Bug with wrong labeling of returns inside a conditional
-		topNode, err := labelBranches(*root, regexs) //special case if its an endIf node
+		topNode, err := labelBranches(*root, printedLogs) //special case if its an endIf node
 		if err != nil || topNode == nil {
 			fmt.Println("Error retrieving topmost node")
 		} else {

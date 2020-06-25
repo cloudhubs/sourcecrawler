@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"sourcecrawler/app/db"
+	"sourcecrawler/app/model"
 	"testing"
 )
 
@@ -9,7 +10,7 @@ type labelTestCase struct {
 	Name   string
 	Root   db.Node
 	Labels map[db.Node]db.ExecutionLabel
-	Regexs map[int]string
+	Logs   []model.LogType
 }
 
 func TestLabelNonCondNodes(t *testing.T) {
@@ -34,7 +35,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Name:   "if-else",
 				Root:   root,
 				Labels: labels,
-				Regexs: make(map[int]string),
+				Logs:   make([]model.LogType, 0),
 			}
 		},
 		func() labelTestCase {
@@ -72,7 +73,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Name:   "chained-if-else",
 				Root:   root,
 				Labels: labels,
-				Regexs: make(map[int]string),
+				Logs:   make([]model.LogType, 0),
 			}
 		},
 		func() labelTestCase {
@@ -130,7 +131,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Name:   "nested-if-else-extra",
 				Root:   root,
 				Labels: labels,
-				Regexs: make(map[int]string),
+				Logs:   make([]model.LogType, 0),
 			}
 		},
 		func() labelTestCase {
@@ -147,13 +148,14 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Name:   "dead-if-else",
 				Root:   root,
 				Labels: labels,
-				Regexs: make(map[int]string),
+				Logs:   make([]model.LogType, 0),
 			}
 		},
 		func() labelTestCase {
 			end := &db.EndConditionalNode{}
 			t1 := &db.FunctionNode{Child: end}
 			f1 := &db.StatementNode{
+				Filename:   "/some/path/to/file.go",
 				LogRegex:   "this is a log message: .*",
 				LineNumber: 67,
 				Child:      end,
@@ -168,14 +170,18 @@ func TestLabelNonCondNodes(t *testing.T) {
 			labels[f1] = db.Must
 			labels[root] = db.Must
 
-			regexs := make(map[int]string)
-			regexs[67] = "this is a log message: .*"
+			logs := make([]model.LogType, 0)
+			logs = append(logs, model.LogType{
+				LineNumber: 67,
+				FilePath:   "/some/path/to/file.go",
+				Regex:      "this is a log message: .*",
+			})
 
 			return labelTestCase{
 				Name:   "log-if-else",
 				Root:   root,
 				Labels: labels,
-				Regexs: regexs,
+				Logs:   logs,
 			}
 		},
 	}
@@ -183,7 +189,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 	for _, testCase := range cases {
 		test := testCase()
 		t.Run(test.Name, func(t *testing.T) {
-			LabelParentNodes(test.Root, test.Regexs)
+			LabelParentNodes(test.Root, test.Logs)
 			traverse(test.Root, func(node db.Node) {
 				if test.Labels[node] != node.GetLabel() {
 					t.Errorf(
