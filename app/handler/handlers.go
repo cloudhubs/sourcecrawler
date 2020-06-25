@@ -260,11 +260,11 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
 
 	//Test print the declarations
-	fmt.Println()
-	for _, decl := range decls {
-		cfg.PrintCfg(decl, "")
-		fmt.Println()
-	}
+	//fmt.Println()
+	//for _, decl := range decls {
+	//	cfg.PrintCfg(decl, "")
+	//	fmt.Println()
+	//}
 
 	//Request response for must/may functions
 	response := struct {
@@ -294,15 +294,41 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Exception node", exceptionNode.GetProperties())
 	}
 
+	//TODO: Create test tree
+	var testRoot neoDb.Node
+
+	endIf := &neoDb.EndConditionalNode{}
+	tc := &neoDb.FunctionNode{Child: endIf}
+	fc := &neoDb.StatementNode{Child: endIf}
+	endIf.SetParents(tc)
+	endIf.SetParents(fc)
+	testRoot = &neoDb.ConditionalNode{TrueChild: tc, FalseChild: fc}
+	tc.SetParents(testRoot)
+	fc.SetParents(testRoot)
+
+	labels := make(map[neoDb.Node]neoDb.ExecutionLabel, 0)
+	labels[testRoot] = neoDb.Must
+	labels[tc] = neoDb.May
+	labels[fc] = neoDb.May
+	labels[endIf] = neoDb.Must
+
+	//Print before
+	fmt.Println("BEFORE==========")
+	cfg.PrintCfg(testRoot, "")
+
+
 	//Label each node in the cfg
-	cfg.LabelParentNodes(exceptionNode)
+	cfg.LabelParentNodes(testRoot)
 
 	//Post-processing print
-	fmt.Println()
-	for _, decl := range decls {
-		cfg.PrintCfg(decl, "")
-		fmt.Println()
-	}
+	fmt.Println("AFTER============")
+	cfg.PrintCfg(testRoot, "")
+
+	//fmt.Println()
+	//for _, decl := range decls {
+	//	cfg.PrintCfg(decl, "")
+	//	fmt.Println()
+	//}
 
 	respondJSON(w, http.StatusOK, response)
 }
