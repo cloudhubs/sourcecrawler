@@ -166,7 +166,7 @@ func LabelParentNodes(root db.Node) {
 	for _, parent := range root.GetParents() {
 
 		//next = parent
-		fmt.Println("Parent node is", parent.GetProperties())
+		//fmt.Println("Parent node is", parent.GetProperties())
 
 		//Process next parent if node is nil
 		if parent == nil {
@@ -180,7 +180,7 @@ func LabelParentNodes(root db.Node) {
 		for node != nil{
 			// Add label if not already labeled
 			if node.GetLabel() == db.NoLabel {
-				fmt.Println("Labeling ", node.GetProperties())
+				//fmt.Println("Labeling ", node.GetProperties())
 				switch node := node.(type) {
 				case *db.FunctionNode:
 					node.SetLabel(db.Must)
@@ -210,7 +210,7 @@ func LabelParentNodes(root db.Node) {
 					top = topNode
 				}
 			} else {
-				fmt.Println("Node", node.GetProperties(), "is already labeled")
+				//fmt.Println("Node", node.GetProperties(), "is already labeled")
 			}
 
 			//If it's an end conditional, set the next parent to the topmost node of the conditional

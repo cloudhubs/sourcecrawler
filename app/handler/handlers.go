@@ -297,20 +297,39 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//TODO: Create test tree
 	var testRoot neoDb.Node
 
-	endIf := &neoDb.EndConditionalNode{}
-	tc := &neoDb.FunctionNode{Child: endIf}
-	fc := &neoDb.StatementNode{Child: endIf}
-	endIf.SetParents(tc)
-	endIf.SetParents(fc)
-	testRoot = &neoDb.ConditionalNode{TrueChild: tc, FalseChild: fc}
-	tc.SetParents(testRoot)
-	fc.SetParents(testRoot)
+	endIf2 := &neoDb.EndConditionalNode{}
+	t2 := &neoDb.StatementNode{Filename: "t2", Child: endIf2}
+	f2 := &neoDb.StatementNode{Filename: "f2", Child: endIf2}
+	endIf2.SetParents(t2)
+	endIf2.SetParents(f2)
+	cond2 := &neoDb.ConditionalNode{Filename: "Cond2", TrueChild: t2, FalseChild: f2}
+	t2.SetParents(cond2)
+	f2.SetParents(cond2)
+
+	endIf1 := &neoDb.EndConditionalNode{Child: cond2}
+	cond2.SetParents(endIf1)
+	t1 := &neoDb.FunctionNode{Filename: "t1", Child: endIf1}
+	f1 := &neoDb.FunctionNode{Filename: "f1", Child: endIf1}
+	endIf1.SetParents(t1)
+	endIf2.SetParents(f1)
+	cond1 := &neoDb.ConditionalNode{Filename: "Cond1", TrueChild: t1, FalseChild: f1}
+	t1.SetParents(cond1)
+	f1.SetParents(cond1)
+
+	testRoot = &neoDb.FunctionDeclNode{Filename: "TestRoot", Child: cond1}
+	cond1.SetParents(testRoot)
 
 	labels := make(map[neoDb.Node]neoDb.ExecutionLabel, 0)
+	labels[endIf2] = neoDb.Must
+	labels[t2] = neoDb.May
+	labels[f2] = neoDb.May
+	labels[cond2] = neoDb.Must
+	labels[endIf1] = neoDb.Must
+	labels[t1] = neoDb.May
+	labels[f1] = neoDb.May
+	labels[cond1] = neoDb.Must
 	labels[testRoot] = neoDb.Must
-	labels[tc] = neoDb.May
-	labels[fc] = neoDb.May
-	labels[endIf] = neoDb.Must
+
 
 	//Print before
 	fmt.Println("BEFORE==========")
@@ -318,11 +337,17 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 
 	//Label each node in the cfg
-	cfg.LabelParentNodes(testRoot)
+	cfg.LabelParentNodes(endIf2)
 
 	//Post-processing print
 	fmt.Println("AFTER============")
 	cfg.PrintCfg(testRoot, "")
+
+	//Test print labels
+	fmt.Println("Expected===========")
+	for k, v := range labels{
+		fmt.Println(k.GetFilename(), "should be", v)
+	}
 
 	//fmt.Println()
 	//for _, decl := range decls {
@@ -481,4 +506,3 @@ func convertNodesToStrings(elements []neoDb.Node) []string {
 	// Return the new slice.
 	return result
 }
-

@@ -204,13 +204,7 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	stackTrc = append(stackTrc, tempStackTrace)
 
 	//Print struct
-	for _, val := range stackTrc {
-
-		//Should have same # of elements
-		for index := range val.fileName {
-			fmt.Printf("Depth: %d %s %s %s \n", index, val.fileName[index], val.lineNum[index], val.funcName[index])
-		}
-	}
+	//printErrorList(stackTrc)
 
 	return stackTrc
 }
@@ -236,11 +230,12 @@ func splitStackTraceString(sts string) []string {
 }
 
 //Helper function to test print parsed info from stack trace
-func printErrorList(errorList []stackTraceStruct) {
-	//Test print the processed stack traces
-	for _, value := range errorList {
-		fmt.Printf("%d: %s in %s -- line %s from function %s\n",
-			value.id, value.msgLevel, value.fileName, value.lineNum, value.funcName)
+func printErrorList(stackTrc []stackTraceStruct) {
+	for _, val := range stackTrc {
+		//Should have same # of elements
+		for index := range val.fileName {
+			fmt.Printf("Depth: %d %s %s %s \n", index, val.fileName[index], val.lineNum[index], val.funcName[index])
+		}
 	}
 }
 
