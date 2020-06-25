@@ -151,30 +151,37 @@ func PrintCfg(node db.Node, level string) {
 	if node == nil {
 		return
 	}
+	var parStr string = "Parent: "
+	if node.GetParents() != nil{
+		parStr += node.GetProperties()
+		//parStr = node.GetFilename() used for testing labeling
+	}
+
 	switch node := node.(type) {
 	case *db.FunctionDeclNode:
-		fmt.Printf("%s(%v) %s(%v) (%v) (%v)\n", level, node.Receivers, node.FunctionName, node.Params, node.Returns, node.Label)
+		fmt.Printf("%s(%v) %s(%v) (%v) (%v) (%v)\n", level,
+			node.Receivers, node.FunctionName, node.Params, node.Returns, node.Label, parStr)
 		PrintCfg(node.Child, level+"  ")
 	case *db.FunctionNode:
-		fmt.Printf("%s%s (%v)\n", level, node.FunctionName, node.Label)
+		fmt.Printf("%s%s (%v) (%v) \n", level, node.FunctionName, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.StatementNode:
-		fmt.Printf("%s%s (%v)\n", level, node.LogRegex, node.Label)
+		fmt.Printf("%s%s (%v) (%v)\n", level, node.LogRegex, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.ConditionalNode:
-		fmt.Printf("%sif %s (%v)\n", level, node.Condition, node.Label)
+		fmt.Printf("%sif %s (%v) (%v)\n", level, node.Condition, node.Label, parStr)
 		PrintCfg(node.TrueChild, level+"  ")
 		fmt.Println(level + "else")
 		PrintCfg(node.FalseChild, level+"  ")
 	case *db.ReturnNode:
-		fmt.Printf("%sreturn %s (%v)\n", level, node.Expression, node.Label)
+		fmt.Printf("%sreturn %s (%v) (%v)\n", level, node.Expression, node.Label, parStr)
 		lv := ""
 		for i := 0; i < len(level)-2; i++ {
 			lv += " "
 		}
 		PrintCfg(node.Child, lv)
 	case *db.EndConditionalNode:
-		fmt.Printf("%sendIf\n", level)
+		fmt.Printf("%sendIf (%v)\n", level, node.Label)
 		PrintCfg(node.Child, level)
 	}
 }
@@ -854,7 +861,6 @@ func traverse(root db.Node, visit func(db.Node)) {
 
 	children := root.GetChildren()
 	for child := range children {
-		visit(child)
+		traverse(child, visit)
 	}
 }
-

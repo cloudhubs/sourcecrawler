@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jinzhu/gorm"
-	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -16,6 +14,9 @@ import (
 	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	_ "strings" //
+
+	"github.com/jinzhu/gorm"
+	"github.com/rs/zerolog/log"
 )
 
 func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -236,14 +237,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// // find all function declarations in this project
-	// allFuncDecls := findFunctionNodes(filesToParse)
-	// funcDeclMap := make(map[string]*ast.FuncDecl)
-	// for _, fn := range allFuncDecls {
-	// 	key := fmt.Sprintf("%v", fn.Name)
-	// 	funcDeclMap[key] = fn.fd
-	// }
-
 	//4 -- Connect the CFG nodes together
 	decls = cfg.ConnectFnCfgs(decls)
 
@@ -259,13 +252,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
 
-	//Test print the declarations
-	fmt.Println()
-	for _, decl := range decls {
-		cfg.PrintCfg(decl, "")
-		fmt.Println()
-	}
-
 	//Request response for must/may functions
 	response := struct {
 		MustHaveFunctions []string `json:"mustHaveFunctions"`
@@ -275,34 +261,16 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
-	//Grabbing a test node (arbitrary)
-	var exceptionNode neoDb.Node
-	for node := range decls[1].GetChildren(){
-		for test := range node.GetChildren(){
-			for test2 := range test.GetChildren(){
-				for test3 := range test2.GetChildren(){
-					exceptionNode = test3
-					break
-				}
-				break
-			}
-			break
-		}
-		break
-	}
-	if exceptionNode != nil{
-		fmt.Println("Exception node", exceptionNode.GetProperties())
-	}
+	//Run test nodes and label
+	testRoot, testNode := cfg.GrabTestNode()
+	testRoot2, testNode2 := cfg.GrabTestNode2()
+	cfg.LabelParentNodes(testNode, make([]model.LogType, 0))
+	fmt.Println("\nTest case 1 **********************")
+	cfg.PrintCfg(testRoot, "")
 
-	//Label each node in the cfg
-	cfg.LabelParentNodes(exceptionNode)
-
-	//Post-processing print
-	fmt.Println()
-	for _, decl := range decls {
-		cfg.PrintCfg(decl, "")
-		fmt.Println()
-	}
+	cfg.LabelParentNodes(testNode2, make([]model.LogType, 0))
+	fmt.Println("\nTest Case 2 ***************")
+	cfg.PrintCfg(testRoot2, "")
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -455,4 +423,3 @@ func convertNodesToStrings(elements []neoDb.Node) []string {
 	// Return the new slice.
 	return result
 }
-
