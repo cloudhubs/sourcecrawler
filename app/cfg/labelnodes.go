@@ -145,106 +145,155 @@ func labelBranchesRecur(node db.Node, end db.EndConditionalNode) {
 // Then pass to labelBranches and continue
 func LabelParentNodes(root db.Node) {
 	if root == nil {
-		fmt.Errorf("Error: nil root node")
+		fmt.Println("error root is nil")
 		return
 	}
 
+	//Check if it's a leaf node
 	if len(root.GetParents()) == 0{
-		fmt.Errorf("Error, no parent nodes connected to this node")
-	} else{
-		fmt.Println("Parent nodes exist")
+		fmt.Println("No parent nodes connected")
+		return
 	}
 
-	//Iteratively using double linked list
+	//Label exception node itself (has to be a must)
+	root.SetLabel(db.Must)
+
+	var trueNode db.Node
+	var falseNode db.Node
+	var top db.Node
+
+	//Goes through each parent node of the exception node
 	for _, parent := range root.GetParents() {
 
-		node := parent
-		fmt.Println("Node is", node.GetProperties())
+		//next = parent
+		fmt.Println("Parent node is", parent.GetProperties())
 
 		//Process next parent if node is nil
-		if node == nil {
+		if parent == nil {
 			fmt.Println("nil parent node")
 			continue
 		}
 
-		// Add label if not already labeled
-		if node.GetLabel() == db.NoLabel {
-			fmt.Println("Node is", node.GetProperties())
-			switch node := node.(type) {
-			case *db.FunctionNode:
-				node.SetLabel(db.Must)
-				//fmt.Println("function node",root.GetProperties())
-			case *db.FunctionDeclNode:
-				node.SetLabel(db.Must)
-				//fmt.Println("FuncDecl",root.GetProperties())
-			case *db.StatementNode:
-				node.SetLabel(db.Must)
-				//fmt.Println("statement",root.GetProperties())
-			case *db.ReturnNode:
-				node.SetLabel(db.Must)
-				//fmt.Println("return",root.GetProperties())
-			case *db.ConditionalNode:
-				node.SetLabel(db.May)
-				node.TrueChild.SetLabel(db.May)
-				node.FalseChild.SetLabel(db.May)
-				//node.SetLabel(db.May)
-				//node.SetLabel(db.May)
-			case *db.EndConditionalNode:
-				//topNode, err := labelBranches(*node) //special case if its an endIf node
-				//if err != nil || topNode == nil {
-				//	fmt.Println("Error retrieving topmost node")
-				//} else {
-				//	fmt.Println("Topmost node is", topNode.GetProperties())
-				//}
+		node := parent
+
+		//Loop through all the way up the chain of parents
+		for node != nil{
+			// Add label if not already labeled
+			if node.GetLabel() == db.NoLabel {
+				fmt.Println("Labeling ", node.GetProperties())
+				switch node := node.(type) {
+				case *db.FunctionNode:
+					node.SetLabel(db.Must)
+				case *db.FunctionDeclNode:
+					node.SetLabel(db.Must)
+				case *db.StatementNode:
+					node.SetLabel(db.Must)
+				case *db.ReturnNode:
+					node.SetLabel(db.Must)
+				case *db.ConditionalNode:
+					node.SetLabel(db.May)
+					node.TrueChild.SetLabel(db.May)
+					node.FalseChild.SetLabel(db.May)
+					if trueNode != nil{
+						trueNode.SetLabel(db.May)
+					}
+					if falseNode != nil{
+						falseNode.SetLabel(db.May)
+					}
+				case *db.EndConditionalNode:
+					topNode, err := labelBranches(*node) //special case if its an endIf node
+					if err != nil || topNode == nil {
+						fmt.Println("Error retrieving topmost node")
+					} else {
+						fmt.Println("Topmost node is", topNode.GetProperties())
+					}
+					top = topNode
+				}
+			} else {
+				fmt.Println("Node", node.GetProperties(), "is already labeled")
 			}
-		}else{
-			fmt.Println("Node", node.GetProperties(), "is already labeled")
+
+			//If it's an end conditional, set the next parent to the topmost node of the conditional
+			// and continue
+			switch node.(type){
+			case *db.EndConditionalNode:
+				if top != nil {
+					node = top
+					continue
+				}
+			}
+
+			// Check if parent node exists and set to next
+			// If no more parents, it is done processing
+			if len(node.GetParents()) == 1{
+				node = node.GetParents()[0]
+			}else if len(node.GetParents()) == 2{
+				trueNode = node.GetParents()[0]
+				falseNode = node.GetParents()[1]
+			}else {
+				break
+			}
 		}
 	}
+}
+
+//recursive version -- temporary
+func LabelParentNodesRecur(root db.Node){
+
+	if root == nil {
+		fmt.Println("error root is nil")
+		return
+	}
+
+	if len(root.GetParents()) == 0{
+		fmt.Println("No parent nodes connected")
+	}
+
+	fmt.Println(root.GetParents())
+	fmt.Println(len(root.GetParents()))
 
 	//Currently using a recursive version to process parent nodes when coming back up from recursive calls
-	//switch root := root.(type) {
-	//case *db.FunctionNode:
-	//	LabelNonCondNodes(root.Child)
-	//	//fmt.Println("function node",root.GetProperties())
-	//case *db.FunctionDeclNode:
-	//	LabelNonCondNodes(root.Child)
-	//	//fmt.Println("FuncDecl",root.GetProperties())
-	//case *db.StatementNode:
-	//	LabelNonCondNodes(root.Child)
-	//	//fmt.Println("statement",root.GetProperties())
-	//case *db.ReturnNode:
-	//	LabelNonCondNodes(root.Child)
-	//	//fmt.Println("return",root.GetProperties())
-	//case *db.ConditionalNode:
-	//	LabelNonCondNodes(root.TrueChild) //should arrive at an end conditional node and fall into case below
-	//	LabelNonCondNodes(root.FalseChild)
-	//case *db.EndConditionalNode: //TODO: Bug with wrong labeling of returns inside a conditional
-	//	topNode, err := labelBranches(*root)	//special case if its an endIf node
-	//	if err != nil || topNode == nil{
-	//		fmt.Println("Error retrieving topmost node")
-	//	}else{
-	//		fmt.Println("Topmost node is",topNode.GetProperties())
-	//	}
-	//default:
-	//	//fmt.Println("default")
-	//}
+	switch root := root.(type) {
+	case *db.FunctionNode:
+		LabelParentNodesRecur(root.Child)
+		//fmt.Println("function node",root.GetProperties())
+	case *db.FunctionDeclNode:
+		LabelParentNodesRecur(root.Child)
+		//fmt.Println("FuncDecl",root.GetProperties())
+	case *db.StatementNode:
+		LabelParentNodesRecur(root.Child)
+		//fmt.Println("statement",root.GetProperties())
+	case *db.ReturnNode:
+		LabelParentNodesRecur(root.Child)
+		//fmt.Println("return",root.GetProperties())
+	case *db.ConditionalNode:
+		LabelParentNodesRecur(root.TrueChild) //should arrive at an end conditional node and fall into case below
+		LabelParentNodesRecur(root.FalseChild)
+	case *db.EndConditionalNode: //TODO: Bug with wrong labeling of returns inside a conditional
+		topNode, err := labelBranches(*root)	//special case if its an endIf node
+		if err != nil || topNode == nil{
+			fmt.Println("Error retrieving topmost node")
+		}else{
+			fmt.Println("Topmost node is",topNode.GetProperties())
+		}
+	default:
+		//fmt.Println("default")
+	}
 
 	//Label current node if not labeled(the exception node)
-	//if root.GetLabel() == db.NoLabel{
-	//	switch nodeType := root.(type) {
-	//	case *db.ReturnNode:
-	//		root.SetLabel(db.Must)
-	//	case *db.EndConditionalNode:
-	//		fmt.Println(nodeType, " was already labeled")
-	//	case *db.ConditionalNode:
-	//		root.SetLabel(db.May)
-	//	default:
-	//		root.SetLabel(db.Must) //Set label to must for non-end conditional nodes
-	//		//fmt.Println("Labeling -> ", root.GetProperties())
-	//	}
-	//}else{
-	//	fmt.Println("Node", root.GetProperties(), " is already labeled")
-	//}
-
+	if root.GetLabel() == db.NoLabel{
+		switch nodeType := root.(type) {
+		case *db.ReturnNode:
+			root.SetLabel(db.Must)
+		case *db.EndConditionalNode:
+			fmt.Println(nodeType, " was already labeled")
+		case *db.ConditionalNode:
+			root.SetLabel(db.May)
+		default:
+			root.SetLabel(db.Must) //Set label to must for non-end conditional nodes
+			//fmt.Println("Labeling -> ", root.GetProperties())
+		}
+	}else{
+		fmt.Println("Node", root.GetProperties(), " is already labeled")
+	}
 }
