@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jinzhu/gorm"
-	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -16,6 +14,9 @@ import (
 	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	_ "strings" //
+
+	"github.com/jinzhu/gorm"
+	"github.com/rs/zerolog/log"
 )
 
 func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -275,25 +276,34 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
-	//make test exception node
+	//Grabbing a test node (arbitrary)
 	var exceptionNode neoDb.Node
-
-	for _, node := range decls{
-		exceptionNode = cfg.GrabTestNode(node)
+	for node := range decls[1].GetChildren() {
+		for test := range node.GetChildren() {
+			for test2 := range test.GetChildren() {
+				for test3 := range test2.GetChildren() {
+					exceptionNode = test3
+					break
+				}
+				break
+			}
+			break
+		}
+		break
 	}
 	if exceptionNode != nil {
 		fmt.Println("Exception node", exceptionNode.GetProperties())
 	}
 
 	//Label each node in the cfg
-	cfg.LabelParentNodes(exceptionNode)
+	cfg.LabelParentNodes(exceptionNode, make([]model.LogType, 0))
 
-	//for _, node := range decls{
-	//	cfg.LabelNonCondNodes(node)
-	//	for child, _ := range node.GetChildren() {
-	//		cfg.LabelNonCondNodes(child)
-	//	}
-	//}
+	//Post-processing print
+	fmt.Println()
+	for _, decl := range decls {
+		cfg.PrintCfg(decl, "")
+		fmt.Println()
+	}
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -446,4 +456,3 @@ func convertNodesToStrings(elements []neoDb.Node) []string {
 	// Return the new slice.
 	return result
 }
-
