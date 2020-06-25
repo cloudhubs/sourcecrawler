@@ -784,7 +784,6 @@ func traverse(root db.Node, visit func(db.Node)) {
 
 	children := root.GetChildren()
 	for child := range children {
-		visit(child)
+		traverse(child, visit)
 	}
 }
-
