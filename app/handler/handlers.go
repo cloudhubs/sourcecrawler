@@ -237,14 +237,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// // find all function declarations in this project
-	// allFuncDecls := findFunctionNodes(filesToParse)
-	// funcDeclMap := make(map[string]*ast.FuncDecl)
-	// for _, fn := range allFuncDecls {
-	// 	key := fmt.Sprintf("%v", fn.Name)
-	// 	funcDeclMap[key] = fn.fd
-	// }
-
 	//4 -- Connect the CFG nodes together
 	decls = cfg.ConnectFnCfgs(decls)
 
@@ -260,13 +252,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
 
-	//Test print the declarations
-	//fmt.Println()
-	//for _, decl := range decls {
-	//	cfg.PrintCfg(decl, "")
-	//	fmt.Println()
-	//}
-
 	//Request response for must/may functions
 	response := struct {
 		MustHaveFunctions []string `json:"mustHaveFunctions"`
@@ -276,86 +261,16 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
-	//Grabbing a test node (arbitrary)
-	var exceptionNode neoDb.Node
-	for node := range decls[1].GetChildren() {
-		for test := range node.GetChildren() {
-			for test2 := range test.GetChildren() {
-				for test3 := range test2.GetChildren() {
-					exceptionNode = test3
-					break
-				}
-				break
-			}
-			break
-		}
-		break
-	}
-	if exceptionNode != nil {
-		fmt.Println("Exception node", exceptionNode.GetProperties())
-	}
-
-	//TODO: Create test tree
-	var testRoot neoDb.Node
-
-	endIf2 := &neoDb.EndConditionalNode{}
-	t2 := &neoDb.StatementNode{Filename: "t2", Child: endIf2}
-	f2 := &neoDb.StatementNode{Filename: "f2", Child: endIf2}
-	endIf2.SetParents(t2)
-	endIf2.SetParents(f2)
-	cond2 := &neoDb.ConditionalNode{Filename: "Cond2", TrueChild: t2, FalseChild: f2}
-	t2.SetParents(cond2)
-	f2.SetParents(cond2)
-
-	endIf1 := &neoDb.EndConditionalNode{Child: cond2}
-	cond2.SetParents(endIf1)
-	t1 := &neoDb.FunctionNode{Filename: "t1", Child: endIf1}
-	f1 := &neoDb.FunctionNode{Filename: "f1", Child: endIf1}
-	endIf1.SetParents(t1)
-	endIf2.SetParents(f1)
-	cond1 := &neoDb.ConditionalNode{Filename: "Cond1", TrueChild: t1, FalseChild: f1}
-	t1.SetParents(cond1)
-	f1.SetParents(cond1)
-
-	testRoot = &neoDb.FunctionDeclNode{Filename: "TestRoot", Child: cond1}
-	cond1.SetParents(testRoot)
-
-	labels := make(map[neoDb.Node]neoDb.ExecutionLabel, 0)
-	labels[endIf2] = neoDb.Must
-	labels[t2] = neoDb.May
-	labels[f2] = neoDb.May
-	labels[cond2] = neoDb.Must
-	labels[endIf1] = neoDb.Must
-	labels[t1] = neoDb.May
-	labels[f1] = neoDb.May
-	labels[cond1] = neoDb.Must
-	labels[testRoot] = neoDb.Must
-
-
-	//Print before
-	fmt.Println("BEFORE==========")
+	//Run test nodes and label
+	testRoot, testNode := cfg.GrabTestNode()
+	testRoot2, testNode2 := cfg.GrabTestNode2()
+	cfg.LabelParentNodes(testNode, make([]model.LogType, 0))
+	fmt.Println("\nTest case 1 **********************")
 	cfg.PrintCfg(testRoot, "")
 
-
-	//Label each node in the cfg
-	// cfg.LabelParentNodes(endIf2)
-	cfg.LabelParentNodes(endIf2, make([]model.LogType, 0))
-
-	//Post-processing print
-	fmt.Println("AFTER============")
-	cfg.PrintCfg(testRoot, "")
-
-	//Test print labels
-	fmt.Println("Expected===========")
-	for k, v := range labels{
-		fmt.Println(k.GetFilename(), "should be", v)
-	}
-
-	//fmt.Println()
-	//for _, decl := range decls {
-	//	cfg.PrintCfg(decl, "")
-	//	fmt.Println()
-	//}
+	cfg.LabelParentNodes(testNode2, make([]model.LogType, 0))
+	fmt.Println("\nTest Case 2 ***************")
+	cfg.PrintCfg(testRoot2, "")
 
 	respondJSON(w, http.StatusOK, response)
 }

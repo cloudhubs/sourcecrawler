@@ -6,41 +6,99 @@ import (
 	"sourcecrawler/app/db"
 	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
-	"strings"
-	//"strings"
 )
 
-func GrabTestNode(root db.Node) db.Node {
-	var testNode db.Node
-	for n1 := range root.GetChildren() {
-		//fmt.Println(n1.GetProperties())
-		for n2 := range n1.GetChildren() {
-			//fmt.Println(n2.GetProperties())
-			for n3 := range n2.GetChildren() {
-				//fmt.Println(n3.GetProperties())
-				for n4 := range n3.GetChildren() {
-					//fmt.Println(n4.GetProperties())
-					for n5 := range n4.GetChildren() {
-						//fmt.Println(n5.GetProperties())
-						for n6 := range n5.GetChildren() {
-							//fmt.Println(n6.GetProperties())
-							for n7 := range n6.GetChildren() {
-								//fmt.Println(n7.GetProperties())
-								for n8 := range n7.GetChildren() {
-									if n8 != nil && strings.Contains(n8.GetProperties(), "warning") {
-										testNode = n8
-										return testNode
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+func GrabTestNode() (db.Node, db.Node) {
+	endIf2 := &neoDb.EndConditionalNode{}
+	t2 := &neoDb.StatementNode{Filename: "t2", Child: endIf2}
+	f2 := &neoDb.StatementNode{Filename: "f2", Child: endIf2}
+	endIf2.SetParents(t2)
+	endIf2.SetParents(f2)
+	cond2 := &neoDb.ConditionalNode{Filename: "Cond2", TrueChild: t2, FalseChild: f2}
+	t2.SetParents(cond2)
+	f2.SetParents(cond2)
 
-	return testNode
+	endIf1 := &neoDb.EndConditionalNode{Child: cond2}
+	cond2.SetParents(endIf1)
+	t1 := &neoDb.FunctionNode{Filename: "t1", Child: endIf1}
+	f1 := &neoDb.FunctionNode{Filename: "f1", Child: endIf1}
+	endIf1.SetParents(t1)
+	endIf1.SetParents(f1)
+	cond1 := &neoDb.ConditionalNode{Filename: "Cond1", TrueChild: t1, FalseChild: f1}
+	t1.SetParents(cond1)
+	f1.SetParents(cond1)
+
+	root := &neoDb.FunctionDeclNode{Filename: "TestRoot", Child: cond1}
+	cond1.SetParents(root)
+
+	labels := make(map[neoDb.Node]neoDb.ExecutionLabel, 0)
+	labels[endIf2] = neoDb.Must
+	labels[t2] = neoDb.May
+	labels[f2] = neoDb.May
+	labels[cond2] = neoDb.Must
+	labels[endIf1] = neoDb.Must
+	labels[t1] = neoDb.May
+	labels[f1] = neoDb.May
+	labels[cond1] = neoDb.Must
+	labels[root] = neoDb.Must
+
+	return root, endIf2
+}
+
+func GrabTestNode2() (db.Node, db.Node){
+	labels := make(map[db.Node]db.ExecutionLabel)
+	leaf := &db.FunctionNode{Filename: "Leaf"}
+	outerEndIf := &db.EndConditionalNode{Child: leaf}
+	leaf.SetParents(outerEndIf)
+
+	labels[leaf] = db.Must
+	labels[outerEndIf] = db.Must
+
+	// outer true branch
+	trueEndIf := &db.EndConditionalNode{Child: outerEndIf}
+	trueTrue := &db.FunctionNode{Filename: "T-T", Child: trueEndIf}
+	trueFalse := &db.FunctionNode{Filename: "T-F", Child: trueEndIf}
+	trueEndIf.SetParents(trueTrue)
+	trueEndIf.SetParents(trueFalse)
+	trueCond := &db.ConditionalNode{Filename: "TCond", TrueChild: trueTrue, FalseChild: trueFalse}
+	trueTrue.SetParents(trueCond)
+	trueFalse.SetParents(trueCond)
+	trueNode2 := &db.FunctionNode{Filename: "TN2", Child: trueCond}
+	trueCond.SetParents(trueNode2)
+	trueNode1 := &db.FunctionNode{Filename: "TN1", Child: trueNode2}
+	trueNode2.SetParents(trueNode1)
+
+	labels[trueEndIf] = db.May
+	labels[trueTrue] = db.May
+	labels[trueFalse] = db.May
+	labels[trueCond] = db.May
+	labels[trueNode2] = db.May
+	labels[trueNode1] = db.May
+
+	// outer false branch
+	falseEndIf := &db.EndConditionalNode{Child: outerEndIf}
+	falseTrue := &db.FunctionNode{Filename: "F-T", Child: falseEndIf}
+	falseFalse := &db.FunctionNode{Filename: "F-F", Child: falseEndIf}
+	falseEndIf.SetParents(falseTrue)
+	falseEndIf.SetParents(falseFalse)
+	falseNode1 := &db.ConditionalNode{Filename: "FN1", TrueChild: falseTrue, FalseChild: falseFalse}
+	falseTrue.SetParents(falseNode1)
+	falseFalse.SetParents(falseNode1)
+
+	outerEndIf.SetParents(trueEndIf)
+	outerEndIf.SetParents(falseEndIf)
+
+	labels[falseEndIf] = db.May
+	labels[falseTrue] = db.May
+	labels[falseFalse] = db.May
+	labels[falseNode1] = db.May
+
+	root := &db.ConditionalNode{Filename: "Root", TrueChild: trueNode1, FalseChild: falseNode1}
+	trueNode1.SetParents(root)
+	falseNode1.SetParents(root)
+	labels[root] = db.Must
+
+	return root, leaf
 }
 
 // given a list of function calls in `funcCalls` and a map of their labels in `funcLabels`,
@@ -135,7 +193,7 @@ func labelBranchesRecur(node db.Node, end db.EndConditionalNode, printedLogs []m
 	for child := range node.GetChildren() {
 		//stop recursion if child is already labeled
 		//or if it is the original end node
-		if child, ok := child.(*db.EndConditionalNode); ok {
+		//if child, ok := child.(*db.EndConditionalNode); ok {
 			if child.GetLabel() == db.NoLabel && child != &end {
 				child.SetLabel(db.May)
 				hadLog := labelBranchesRecur(child, end, printedLogs)
@@ -143,7 +201,7 @@ func labelBranchesRecur(node db.Node, end db.EndConditionalNode, printedLogs []m
 					child.SetLabel(db.Must)
 				}
 			}
-		}
+		//}
 	}
 	if stmt, ok := node.(*db.StatementNode); ok {
 		for _, log := range printedLogs {
@@ -207,7 +265,7 @@ func LabelParentNodes(root db.Node, printedLogs []model.LogType) {
 				case *db.ReturnNode:
 					node.SetLabel(db.Must)
 				case *db.ConditionalNode:
-					node.SetLabel(db.May)
+					node.SetLabel(db.Must)
 					node.TrueChild.SetLabel(db.May)
 					node.FalseChild.SetLabel(db.May)
 					if trueNode != nil {

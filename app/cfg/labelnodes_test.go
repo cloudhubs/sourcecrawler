@@ -15,7 +15,7 @@ type labelTestCase struct {
 
 func TestLabelNonCondNodes(t *testing.T) {
 	cases := []func() labelTestCase{
-		func() labelTestCase {
+		func() labelTestCase { //Works
 			endIf := &db.EndConditionalNode{}
 			t := &db.FunctionNode{Child: endIf}
 			f := &db.FunctionNode{Child: endIf}
@@ -38,7 +38,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Logs:   make([]model.LogType, 0),
 			}
 		},
-		func() labelTestCase {
+		func() labelTestCase { //works
 			endIf2 := &db.EndConditionalNode{}
 			t2 := &db.FunctionNode{Child: endIf2}
 			f2 := &db.FunctionNode{Child: endIf2}

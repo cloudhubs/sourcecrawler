@@ -86,48 +86,37 @@ func PrintCfg(node db.Node, level string) {
 	if node == nil {
 		return
 	}
-	var parStr string = ""
+	var parStr string = "Parent: "
+	if node.GetParents() != nil{
+		parStr += node.GetProperties()
+		//parStr = node.GetFilename() used for testing labeling
+	}
 
 	switch node := node.(type) {
 	case *db.FunctionDeclNode:
-		if node.Parent != nil{
-			parStr = node.Parent.GetProperties()
-		}
-		fmt.Printf("%s(%v) %s(%v) (%v) (%v) Parent: (%v)\n", level,
+		fmt.Printf("%s(%v) %s(%v) (%v) (%v) (%v)\n", level,
 			node.Receivers, node.FunctionName, node.Params, node.Returns, node.Label, parStr)
 		PrintCfg(node.Child, level+"  ")
 	case *db.FunctionNode:
-		if node.Parent != nil{
-			parStr = node.Parent.GetProperties()
-		}
-		fmt.Printf("%s%s (%v) Parent: (%v)\n", level, node.FunctionName, node.Label, parStr)
+		fmt.Printf("%s%s (%v) (%v) \n", level, node.FunctionName, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.StatementNode:
-		if node.Parent != nil{
-			parStr = node.Parent.GetProperties()
-		}
-		fmt.Printf("%s%s (%v) Parent: (%v)\n", level, node.LogRegex, node.Label, parStr)
+		fmt.Printf("%s%s (%v) (%v)\n", level, node.LogRegex, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.ConditionalNode:
-		if node.Parent != nil{
-			parStr = node.Parent.GetProperties()
-		}
-		fmt.Printf("%sif %s (%v) Parent: (%v)\n", level, node.Condition, node.Label, parStr)
+		fmt.Printf("%sif %s (%v) (%v)\n", level, node.Condition, node.Label, parStr)
 		PrintCfg(node.TrueChild, level+"  ")
 		fmt.Println(level + "else")
 		PrintCfg(node.FalseChild, level+"  ")
 	case *db.ReturnNode:
-		if node.Parent != nil{
-			parStr = node.Parent.GetProperties()
-		}
-		fmt.Printf("%sreturn %s (%v) Parent: (%v)\n", level, node.Expression, node.Label, parStr)
+		fmt.Printf("%sreturn %s (%v) (%v)\n", level, node.Expression, node.Label, parStr)
 		lv := ""
 		for i := 0; i < len(level)-2; i++ {
 			lv += " "
 		}
 		PrintCfg(node.Child, lv)
 	case *db.EndConditionalNode:
-		fmt.Printf("%sendIf\n", level)
+		fmt.Printf("%sendIf (%v)\n", level, node.Label)
 		PrintCfg(node.Child, level)
 	}
 }
