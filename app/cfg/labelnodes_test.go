@@ -129,6 +129,22 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Labels: labels,
 			}
 		},
+		func() labelTestCase {
+			endIf := &db.EndConditionalNode{}
+			root := &db.ConditionalNode{TrueChild: endIf, FalseChild: endIf}
+			endIf.SetParents(endIf)
+			endIf.SetParents(endIf)
+
+			labels := make(map[db.Node]db.ExecutionLabel)
+			labels[root] = db.Must
+			labels[endIf] = db.Must
+
+			return labelTestCase{
+				Name:   "dead-if-else",
+				Root:   root,
+				Labels: labels,
+			}
+		},
 	}
 
 	for _, testCase := range cases {
@@ -137,7 +153,12 @@ func TestLabelNonCondNodes(t *testing.T) {
 			LabelParentNodes(test.Root)
 			traverse(test.Root, func(node db.Node) {
 				if test.Labels[node] != node.GetLabel() {
-					t.Errorf("%s had label %s, but %s was expected", node.GetProperties(), node.GetLabel(), test.Labels[node])
+					t.Errorf(
+						"%s had label %s, but %s was expected",
+						node.GetProperties(),
+						node.GetLabel().String(),
+						test.Labels[node].String(),
+					)
 				}
 			})
 		})
