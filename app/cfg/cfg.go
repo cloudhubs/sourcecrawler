@@ -3,6 +3,7 @@ package cfg
 import (
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"path/filepath"
 	"sourcecrawler/app/db"
@@ -79,6 +80,70 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	}
 
 	return root
+}
+
+//from the name of a function and its file, create the cfg for it
+//this will be useful for connecting external functions after an
+//initial cfg is created
+func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, filename, base string, regexes map[int]string) db.Node{
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, filepath.Join(base, filename),nil, parser.ParseComments)
+	if err != nil {
+		panic(err)
+	}
+	var fn *ast.FuncDecl
+	ast.Inspect(node, func(n ast.Node) bool {
+		if n, ok := n.(*ast.FuncDecl); ok {
+			if strings.Contains(n.Name.Name, "fnName"){
+				fn = n
+			}
+		}
+		return true
+	})
+
+	return fnCfg.CreateCfg(fn,base,fset,regexes)
+}
+
+//initially called with:
+//root = first iteration of cfg containing stacktrace functions
+//seenFns = []*db.FunctionNode{} (empty)
+//base = project root (needed for cfg construction)
+//regexes = NOT NEEDED/DEPRICATED ARRAY REPLACED BY INLINE FUNCTION TO GRAB REGEX
+func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, base string, regexes map[int]string){
+	var fnCfg FnCfgCreator
+	node := root
+	for node != nil {
+		//traverse down tree until
+		//encountering a function node
+		//that is not followed by a
+		//function declaration node
+		//(which means it is already connected)
+		if node, ok := node.(*db.FunctionNode); ok{
+			for _, seen := range seenFns {
+				//skip functions we have already added on this recursion path
+				if seen.FunctionName != node.FunctionName && seen.Filename != node.Filename {
+					//check if child is a declaration
+					if _, ok2 := node.Child.(*db.FunctionDeclNode); !ok2 {
+						//if not a function declaration, add the cfg
+						newFn := fnCfg.CreateCfgFromFunctionName(node.FunctionName,node.Filename, base, regexes)
+						leafs := getLeafNodes(newFn)
+
+						for _, leaf := range leafs {
+							leaf.SetChild([]db.Node{node.Child})
+						}
+						node.Child = newFn
+						seenFns = append(seenFns, node)
+					}
+				}
+			}
+		}
+
+		//next node please
+		for child := range node.GetChildren(){
+			//repeat
+			fnCfg.ConnectExternalFunctions(child, seenFns, base, regexes)
+		}
+	}
 }
 
 // Prints out the contents of the CFG (recursively)
@@ -364,7 +429,12 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 				node = db.Node(&db.StatementNode{
 					Filename:   filepath.ToSlash(relPath),
 					LineNumber: line,
-					LogRegex:   regexes[line],
+					//TODO: there has to be a better way to assign this value.
+					// This array is passed through every single function
+					// in the recursion stack only to be used here?
+					// If the file and linenumber are known,
+					// why not just parse that information when needed?
+					LogRegex:   logsource.GetLogRegexFromInfo(fset.File(expr.Pos()).Name(),line),
 				})
 			} else {
 				// Was a method call.

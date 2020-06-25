@@ -308,7 +308,6 @@ func findFunctionNodes(filesToParse []string) []fdeclStruct {
 
 //Takes in a file name + function name -> returns AST FuncDecl node
 func getFdASTNode(fileName string, functionName string, stackFuncNodes []fdeclStruct) *ast.FuncDecl {
-
 	for _, val := range stackFuncNodes {
 		if strings.Contains(val.filePath, fileName) && functionName == val.Name {
 			return val.fd
@@ -538,7 +537,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				good = true
 				// fmt.Println("Basic", v.Value)
 
-				currentLog.Regex = createRegex(v.Value)
+				currentLog.Regex = CreateRegex(v.Value)
 
 				logInfo = append(logInfo, currentLog)
 
@@ -602,7 +601,7 @@ func mapLogRegex(logInfo []model.LogType) map[int]string {
 }
 
 //Generates regex for a given log string
-func createRegex(value string) string {
+func CreateRegex(value string) string {
 	//Regex value currently
 	reg := value
 

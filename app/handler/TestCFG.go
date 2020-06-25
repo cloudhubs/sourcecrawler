@@ -66,7 +66,7 @@ func test() {
 			x--
 		}
 	} else {
-		log.Info().Msgf("something %v")
+		log.Info().Msgf("something %v", "")
 	}
 }
 
