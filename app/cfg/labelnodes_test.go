@@ -38,7 +38,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "if-else",
 				Root:   root,
-				Leaf: leaf,
+				Leaf:   leaf,
 				Labels: labels,
 				Logs:   make([]model.LogType, 0),
 			}
@@ -82,7 +82,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "chained-if-else",
 				Root:   root,
-				Leaf: leaf,
+				Leaf:   leaf,
 				Labels: labels,
 				Logs:   make([]model.LogType, 0),
 			}
@@ -144,7 +144,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "nested-if-else-extra",
 				Root:   root,
-				Leaf: leaf,
+				Leaf:   leaf,
 				Labels: labels,
 				Logs:   make([]model.LogType, 0),
 			}
@@ -160,7 +160,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "dead-if-else",
 				Root:   root,
-				Leaf: endIf,
+				Leaf:   endIf,
 				Labels: labels,
 				Logs:   make([]model.LogType, 0),
 			}
@@ -197,7 +197,48 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "log-if-else",
 				Root:   root,
-				Leaf: end,
+				Leaf:   end,
+				Labels: labels,
+				Logs:   logs,
+			}
+		},
+		func() labelTestCase {
+			end := &db.EndConditionalNode{}
+			t1 := &db.FunctionNode{Child: end}
+			extraNode2 := &db.FunctionNode{Child: end}
+			extraNode1 := &db.FunctionNode{Child: extraNode2}
+			f1 := &db.StatementNode{
+				Filename:   "/some/path/to/file.go",
+				LogRegex:   "err: .*",
+				LineNumber: 2,
+				Child:      extraNode2,
+			}
+			end.SetParents(t1)
+			end.SetParents(f1)
+
+			root := &db.ConditionalNode{TrueChild: t1, FalseChild: f1}
+			t1.SetParents(root)
+			f1.SetParents(root)
+			labels := make(map[db.Node]db.ExecutionLabel)
+			labels[end] = db.Must
+			labels[t1] = db.MustNot //this is not handled yet
+			labels[f1] = db.Must
+			labels[extraNode1] = db.Must
+			labels[extraNode2] = db.Must
+			labels[root] = db.Must
+
+			logs := []model.LogType{
+				{
+					LineNumber: 22,
+					FilePath:   "/some/path/to/file.go",
+					Regex:      "err: .*",
+				},
+			}
+
+			return labelTestCase{
+				Name:   "log-if-else-ext",
+				Root:   root,
+				Leaf:   end,
 				Labels: labels,
 				Logs:   logs,
 			}
