@@ -243,6 +243,90 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Logs:   logs,
 			}
 		},
+		func() labelTestCase {
+			labels := make(map[db.Node]db.ExecutionLabel)
+
+			end := &db.EndConditionalNode{}
+			labels[end] = db.Must
+
+			// outer false branch
+			fEnd := &db.FunctionNode{Child: end, LineNumber: 8}
+			fEndIf := &db.EndConditionalNode{Child: fEnd}
+			fEnd.SetParents(fEndIf)
+			ff := &db.StatementNode{
+				LogRegex:   "i don't match",
+				LineNumber: 7,
+				Filename:   "somefile.go",
+				Child:      fEndIf,
+			}
+			ft := &db.FunctionNode{Child: fEndIf, LineNumber: 6}
+			fEndIf.SetParents(ft)
+			fEndIf.SetParents(ff)
+			fCond := &db.ConditionalNode{TrueChild: ft, FalseChild: ff, LineNumber: 5}
+			ff.SetParents(fCond)
+			ft.SetParents(fCond)
+
+			labels[fEnd] = db.MustNot
+			labels[fEndIf] = db.MustNot
+			labels[ff] = db.MustNot
+			labels[ft] = db.MustNot
+			labels[fCond] = db.MustNot
+
+			// outer true branch
+			tEndIf := &db.EndConditionalNode{Child: end}
+			tt := &db.FunctionNode{Child: tEndIf, LineNumber: 3}
+			tExtraNode := &db.FunctionNode{Child: tEndIf, LineNumber: 4}
+			tEndIf.SetParents(tt)
+			tEndIf.SetParents(tExtraNode)
+			tLog := &db.StatementNode{
+				LogRegex:   "hello I am an .* error",
+				LineNumber: 999,
+				Filename:   "somefile.go",
+				Child:      tExtraNode,
+			}
+			tExtraNode.SetParents(tLog)
+			tCond := &db.ConditionalNode{
+				TrueChild:  tt,
+				FalseChild: tLog,
+				LineNumber: 2,
+			}
+			tLog.SetParents(tCond)
+			tt.SetParents(tCond)
+
+			labels[tEndIf] = db.Must
+			labels[tt] = db.MustNot
+			labels[tExtraNode] = db.Must
+			labels[tLog] = db.Must
+			labels[tCond] = db.Must
+
+			end.SetParents(tEndIf)
+			end.SetParents(fEnd)
+
+			root := &db.ConditionalNode{
+				TrueChild:  tCond,
+				FalseChild: fCond,
+				LineNumber: 1,
+			}
+			tCond.SetParents(root)
+			fCond.SetParents(root)
+			labels[root] = db.Must
+
+			logs := []model.LogType{
+				{
+					LineNumber: 999,
+					FilePath:   "somefile.go",
+					Regex:      "hello I am an .* error",
+				},
+			}
+
+			return labelTestCase{
+				Name:   "log-nested",
+				Root:   root,
+				Leaf:   end,
+				Labels: labels,
+				Logs:   logs,
+			}
+		},
 	}
 
 	for _, testCase := range cases {
