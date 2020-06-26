@@ -38,7 +38,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "if-else",
 				Root:   root,
-				Leaf: leaf,
+				Leaf:   leaf,
 				Labels: labels,
 				Logs:   make([]model.LogType, 0),
 			}
@@ -82,7 +82,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "chained-if-else",
 				Root:   root,
-				Leaf: leaf,
+				Leaf:   leaf,
 				Labels: labels,
 				Logs:   make([]model.LogType, 0),
 			}
@@ -144,7 +144,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "nested-if-else-extra",
 				Root:   root,
-				Leaf: leaf,
+				Leaf:   leaf,
 				Labels: labels,
 				Logs:   make([]model.LogType, 0),
 			}
@@ -160,7 +160,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "dead-if-else",
 				Root:   root,
-				Leaf: endIf,
+				Leaf:   endIf,
 				Labels: labels,
 				Logs:   make([]model.LogType, 0),
 			}
@@ -197,7 +197,134 @@ func TestLabelNonCondNodes(t *testing.T) {
 			return labelTestCase{
 				Name:   "log-if-else",
 				Root:   root,
-				Leaf: end,
+				Leaf:   end,
+				Labels: labels,
+				Logs:   logs,
+			}
+		},
+		func() labelTestCase {
+			end := &db.EndConditionalNode{}
+			t1 := &db.FunctionNode{Child: end}
+			end.SetParents(t1)
+			extraNode2 := &db.FunctionNode{Child: end}
+			end.SetParents(extraNode2)
+			extraNode1 := &db.FunctionNode{Child: extraNode2}
+			extraNode2.SetParents(extraNode1)
+			f1 := &db.StatementNode{
+				Filename:   "/some/path/to/file.go",
+				LogRegex:   "err: .*",
+				LineNumber: 2,
+				Child:      extraNode1,
+			}
+			extraNode1.SetParents(f1)
+
+			root := &db.ConditionalNode{TrueChild: t1, FalseChild: f1}
+			t1.SetParents(root)
+			f1.SetParents(root)
+			labels := make(map[db.Node]db.ExecutionLabel)
+			labels[end] = db.Must
+			labels[t1] = db.MustNot //this is not handled yet
+			labels[f1] = db.Must
+			labels[extraNode1] = db.Must
+			labels[extraNode2] = db.Must
+			labels[root] = db.Must
+
+			logs := []model.LogType{
+				{
+					LineNumber: 2,
+					FilePath:   "/some/path/to/file.go",
+					Regex:      "err: .*",
+				},
+			}
+
+			return labelTestCase{
+				Name:   "log-if-else-ext",
+				Root:   root,
+				Leaf:   end,
+				Labels: labels,
+				Logs:   logs,
+			}
+		},
+		func() labelTestCase {
+			labels := make(map[db.Node]db.ExecutionLabel)
+
+			end := &db.EndConditionalNode{}
+			labels[end] = db.Must
+
+			// outer false branch
+			fEnd := &db.FunctionNode{Child: end, LineNumber: 8}
+			fEndIf := &db.EndConditionalNode{Child: fEnd}
+			fEnd.SetParents(fEndIf)
+			ff := &db.StatementNode{
+				LogRegex:   "i don't match",
+				LineNumber: 7,
+				Filename:   "somefile.go",
+				Child:      fEndIf,
+			}
+			ft := &db.FunctionNode{Child: fEndIf, LineNumber: 6}
+			fEndIf.SetParents(ft)
+			fEndIf.SetParents(ff)
+			fCond := &db.ConditionalNode{TrueChild: ft, FalseChild: ff, LineNumber: 5}
+			ff.SetParents(fCond)
+			ft.SetParents(fCond)
+
+			labels[fEnd] = db.MustNot
+			labels[fEndIf] = db.MustNot
+			labels[ff] = db.MustNot
+			labels[ft] = db.MustNot
+			labels[fCond] = db.MustNot
+
+			// outer true branch
+			tEndIf := &db.EndConditionalNode{Child: end}
+			tt := &db.FunctionNode{Child: tEndIf, LineNumber: 3}
+			tExtraNode := &db.FunctionNode{Child: tEndIf, LineNumber: 4}
+			tEndIf.SetParents(tt)
+			tEndIf.SetParents(tExtraNode)
+			tLog := &db.StatementNode{
+				LogRegex:   "hello I am an .* error",
+				LineNumber: 999,
+				Filename:   "somefile.go",
+				Child:      tExtraNode,
+			}
+			tExtraNode.SetParents(tLog)
+			tCond := &db.ConditionalNode{
+				TrueChild:  tt,
+				FalseChild: tLog,
+				LineNumber: 2,
+			}
+			tLog.SetParents(tCond)
+			tt.SetParents(tCond)
+
+			labels[tEndIf] = db.Must
+			labels[tt] = db.MustNot
+			labels[tExtraNode] = db.Must
+			labels[tLog] = db.Must
+			labels[tCond] = db.Must
+
+			end.SetParents(tEndIf)
+			end.SetParents(fEnd)
+
+			root := &db.ConditionalNode{
+				TrueChild:  tCond,
+				FalseChild: fCond,
+				LineNumber: 1,
+			}
+			tCond.SetParents(root)
+			fCond.SetParents(root)
+			labels[root] = db.Must
+
+			logs := []model.LogType{
+				{
+					LineNumber: 999,
+					FilePath:   "somefile.go",
+					Regex:      "hello I am an .* error",
+				},
+			}
+
+			return labelTestCase{
+				Name:   "log-nested",
+				Root:   root,
+				Leaf:   end,
 				Labels: labels,
 				Logs:   logs,
 			}

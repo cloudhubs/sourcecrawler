@@ -23,9 +23,9 @@ func IsFromLog(fn *ast.SelectorExpr) bool {
 	return false
 }
 
-func GetLogRegexFromInfo(filename string, lineNumber int) string{
+func GetLogRegexFromInfo(filename string, lineNumber int) string {
 	fset := token.NewFileSet()
-	tk, err := parser.ParseFile(fset,filename, nil, parser.ParseComments)
+	tk, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
 	if err != nil {
 		panic(err)
 	}
@@ -33,11 +33,11 @@ func GetLogRegexFromInfo(filename string, lineNumber int) string{
 	ast.Inspect(tk, func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
 			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-				if IsFromLog(sel){
+				if IsFromLog(sel) {
 					if fset.Position(n.Pos()).Line == lineNumber {
 						//get log from node
-						for _, arg := range call.Args{
-							switch v := arg.(type){
+						for _, arg := range call.Args {
+							switch v := arg.(type) {
 							case *ast.BasicLit:
 								//create regex
 								regex = CreateRegex(v.Value)
