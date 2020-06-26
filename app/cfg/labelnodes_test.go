@@ -211,7 +211,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Filename:   "/some/path/to/file.go",
 				LogRegex:   "err: .*",
 				LineNumber: 2,
-				Child:      extraNode2,
+				Child:      extraNode1,
 			}
 			end.SetParents(t1)
 			end.SetParents(f1)
