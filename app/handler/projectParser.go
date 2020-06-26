@@ -537,7 +537,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				good = true
 				// fmt.Println("Basic", v.Value)
 
-				currentLog.Regex = CreateRegex(v.Value)
+				currentLog.Regex = logsource.CreateRegex(v.Value)
 
 				logInfo = append(logInfo, currentLog)
 
@@ -610,7 +610,7 @@ func findMustHavesRecur(n db.Node, stackTrace []stackTraceStruct, regexs []strin
 	funcCalls := []db.Node{}
 
 	if n != nil {
-		if n, ok := n.(*db.FunctionNode); ok{
+		if n, ok := n.(*db.FunctionNode); ok {
 			funcCalls = append(funcCalls, n)
 			if isInStack(n, stackTrace) || wasLogged(n, regexs) {
 				(*funcLabels)[n.FunctionName] = "must"
