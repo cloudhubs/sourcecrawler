@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"runtime"
+	"sourcecrawler/app/helper"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -52,7 +53,7 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	separator := grabOS()
 
 	//Grab files to parse, split stack trace string, get project root
-	filesToParse := gatherGoFiles(projectRoot)
+	filesToParse := helper.GatherGoFiles(projectRoot)
 	stackStrs := splitStackTraceString(stackMessage)
 
 	//Helper map for quick lookup

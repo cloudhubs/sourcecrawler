@@ -82,26 +82,44 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	return root
 }
 
+
 //from the name of a function and its file, create the cfg for it
 //this will be useful for connecting external functions after an
 //initial cfg is created
-func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, filename, base string, regexes map[int]string) db.Node{
+func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, base string, files []string, seenFn []*db.FunctionNode) db.Node{
 	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, filepath.Join(base, filename),nil, parser.ParseComments)
-	if err != nil {
-		panic(err)
-	}
+	found := false
 	var fn *ast.FuncDecl
-	ast.Inspect(node, func(n ast.Node) bool {
-		if n, ok := n.(*ast.FuncDecl); ok {
-			if strings.Contains(n.Name.Name, "fnName"){
-				fn = n
-			}
+	for _, file := range files {
+		node, err := parser.ParseFile(fset,file, nil, parser.ParseComments)
+		if err != nil {
+			panic(err)
 		}
-		return true
-	})
-
-	return fnCfg.CreateCfg(fn,base,fset,regexes)
+		ast.Inspect(node, func(n ast.Node) bool {
+			if n, ok := n.(*ast.FuncDecl); ok {
+				if strings.Contains(fnName, n.Name.Name){
+					fn = n
+					//stop when you find it
+					found = true
+					return false
+				}
+			}
+			//if you don't find it, keep looking
+			return true
+		})
+		if found {
+			break
+		}
+	}
+	if found {
+		node := fnCfg.CreateCfg(fn,base,fset, map[int]string{})
+		//add in functions in this cfg, excluding
+		//any functions already seen in this scope
+		//or higher scopes
+		ConnectExternalFunctions(node,seenFn, files, base)
+		return node
+	}
+	return nil
 }
 
 //initially called with:
@@ -109,39 +127,56 @@ func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, filename, base stri
 //seenFns = []*db.FunctionNode{} (empty)
 //base = project root (needed for cfg construction)
 //regexes = NOT NEEDED/DEPRICATED ARRAY REPLACED BY INLINE FUNCTION TO GRAB REGEX
-func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, base string, regexes map[int]string){
+func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFiles []string, base string){
 	var fnCfg FnCfgCreator
 	node := root
 	for node != nil {
+		var tmp db.Node
 		//traverse down tree until
 		//encountering a function node
 		//that is not followed by a
 		//function declaration node
 		//(which means it is already connected)
 		if node, ok := node.(*db.FunctionNode); ok{
-			for _, seen := range seenFns {
+			seen := false
+			for _, fn := range seenFns {
 				//skip functions we have already added on this recursion path
-				if seen.FunctionName != node.FunctionName && seen.Filename != node.Filename {
-					//check if child is a declaration
-					if _, ok2 := node.Child.(*db.FunctionDeclNode); !ok2 {
-						//if not a function declaration, add the cfg
-						newFn := fnCfg.CreateCfgFromFunctionName(node.FunctionName,node.Filename, base, regexes)
+				if strings.Contains(node.FunctionName, fn.FunctionName) && strings.Contains(node.Filename, fn.Filename) {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				//check if child is a declaration
+				if _, ok2 := node.Child.(*db.FunctionDeclNode); !ok2 {
+					//add this function to a list so it doesn't recurse on itself
+					//keep track of newly added functions
+					//within this scope so they can be
+					//removed
+					//if not a function declaration, add the cfg, recursively
+					newFn := fnCfg.CreateCfgFromFunctionName(node.FunctionName, base, sourceFiles, append(seenFns, node))
+					if newFn != nil {
+						tmp = node.Child
 						leafs := getLeafNodes(newFn)
-
 						for _, leaf := range leafs {
 							leaf.SetChild([]db.Node{node.Child})
 						}
 						node.Child = newFn
-						seenFns = append(seenFns, node)
 					}
 				}
 			}
 		}
-
+		//this wouldn't allow for any function to be called more than once,
+		//so switching to a recursive call that only cares about
 		//next node please
-		for child := range node.GetChildren(){
-			//repeat
-			ConnectExternalFunctions(child, seenFns, base, regexes)
+		if tmp != nil {
+			node = tmp
+		}else{
+			for child := range node.GetChildren(){
+				//repeat
+				ConnectExternalFunctions(child, seenFns, sourceFiles, base)
+			}
+			node = nil
 		}
 	}
 }
