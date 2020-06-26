@@ -229,7 +229,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 
 			logs := []model.LogType{
 				{
-					LineNumber: 22,
+					LineNumber: 2,
 					FilePath:   "/some/path/to/file.go",
 					Regex:      "err: .*",
 				},
