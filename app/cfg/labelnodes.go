@@ -183,7 +183,7 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 	top.SetLabel(db.Must)
 	//recursively label all children up to end
 	//as "may" or "must" when logs occurred
-	labelBranchesRecur(top, end, printedLogs)
+	labelBranchesRecur(top, end, printedLogs, false)
 
 	//return top conditional node as next node to label
 	return top, nil
@@ -191,38 +191,53 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 
 // Returns true if it found a log statement in the branch and sets to must on the way back up
 // printedLogs is the LogTypes corresponding to the logs that were all printed at runtime
-func labelBranchesRecur(node db.Node, end *db.EndConditionalNode, printedLogs []model.LogType) bool {
+func labelBranchesRecur(node db.Node, end *db.EndConditionalNode, printedLogs []model.LogType, parentWasMust bool) bool {
 	hadLog := false
+	hasLog := false
+	//stop recursion if child is already labeled
+	//or if it is the original end node
+	if stmt, ok := node.(*db.StatementNode); ok {
+		for _, log := range printedLogs {
+			if log.LineNumber == stmt.LineNumber && strings.Contains(log.FilePath, stmt.Filename) {
+				//logged nodes are labeled as must
+				hasLog = true
+			}
+		}
+	}
 	for child := range node.GetChildren() {
-		//stop recursion if child is already labeled
-		//or if it is the original end node
 		if _, ok := child.(*db.EndConditionalNode); ok {
 			if child == end {
+				//do not recurse
 				continue
 			}
 		}
 
 		if child.GetLabel() == db.NoLabel {
-			hadLog = labelBranchesRecur(child, end, printedLogs)
-			if hadLog {
-				child.SetLabel(db.Must)
+			//pass down the hasLog bool to
+			//make sure children of logs are
+			//marked as must
+			if child, ok := child.(*db.ConditionalNode); ok {
+				//inherited state stops at next conditional
+				hadLog = labelBranchesRecur(child, end, printedLogs, false)
+			}else{
+				//else, the child is part of the current branch
+				//so it inherits the logged state
+				hadLog = labelBranchesRecur(child, end, printedLogs, hasLog)
+			}
+			//if the child, the parent,
+			//or the node itself had a log,
+			//it must have happened
+			if hadLog || parentWasMust || hasLog{
+				node.SetLabel(db.Must)
 			}else {
-				child.SetLabel(db.May)
+				node.SetLabel(db.May)
 			}
 		}
 
 	}
-	if stmt, ok := node.(*db.StatementNode); ok {
-		for _, log := range printedLogs {
-			if log.LineNumber == stmt.LineNumber && strings.Contains(log.FilePath, stmt.Filename) {
-				return true
-			}
-		}
-	}
-	if hadLog {
-		return true
-	}
-	return false
+	//return either the child's
+	//state or the node itself's
+	return hadLog || hasLog
 }
 
 //Labels the non conditional nodes (needs testing)
