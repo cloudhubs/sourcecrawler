@@ -205,16 +205,18 @@ func TestLabelNonCondNodes(t *testing.T) {
 		func() labelTestCase {
 			end := &db.EndConditionalNode{}
 			t1 := &db.FunctionNode{Child: end}
+			end.SetParents(t1)
 			extraNode2 := &db.FunctionNode{Child: end}
+			end.SetParents(extraNode2)
 			extraNode1 := &db.FunctionNode{Child: extraNode2}
+			extraNode2.SetParents(extraNode1)
 			f1 := &db.StatementNode{
 				Filename:   "/some/path/to/file.go",
 				LogRegex:   "err: .*",
 				LineNumber: 2,
 				Child:      extraNode1,
 			}
-			end.SetParents(t1)
-			end.SetParents(f1)
+			extraNode1.SetParents(f1)
 
 			root := &db.ConditionalNode{TrueChild: t1, FalseChild: f1}
 			t1.SetParents(root)
