@@ -102,6 +102,47 @@ func GrabTestNode2() (db.Node, db.Node) {
 	return root, leaf
 }
 
+func GetTestNode3() (db.Node, db.Node) {
+	end := &db.EndConditionalNode{}
+	t1 := &db.FunctionNode{Child: end}
+	f1 := &db.StatementNode{
+		Filename:   "/some/path/to/file.go",
+		LogRegex:   "this is a log message: .*",
+		LineNumber: 67,
+		Child:      end,
+	}
+	end.SetParents(t1)
+	end.SetParents(f1)
+
+	root := &db.ConditionalNode{TrueChild: t1, FalseChild: f1}
+	t1.SetParents(root)
+	f1.SetParents(root)
+	labels := make(map[db.Node]db.ExecutionLabel)
+	labels[end] = db.Must
+	labels[t1] = db.MustNot //this is not handled yet
+	labels[f1] = db.Must
+	labels[root] = db.Must
+
+	//logs := []model.LogType{
+	//	{
+	//		LineNumber: 67,
+	//		FilePath:   "/some/path/to/file.go",
+	//		Regex:      "this is a log message: .*",
+	//	},
+	//}
+
+	return root, end
+}
+
+//return labelTestCase{
+//Name:   "log-if-else",
+//Root:   root,
+//Leaf: end,
+//Labels: labels,
+//Logs:   logs,
+//}
+
+
 // given a list of function calls in `funcCalls` and a map of their labels in `funcLabels`,
 // append the names of all must-have functions to `mustHaves`, and all the may-have functions to `mayHaves`
 func FilterMustMay(funcCalls []neoDb.Node, mustHaves []neoDb.Node, mayHaves []neoDb.Node, funcLabels map[string]string) ([]neoDb.Node, []neoDb.Node) {

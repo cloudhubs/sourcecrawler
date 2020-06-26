@@ -537,7 +537,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				good = true
 				// fmt.Println("Basic", v.Value)
 
-				currentLog.Regex = CreateRegex(v.Value)
+				currentLog.Regex = logsource.CreateRegex(v.Value)
 
 				logInfo = append(logInfo, currentLog)
 
