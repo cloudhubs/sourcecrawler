@@ -153,8 +153,8 @@ func PrintCfg(node db.Node, level string) {
 	}
 	var parStr string = "Parent: "
 	if node.GetParents() != nil{
-		parStr += node.GetProperties()
-		//parStr = node.GetFilename() used for testing labeling
+		//parStr += node.GetProperties()
+		parStr = node.GetFilename()
 	}
 
 	switch node := node.(type) {

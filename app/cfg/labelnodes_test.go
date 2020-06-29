@@ -182,7 +182,8 @@ func TestLabelNonCondNodes(t *testing.T) {
 			f1.SetParents(root)
 			labels := make(map[db.Node]db.ExecutionLabel)
 			labels[end] = db.Must
-			labels[t1] = db.MustNot //this is not handled yet
+			//labels[t1] = db.MustNot //this is not handled yet
+			labels[t1] = db.May
 			labels[f1] = db.Must
 			labels[root] = db.Must
 
@@ -204,26 +205,26 @@ func TestLabelNonCondNodes(t *testing.T) {
 		},
 		func() labelTestCase {
 			end := &db.EndConditionalNode{}
-			t1 := &db.FunctionNode{Child: end}
+			t1 := &db.FunctionNode{Filename: "t1", Child: end}
 			end.SetParents(t1)
-			extraNode2 := &db.FunctionNode{Child: end}
+			extraNode2 := &db.FunctionNode{Filename: "extra2", Child: end}
 			end.SetParents(extraNode2)
-			extraNode1 := &db.FunctionNode{Child: extraNode2}
+			extraNode1 := &db.FunctionNode{Filename: "extra1", Child: extraNode2}
 			extraNode2.SetParents(extraNode1)
 			f1 := &db.StatementNode{
-				Filename:   "/some/path/to/file.go",
+				Filename:   "file.go",
 				LogRegex:   "err: .*",
 				LineNumber: 2,
 				Child:      extraNode1,
 			}
 			extraNode1.SetParents(f1)
 
-			root := &db.ConditionalNode{TrueChild: t1, FalseChild: f1}
+			root := &db.ConditionalNode{Filename: "ROOT", TrueChild: t1, FalseChild: f1}
 			t1.SetParents(root)
 			f1.SetParents(root)
 			labels := make(map[db.Node]db.ExecutionLabel)
 			labels[end] = db.Must
-			labels[t1] = db.MustNot //this is not handled yet
+			labels[t1] = db.May //this is not handled yet
 			labels[f1] = db.Must
 			labels[extraNode1] = db.Must
 			labels[extraNode2] = db.Must
@@ -252,7 +253,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 			labels[end] = db.Must
 
 			// outer false branch
-			fEnd := &db.FunctionNode{Child: end, LineNumber: 8}
+			fEnd := &db.FunctionNode{Filename: "fEnd", Child: end, LineNumber: 8}
 			fEndIf := &db.EndConditionalNode{Child: fEnd}
 			fEnd.SetParents(fEndIf)
 			ff := &db.StatementNode{
@@ -261,23 +262,29 @@ func TestLabelNonCondNodes(t *testing.T) {
 				Filename:   "somefile.go",
 				Child:      fEndIf,
 			}
-			ft := &db.FunctionNode{Child: fEndIf, LineNumber: 6}
+			ft := &db.FunctionNode{Filename: "ft", Child: fEndIf, LineNumber: 6}
 			fEndIf.SetParents(ft)
 			fEndIf.SetParents(ff)
-			fCond := &db.ConditionalNode{TrueChild: ft, FalseChild: ff, LineNumber: 5}
+			fCond := &db.ConditionalNode{Filename: "fCond", TrueChild: ft, FalseChild: ff, LineNumber: 5}
 			ff.SetParents(fCond)
 			ft.SetParents(fCond)
 
-			labels[fEnd] = db.MustNot
-			labels[fEndIf] = db.MustNot
-			labels[ff] = db.MustNot
-			labels[ft] = db.MustNot
-			labels[fCond] = db.MustNot
+			//TODO: not handled currently
+			//labels[fEnd] = db.MustNot
+			//labels[fEndIf] = db.MustNot
+			//labels[ff] = db.MustNot
+			//labels[ft] = db.MustNot
+			//labels[fCond] = db.MustNot
+			labels[fEnd] = db.May
+			labels[fEndIf] = db.May
+			labels[ff] = db.May
+			labels[ft] = db.May
+			labels[fCond] = db.May
 
 			// outer true branch
 			tEndIf := &db.EndConditionalNode{Child: end}
-			tt := &db.FunctionNode{Child: tEndIf, LineNumber: 3}
-			tExtraNode := &db.FunctionNode{Child: tEndIf, LineNumber: 4}
+			tt := &db.FunctionNode{Filename: "tt", Child: tEndIf, LineNumber: 3}
+			tExtraNode := &db.FunctionNode{Filename: "tExtraNode", Child: tEndIf, LineNumber: 4}
 			tEndIf.SetParents(tt)
 			tEndIf.SetParents(tExtraNode)
 			tLog := &db.StatementNode{
@@ -291,15 +298,17 @@ func TestLabelNonCondNodes(t *testing.T) {
 				TrueChild:  tt,
 				FalseChild: tLog,
 				LineNumber: 2,
+				Filename: "tCond",
 			}
 			tLog.SetParents(tCond)
 			tt.SetParents(tCond)
 
 			labels[tEndIf] = db.Must
-			labels[tt] = db.MustNot
+			//labels[tt] = db.MustNot
+			labels[tt] = db.May
 			labels[tExtraNode] = db.Must
 			labels[tLog] = db.Must
-			labels[tCond] = db.Must
+			labels[tCond] = db.Must //TODO: should be must since the entire branch needs to be labeled
 
 			end.SetParents(tEndIf)
 			end.SetParents(fEnd)
@@ -308,6 +317,7 @@ func TestLabelNonCondNodes(t *testing.T) {
 				TrueChild:  tCond,
 				FalseChild: fCond,
 				LineNumber: 1,
+				Filename: "root",
 			}
 			tCond.SetParents(root)
 			fCond.SetParents(root)

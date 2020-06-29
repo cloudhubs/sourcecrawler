@@ -102,36 +102,163 @@ func GrabTestNode2() (db.Node, db.Node) {
 	return root, leaf
 }
 
-func GetTestNode3() (db.Node, db.Node) {
+//log-if-else
+func SimpleIfElse() (db.Node, db.Node, []model.LogType) {
 	end := &db.EndConditionalNode{}
-	t1 := &db.FunctionNode{Child: end}
+	t1 := &db.FunctionNode{Filename: "t1", Child: end}
 	f1 := &db.StatementNode{
 		Filename:   "/some/path/to/file.go",
-		LogRegex:   "this is a log message: .*",
+		LogRegex:   "this is a log message: .* - f1 node",
 		LineNumber: 67,
 		Child:      end,
 	}
 	end.SetParents(t1)
 	end.SetParents(f1)
 
-	root := &db.ConditionalNode{TrueChild: t1, FalseChild: f1}
+	root := &db.ConditionalNode{Filename: "root", TrueChild: t1, FalseChild: f1}
 	t1.SetParents(root)
 	f1.SetParents(root)
 	labels := make(map[db.Node]db.ExecutionLabel)
 	labels[end] = db.Must
-	labels[t1] = db.MustNot //this is not handled yet
+	labels[t1] = db.May
 	labels[f1] = db.Must
 	labels[root] = db.Must
 
-	//logs := []model.LogType{
-	//	{
-	//		LineNumber: 67,
-	//		FilePath:   "/some/path/to/file.go",
-	//		Regex:      "this is a log message: .*",
-	//	},
-	//}
+	testLog := []model.LogType{
+		{
+			LineNumber: 67,
+			FilePath:   "/some/path/to/file.go",
+			Regex:      "this is a log message: .*",
+		},
+	}
 
-	return root, end
+	return root, end, testLog
+}
+//log-if-else-ext
+func GrabTestNode3() (db.Node, db.Node, []model.LogType) {
+	end := &db.EndConditionalNode{}
+	t1 := &db.FunctionNode{Filename: "t1", Child: end}
+	end.SetParents(t1)
+	extraNode2 := &db.FunctionNode{Filename: "extra2", Child: end}
+	end.SetParents(extraNode2)
+	extraNode1 := &db.FunctionNode{Filename: "extra1", Child: extraNode2}
+	extraNode2.SetParents(extraNode1)
+	f1 := &db.StatementNode{
+		Filename:   "file.go",
+		LogRegex:   "err: .*",
+		LineNumber: 2,
+		Child:      extraNode1,
+	}
+	extraNode1.SetParents(f1)
+
+	root := &db.ConditionalNode{Filename: "ROOT", TrueChild: t1, FalseChild: f1}
+	t1.SetParents(root)
+	f1.SetParents(root)
+	labels := make(map[db.Node]db.ExecutionLabel)
+	labels[end] = db.Must
+	labels[t1] = db.May //this is not handled yet
+	labels[f1] = db.Must
+	labels[extraNode1] = db.Must
+	labels[extraNode2] = db.Must
+	labels[root] = db.Must
+
+	testLog := []model.LogType{
+		{
+			LineNumber: 2,
+			FilePath:   "/some/path/to/file.go",
+			Regex:      "err: .*",
+		},
+	}
+
+	return root, end, testLog
+}
+//log-nested
+func LogNested()   (db.Node, db.Node, []model.LogType) {
+	labels := make(map[db.Node]db.ExecutionLabel)
+
+	end := &db.EndConditionalNode{}
+	labels[end] = db.Must
+
+	// outer false branch
+	fEnd := &db.FunctionNode{Filename: "fEnd", Child: end, LineNumber: 8}
+	fEndIf := &db.EndConditionalNode{Child: fEnd}
+	fEnd.SetParents(fEndIf)
+	ff := &db.StatementNode{
+		LogRegex:   "i don't match",
+		LineNumber: 7,
+		Filename:   "somefile.go",
+		Child:      fEndIf,
+	}
+	ft := &db.FunctionNode{Filename: "ft", Child: fEndIf, LineNumber: 6}
+	fEndIf.SetParents(ft)
+	fEndIf.SetParents(ff)
+	fCond := &db.ConditionalNode{Filename: "fCond", TrueChild: ft, FalseChild: ff, LineNumber: 5}
+	ff.SetParents(fCond)
+	ft.SetParents(fCond)
+
+	//TODO: not handled currently
+	//labels[fEnd] = db.MustNot
+	//labels[fEndIf] = db.MustNot
+	//labels[ff] = db.MustNot
+	//labels[ft] = db.MustNot
+	//labels[fCond] = db.MustNot
+	labels[fEnd] = db.May
+	labels[fEndIf] = db.May
+	labels[ff] = db.May
+	labels[ft] = db.May
+	labels[fCond] = db.May
+
+	// outer true branch
+	tEndIf := &db.EndConditionalNode{Child: end}
+	tt := &db.FunctionNode{Filename: "tt", Child: tEndIf, LineNumber: 3}
+	tExtraNode := &db.FunctionNode{Filename: "tExtraNode", Child: tEndIf, LineNumber: 4}
+	tEndIf.SetParents(tt)
+	tEndIf.SetParents(tExtraNode)
+	tLog := &db.StatementNode{
+		LogRegex:   "hello I am an .* error",
+		LineNumber: 999,
+		Filename:   "somefile.go",
+		Child:      tExtraNode,
+	}
+	tExtraNode.SetParents(tLog)
+	tCond := &db.ConditionalNode{
+		TrueChild:  tt,
+		FalseChild: tLog,
+		LineNumber: 2,
+		Filename: "tCond",
+	}
+	tLog.SetParents(tCond)
+	tt.SetParents(tCond)
+
+	labels[tEndIf] = db.Must
+	//labels[tt] = db.MustNot
+	labels[tt] = db.May
+	labels[tExtraNode] = db.Must
+	labels[tLog] = db.Must
+	labels[tCond] = db.Must //TODO: should be must since the entire branch needs to be labeled
+
+	end.SetParents(tEndIf)
+	end.SetParents(fEnd)
+
+	root := &db.ConditionalNode{
+		TrueChild:  tCond,
+		FalseChild: fCond,
+		LineNumber: 1,
+		Filename: "root",
+	}
+	tCond.SetParents(root)
+	fCond.SetParents(root)
+	labels[root] = db.Must
+
+	testLog := []model.LogType{
+		{
+			LineNumber: 999,
+			FilePath:   "somefile.go",
+			Regex:      "hello I am an .* error",
+		},
+	}
+
+	return root, end, testLog
 }
 
 //return labelTestCase{
@@ -226,6 +353,9 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 	//as "may" or "must" when logs occurred
 	labelBranchesRecur(top, end, printedLogs)
 
+	//TODO: run again, but re-label log statement children nodes as must
+	labelBranchesLogs(top, end, printedLogs, nil, top, false)
+
 	//return top conditional node as next node to label
 	return top, nil
 }
@@ -233,7 +363,7 @@ func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.
 // Returns true if it found a log statement in the branch and sets to must on the way back up
 // printedLogs is the LogTypes corresponding to the logs that were all printed at runtime
 func labelBranchesRecur(node db.Node, end *db.EndConditionalNode, printedLogs []model.LogType) bool {
-	hadLog := false
+	//hadLog := false
 	for child := range node.GetChildren() {
 		//stop recursion if child is already labeled
 		//or if it is the original end node
@@ -243,27 +373,121 @@ func labelBranchesRecur(node db.Node, end *db.EndConditionalNode, printedLogs []
 			}
 		}
 
+		//If child is not labeled, add appropriate label
 		if child.GetLabel() == db.NoLabel {
-			hadLog = labelBranchesRecur(child, end, printedLogs)
-			if hadLog {
-				child.SetLabel(db.Must)
-			}else {
-				child.SetLabel(db.May)
+			//labelBranchesRecur(child, end, printedLogs)
+			//hadLog = labelBranchesRecur(child, end, printedLogs)
+			//if hadLog {
+			//	child.SetLabel(db.Must)
+			//}else {
+			//	child.SetLabel(db.May)
+			//}
+			labelBranchesRecur(child, end, printedLogs)
+			child.SetLabel(db.May)
+		}
+
+		//if stmt, ok := node.(*db.StatementNode); ok {
+		//	fmt.Println("Statement node", stmt.LineNumber, stmt.LogRegex, stmt.Filename)
+		//	for _, log := range printedLogs {
+		//		fmt.Println("Log info", log.LineNumber, log.Regex, log.FilePath)
+		//		if log.LineNumber == stmt.LineNumber && strings.Contains(log.FilePath, stmt.Filename) {
+		//			return true
+		//		}
+		//	}
+		//}
+
+	}
+
+	//if hadLog {
+	//	return true
+	//}
+	return false
+}
+
+func labelBranchesLogs(node db.Node, end *db.EndConditionalNode,
+	printedLogs []model.LogType, logNode *db.StatementNode, startNode db.Node, isDone bool) (*db.StatementNode, bool){
+
+	//If done labeling, end function (not sure if its needed. but it works?)
+	if isDone{
+		return logNode, isDone
+	}
+	done := isDone
+
+	//If last endIf node, return back to previous node
+	if node == end{
+		return logNode, isDone
+	}
+
+	//Assign log label at very start of processing
+	//holds the "parent must" of the branch
+	var ln *db.StatementNode = nil
+
+	//If a log statement node is in the branch, label as must (put before because the last node needs to be labeled)
+	if logNode != nil{
+		node.SetLabel(db.Must)
+		ln = logNode
+	}
+
+	for child := range node.GetChildren() {
+
+		//Reset for each child
+		//ln = nil
+
+
+		//If it's a log node then pass it to all children nodes
+		if stmt, ok := node.(*db.StatementNode); ok {
+			fmt.Println("Statement node", stmt.LineNumber, stmt.LogRegex, stmt.Filename)
+			for _, log := range printedLogs {
+				fmt.Println("Log info", log.LineNumber, log.Regex, log.FilePath)
+				if log.LineNumber == stmt.LineNumber && strings.Contains(log.FilePath, stmt.Filename) {
+					node.SetLabel(db.Must) //set current node
+					ln = stmt
+					break
+				}
+			}
+			//If it isn't matching the log, then it is set to MustNot
+			//TODO: will be if MustNot's are labeled, currently breaks the normal if-else tests
+			//if ln == nil{
+			//	node.SetLabel(db.MustNot)
+			//	isBad = true
+			//}
+		}
+
+		//stop recursion if child is already labeled
+		//or if it is the original end node
+		if _, ok := child.(*db.EndConditionalNode); ok {
+			if child == end {
+				continue
 			}
 		}
 
+		ln, done = labelBranchesLogs(child, end, printedLogs, ln, startNode, isDone)
+		//If the child had a log, label current as a must
+		if ln != nil && !done{
+			node.SetLabel(db.Must)
+		}
+
+		// THIS IS NEEDED to check if labeling is finished,
+		//  since if the TRUE branch is labeled already, then ignore other side
+		if done{
+			break
+		}
+
+		//if ln != nil && !isBad{
+		//	node.SetLabel(db.Must)
+		//}else if isBad{
+		//	node.SetLabel(db.MustNot)
+		//}
+
 	}
-	if stmt, ok := node.(*db.StatementNode); ok {
-		for _, log := range printedLogs {
-			if log.LineNumber == stmt.LineNumber && strings.Contains(log.FilePath, stmt.Filename) {
-				return true
-			}
+	//If the current node is the startNode's child, and we've seen a log node, then we are done labeling the Must branches
+	if len(node.GetParents()) != 0 {
+		if node.GetParents()[0] == startNode && ln != nil {
+			done = true
 		}
 	}
-	if hadLog {
-		return true
-	}
-	return false
+
+	return ln, done
 }
 
 //Labels the non conditional nodes (needs testing)
@@ -280,6 +504,11 @@ func LabelParentNodes(root db.Node, printedLogs []model.LogType) {
 	if len(root.GetParents()) == 0 {
 		fmt.Println("No parent nodes connected")
 		return
+	}
+
+	//Test logs
+	for _, log := range printedLogs{
+		fmt.Println(log)
 	}
 
 	//Label exception node itself (has to be a must)

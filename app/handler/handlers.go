@@ -262,15 +262,30 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
 	//Run test nodes and label
-	testRoot, testNode := cfg.GrabTestNode()
-	testRoot2, testNode2 := cfg.GrabTestNode2()
-	cfg.LabelParentNodes(testNode, make([]model.LogType, 0))
-	fmt.Println("\nTest case 1 **********************")
-	cfg.PrintCfg(testRoot, "")
+	//testRoot, testNode := cfg.GrabTestNode()
+	//cfg.LabelParentNodes(testNode, make([]model.LogType, 0))
+	//fmt.Println("\nTest case 1 **********************")
+	//cfg.PrintCfg(testRoot, "")
+	//
+	//testRoot2, testNode2 := cfg.GrabTestNode2()
+	//cfg.LabelParentNodes(testNode2, make([]model.LogType, 0))
+	//fmt.Println("\nTest Case 2 ***************")
+	//cfg.PrintCfg(testRoot2, "")
 
-	cfg.LabelParentNodes(testNode2, make([]model.LogType, 0))
-	fmt.Println("\nTest Case 2 ***************")
-	cfg.PrintCfg(testRoot2, "")
+	//testRoot2, testNode2, testLog2 := cfg.SimpleIfElse()
+	//cfg.LabelParentNodes(testNode2, testLog2)
+	//fmt.Println("\nTest Case 2 ***************")
+	//cfg.PrintCfg(testRoot2, "")
+
+	//testRoot3, testNode3, testLog3 := cfg.GrabTestNode3()
+	//cfg.LabelParentNodes(testNode3, testLog3)
+	//fmt.Println("\nTest Case 3 ***************")
+	//cfg.PrintCfg(testRoot3, "")
+
+	//testRoot4, testNode4, testLog4 := cfg.LogNested()
+	//cfg.LabelParentNodes(testNode4, testLog4)
+	//fmt.Println("\nTest Case 4 ***************")
+	//cfg.PrintCfg(testRoot4, "")
 
 	respondJSON(w, http.StatusOK, response)
 }
