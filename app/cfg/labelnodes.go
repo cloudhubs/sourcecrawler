@@ -447,9 +447,9 @@ func labelBranchesLogs(node db.Node, end *db.EndConditionalNode,
 			}
 			//If it isn't matching the log, then it is set to MustNot
 			//TODO: will be if MustNot's are labeled, currently breaks the normal if-else tests
-			//if ln == nil{
+			//if ln == nil && {
 			//	node.SetLabel(db.MustNot)
-			//	isBad = true
+				//isBad = true
 			//}
 		}
 
@@ -469,6 +469,7 @@ func labelBranchesLogs(node db.Node, end *db.EndConditionalNode,
 
 		// THIS IS NEEDED to check if labeling is finished,
 		//  since if the TRUE branch is labeled already, then ignore other side
+		//TODO: bugs with mustNot assignment if the other branch is checked
 		if done{
 			break
 		}

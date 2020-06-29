@@ -283,10 +283,10 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//fmt.Println("\nTest Case 3 ***************")
 	//cfg.PrintCfg(testRoot3, "")
 
-	//testRoot4, testNode4, testLog4 := cfg.LogNested()
-	//cfg.LabelParentNodes(testNode4, testLog4)
-	//fmt.Println("\nTest Case 4 ***************")
-	//cfg.PrintCfg(testRoot4, "")
+	testRoot4, testNode4, testLog4 := cfg.LogNested()
+	cfg.LabelParentNodes(testNode4, testLog4)
+	fmt.Println("\nTest Case 4 ***************")
+	cfg.PrintCfg(testRoot4, "")
 
 	respondJSON(w, http.StatusOK, response)
 }
