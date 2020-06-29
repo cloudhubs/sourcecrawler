@@ -66,7 +66,7 @@ func test() {
 			x--
 		}
 	} else {
-		log.Info().Msgf("something %v")
+		log.Info().Msgf("something %v", "")
 	}
 }
 
@@ -125,4 +125,21 @@ func testCondPanic(num int){
 	}else{
 		callOtherPanic(num)
 	}
+}
+
+func testNodeProp(str string) {
+	createChild(str)
+}
+
+func createChild(str string){
+	if str == "a"{
+		createChildOfChild()
+	}else{
+		//child node
+		createChildOfChild()
+	}
+}
+
+func createChildOfChild(){
+	panic("panic")
 }

@@ -44,7 +44,10 @@ func (a *App) setRouters() {
 	a.Post("/parser", a.handleRequest(handler.CreateProjectLogTypes))
 	a.Post("/matcher", a.handleRequest(handler.FindLogSource))
 	a.Post("/slicer", a.handleRequest(handler.SliceProgram))
+	a.Post("/unsafe", a.handleRequest(handler.UnsafeEndpoint))
 	a.Post("/neotest", a.handleRequest(handler.NeoTest))
+	a.Post("/cfg", a.handleRequest(handler.ConnectedCfgTest))
+	a.Post("/testprop", a.handleRequest(handler.TestProp))
 }
 
 // Get wraps the router for GET method

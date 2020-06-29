@@ -7,6 +7,19 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type ExecutionLabel int
+
+const (
+	NoLabel ExecutionLabel = iota
+	Must
+	May
+	MustNot
+)
+
+func (s ExecutionLabel) String() string {
+	return [...]string{"NoLabel", "Must", "May", "MustNot"}[s]
+}
+
 type Node interface {
 	/*
 		Returns a map that contains the child nodes as keys, and the relationship's labels as the value
@@ -15,6 +28,9 @@ type Node interface {
 
 	SetChild([]Node)
 
+	GetParents() []Node
+
+	SetParents(parent Node)
 	/*
 		Returns a string that contains this node's properties, in cypher's key-value format
 	*/
@@ -25,6 +41,14 @@ type Node interface {
 	GetFilename() string
 
 	GetLineNumber() int
+
+	GetLabel() ExecutionLabel
+
+	SetLabel(l ExecutionLabel)
+
+	SetFilename(filename string)
+
+	SetLineNumber(line int)
 }
 
 type FunctionNode struct {
@@ -32,6 +56,8 @@ type FunctionNode struct {
 	LineNumber   int
 	FunctionName string
 	Child        Node
+	Parent       Node
+	Label        ExecutionLabel
 }
 
 type Return struct {
@@ -47,6 +73,8 @@ type FunctionDeclNode struct {
 	Params       map[string]string // map of arg name to type
 	Returns      []Return          // not a map since you don't have to name return variables
 	Child        Node
+	Parent       Node
+	Label        ExecutionLabel
 }
 
 // in the event of return fnCall() a FunctionNode will be its predecessor node
@@ -57,6 +85,8 @@ type ReturnNode struct {
 	LineNumber int
 	Expression string
 	Child      Node
+	Parent     Node
+	Label      ExecutionLabel
 }
 
 type StatementNode struct {
@@ -64,6 +94,8 @@ type StatementNode struct {
 	LineNumber int
 	LogRegex   string
 	Child      Node
+	Parent     Node
+	Label      ExecutionLabel
 }
 
 type ConditionalNode struct {
@@ -72,11 +104,22 @@ type ConditionalNode struct {
 	Condition  string
 	TrueChild  Node
 	FalseChild Node
+	Parent     Node
+	Label      ExecutionLabel
+}
+
+type EndConditionalNode struct {
+	Child   Node
+	Parents []Node
+	Label   ExecutionLabel
 }
 
 // STATEMENT NODES
 
 func (n *StatementNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -87,8 +130,19 @@ func (n *StatementNode) SetChild(c []Node) {
 	n.Child = c[0]
 }
 
+func (n *StatementNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
+func (n *StatementNode) SetParents(parent Node) {
+	n.Parent = parent
+}
+
 func (n *StatementNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v", n.Filename, n.LineNumber)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, label: %v", n.Filename, n.LineNumber, n.Label)
 	if n.LogRegex != "" {
 		val = val + fmt.Sprintf(", logregex: \"%v\"", n.LogRegex)
 	}
@@ -107,9 +161,28 @@ func (n *StatementNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+func (n *StatementNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *StatementNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
+}
+
+func (n *StatementNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *StatementNode) SetLineNumber(line int) {
+	n.LineNumber = line
+}
+
 // CONDITIONAL NODES
 
 func (n *ConditionalNode) GetChildren() map[Node]string {
+	if n.TrueChild == nil && n.FalseChild == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.TrueChild:  `{ takeIf: "true" }`,
 		n.FalseChild: `{ takeIf: "false" }`,
@@ -122,8 +195,20 @@ func (n *ConditionalNode) SetChild(c []Node) {
 	n.FalseChild = c[1]
 }
 
+func (n *ConditionalNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
+func (n *ConditionalNode) SetParents(parent Node) {
+	n.Parent = parent
+}
+
 func (n *ConditionalNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, condition: \"%v\"", n.Filename, n.LineNumber, n.Condition)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, condition: \"%v\", label: %v",
+		n.Filename, n.LineNumber, n.Condition, n.Label)
 	return "{ " + val + " }"
 }
 
@@ -135,13 +220,32 @@ func (n *ConditionalNode) GetFilename() string {
 	return n.Filename
 }
 
+func (n *ConditionalNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *ConditionalNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
+}
+
 func (n *ConditionalNode) GetLineNumber() int {
 	return n.LineNumber
+}
+
+func (n *ConditionalNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *ConditionalNode) SetLineNumber(line int) {
+	n.LineNumber = line
 }
 
 // FUNCTION (CALL) NODES
 
 func (n *FunctionNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -152,8 +256,20 @@ func (n *FunctionNode) SetChild(c []Node) {
 	n.Child = c[0]
 }
 
+func (n *FunctionNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
+func (n *FunctionNode) SetParents(parent Node) {
+	n.Parent = parent
+}
+
 func (n *FunctionNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\"", n.Filename, n.LineNumber, n.FunctionName)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\", label: %v",
+		n.Filename, n.LineNumber, n.FunctionName, n.Label)
 	return "{ " + val + " }"
 }
 
@@ -169,9 +285,28 @@ func (n *FunctionNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+func (n *FunctionNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *FunctionNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
+}
+
+func (n *FunctionNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *FunctionNode) SetLineNumber(line int) {
+	n.LineNumber = line
+}
+
 // FUNCTION DECLARATION NODES
 
 func (n *FunctionDeclNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -179,6 +314,17 @@ func (n *FunctionDeclNode) GetChildren() map[Node]string {
 }
 func (n *FunctionDeclNode) SetChild(c []Node) {
 	n.Child = c[0]
+}
+
+func (n *FunctionDeclNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
+func (n *FunctionDeclNode) SetParents(parent Node) {
+	n.Parent = parent
 }
 
 func (n *FunctionDeclNode) GetProperties() string {
@@ -200,7 +346,8 @@ func (n *FunctionDeclNode) GetProperties() string {
 		log.Warn().Msg("could not marshal returns")
 	}
 
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\", receivers: \"%v\", parameters: \"%v\", returns: \"%v\"", n.Filename, n.LineNumber, n.FunctionName, string(rcv), string(params), string(returns))
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, function: \"%v\", receivers: \"%v\", parameters: \"%v\", returns: \"%v\", label: %v",
+		n.Filename, n.LineNumber, n.FunctionName, string(rcv), string(params), string(returns), n.Label)
 	return "{ " + val + " }"
 }
 
@@ -216,9 +363,28 @@ func (n *FunctionDeclNode) GetLineNumber() int {
 	return n.LineNumber
 }
 
+func (n *FunctionDeclNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *FunctionDeclNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
+}
+
+func (n *FunctionDeclNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *FunctionDeclNode) SetLineNumber(line int) {
+	n.LineNumber = line
+}
+
 // RETURN NODES
 
 func (n *ReturnNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
 	var m = map[Node]string{
 		n.Child: "",
 	}
@@ -229,8 +395,20 @@ func (n *ReturnNode) SetChild(c []Node) {
 	n.Child = c[0]
 }
 
+func (n *ReturnNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
+func (n *ReturnNode) SetParents(parent Node) {
+	n.Parent = parent
+}
+
 func (n *ReturnNode) GetProperties() string {
-	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, expression: \"%v\"", n.Filename, n.LineNumber, n.Expression)
+	val := fmt.Sprintf("filename: \"%v\", linenumber: %v, expression: \"%v\", label: %v",
+		n.Filename, n.LineNumber, n.Expression, n.Label)
 	return "{ " + val + " }"
 }
 
@@ -244,4 +422,82 @@ func (n *ReturnNode) GetFilename() string {
 
 func (n *ReturnNode) GetLineNumber() int {
 	return n.LineNumber
+}
+
+func (n *ReturnNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *ReturnNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
+}
+
+func (n *ReturnNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *ReturnNode) SetLineNumber(line int) {
+	n.LineNumber = line
+}
+
+// END CONDITIONAL NODES
+
+func (n *EndConditionalNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
+	var m = map[Node]string{
+		n.Child: "",
+	}
+	return m
+}
+
+func (n *EndConditionalNode) SetChild(c []Node) {
+	n.Child = c[0]
+}
+
+func (n *EndConditionalNode) GetParents() []Node {
+	if n.Parents == nil {
+		return []Node{}
+	}
+	return n.Parents
+}
+
+func (n *EndConditionalNode) SetParents(parent Node) {
+	if n.Parents == nil {
+		n.Parents = []Node{}
+	}
+	n.Parents = append(n.Parents, parent)
+}
+
+func (n *EndConditionalNode) GetProperties() string {
+	return ""
+}
+
+func (n *EndConditionalNode) GetNodeType() string {
+	return ":ENDCONDITIONAL:STATEMENT"
+}
+
+func (n *EndConditionalNode) GetFilename() string {
+	return ""
+}
+
+func (n *EndConditionalNode) GetLabel() ExecutionLabel {
+	return n.Label
+}
+
+func (n *EndConditionalNode) SetLabel(l ExecutionLabel) {
+	n.Label = l
+}
+
+func (n *EndConditionalNode) GetLineNumber() int {
+	return 0
+}
+
+func (n *EndConditionalNode) SetFilename(filename string) {
+
+}
+
+func (n *EndConditionalNode) SetLineNumber(line int) {
+
 }

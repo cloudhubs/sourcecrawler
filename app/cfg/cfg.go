@@ -1,9 +1,9 @@
 package cfg
 
 import (
-	"errors"
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"path/filepath"
 	"sourcecrawler/app/db"
@@ -26,7 +26,7 @@ func NewFnCfgCreator() *FnCfgCreator {
 	}
 }
 
-// CreateCfg creates the CFG For a given function declaration, filepath and file, and a map of regexes containde within the file.
+// CreateCfg creates the CFG For a given function declaration, filepath and file, and a map of regexes contained within the file.
 func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.FileSet, regexes map[int]string) db.Node {
 	if fn == nil {
 		log.Warn().Msg("received a null function declaration")
@@ -39,6 +39,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		return nil
 	}
 
+	//Create a new map of blocks to nodes (not sure if NewFnCfgCreator replaces this?)
 	fnCfg.blocks = make(map[*cfg.Block]db.Node)
 
 	// Function declaration is the root node
@@ -54,6 +55,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		}
 		return false
 	})
+	// fmt.Println(fn.Name.Name)
 	// fmt.Println(cfg.Format(fset))
 
 	// Empty function declaration
@@ -71,9 +73,112 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	// Connect the function declaration to the sub cfg
 	if fn, ok := root.(*db.FunctionDeclNode); ok {
 		fn.Child = node
+		//fn.Parent = root //Set parent to be root (the func declaration)
+		if fn.Child != nil {
+			fn.Child.SetParents(fn)
+		}
 	}
 
 	return root
+}
+
+
+//from the name of a function and its file, create the cfg for it
+//this will be useful for connecting external functions after an
+//initial cfg is created
+func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, base string, files []string, seenFn []*db.FunctionNode) db.Node{
+	fset := token.NewFileSet()
+	found := false
+	var fn *ast.FuncDecl
+	for _, file := range files {
+		node, err := parser.ParseFile(fset,file, nil, parser.ParseComments)
+		if err != nil {
+			panic(err)
+		}
+		ast.Inspect(node, func(n ast.Node) bool {
+			if n, ok := n.(*ast.FuncDecl); ok {
+				if strings.Contains(fnName, n.Name.Name){
+					fn = n
+					//stop when you find it
+					found = true
+					return false
+				}
+			}
+			//if you don't find it, keep looking
+			return true
+		})
+		if found {
+			break
+		}
+	}
+	if found {
+		node := fnCfg.CreateCfg(fn,base,fset, map[int]string{})
+		//add in functions in this cfg, excluding
+		//any functions already seen in this scope
+		//or higher scopes
+		ConnectExternalFunctions(node,seenFn, files, base)
+		return node
+	}
+	return nil
+}
+
+//initially called with:
+//root = first iteration of cfg containing stacktrace functions
+//seenFns = []*db.FunctionNode{} (empty)
+//base = project root (needed for cfg construction)
+//regexes = NOT NEEDED/DEPRICATED ARRAY REPLACED BY INLINE FUNCTION TO GRAB REGEX
+func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFiles []string, base string){
+	var fnCfg FnCfgCreator
+	node := root
+	for node != nil {
+		var tmp db.Node
+		//traverse down tree until
+		//encountering a function node
+		//that is not followed by a
+		//function declaration node
+		//(which means it is already connected)
+		if node, ok := node.(*db.FunctionNode); ok{
+			seen := false
+			for _, fn := range seenFns {
+				//skip functions we have already added on this recursion path
+				if strings.Contains(node.FunctionName, fn.FunctionName) && strings.Contains(node.Filename, fn.Filename) {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				//check if child is a declaration
+				if _, ok2 := node.Child.(*db.FunctionDeclNode); !ok2 {
+					//add this function to a list so it doesn't recurse on itself
+					//keep track of newly added functions
+					//within this scope so they can be
+					//removed
+					//if not a function declaration, add the cfg, recursively
+					newFn := fnCfg.CreateCfgFromFunctionName(node.FunctionName, base, sourceFiles, append(seenFns, node))
+					if newFn != nil {
+						tmp = node.Child
+						leafs := getLeafNodes(newFn)
+						for _, leaf := range leafs {
+							leaf.SetChild([]db.Node{node.Child})
+						}
+						node.Child = newFn
+					}
+				}
+			}
+		}
+		//this wouldn't allow for any function to be called more than once,
+		//so switching to a recursive call that only cares about
+		//next node please
+		if tmp != nil {
+			node = tmp
+		}else{
+			for child := range node.GetChildren(){
+				//repeat
+				ConnectExternalFunctions(child, seenFns, sourceFiles, base)
+			}
+			node = nil
+		}
+	}
 }
 
 // Prints out the contents of the CFG (recursively)
@@ -81,28 +186,43 @@ func PrintCfg(node db.Node, level string) {
 	if node == nil {
 		return
 	}
+	var parStr string = "Parent: "
+	if node.GetParents() != nil{
+		//parStr += node.GetProperties()
+		parStr = node.GetFilename()
+	}
+
 	switch node := node.(type) {
 	case *db.FunctionDeclNode:
-		fmt.Printf("%s(%v) %s(%v) (%v)\n", level, node.Receivers, node.FunctionName, node.Params, node.Returns)
+		fmt.Printf("%s(%v) %s(%v) (%v) (%v) (%v)\n", level,
+			node.Receivers, node.FunctionName, node.Params, node.Returns, node.Label, parStr)
 		PrintCfg(node.Child, level+"  ")
 	case *db.FunctionNode:
-		fmt.Printf("%s%s\n", level, node.FunctionName)
+		fmt.Printf("%s%s (%v) (%v) \n", level, node.FunctionName, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.StatementNode:
-		fmt.Printf("%s%s\n", level, node.LogRegex)
+		fmt.Printf("%s%s (%v) (%v)\n", level, node.LogRegex, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.ConditionalNode:
-		fmt.Printf("%sif %s\n", level, node.Condition)
+		fmt.Printf("%sif %s (%v) (%v)\n", level, node.Condition, node.Label, parStr)
 		PrintCfg(node.TrueChild, level+"  ")
 		fmt.Println(level + "else")
 		PrintCfg(node.FalseChild, level+"  ")
 	case *db.ReturnNode:
-		fmt.Printf("%sreturn %s\n", level, node.Expression)
+		fmt.Printf("%sreturn %s (%v) (%v)\n", level, node.Expression, node.Label, parStr)
+		lv := ""
+		for i := 0; i < len(level)-2; i++ {
+			lv += " "
+		}
+		PrintCfg(node.Child, lv)
+	case *db.EndConditionalNode:
+		fmt.Printf("%sendIf (%v)\n", level, node.Label)
+		PrintCfg(node.Child, level)
 	}
 }
 
 func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *token.FileSet, regexes map[int]string) (root db.Node) {
-	if block == nil || block.Nodes == nil {
+	if block == nil {
 		return nil
 	}
 
@@ -111,10 +231,22 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 	var current db.Node
 	// fmt.Println(block.Succs)
 
+	// Add an endIf node as the root if the block is if.done or for.done
+	if strings.Contains(block.String(), "if.done") || strings.Contains(block.String(), "for.done") {
+		if endIf, ok := fnCfg.blocks[block]; ok {
+			current = endIf
+		} else {
+			current = &db.EndConditionalNode{}
+			fnCfg.blocks[block] = current
+		}
+		prev = current
+		root = current
+	}
+
 	// Convert each node in the block into a db.Node (if it is one we want to keep)
 	for i, node := range block.Nodes {
 		last := i == len(block.Nodes)-1
-		conditional = len(block.Succs) > 1 //2 succesors for conditional block
+		conditional = len(block.Succs) > 1 // 2 successors for conditional block
 
 		//Process node based on its type
 		switch node := node.(type) {
@@ -142,6 +274,10 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if prev != current {
 				// fmt.Println("prev not current, set child")
 				prevNode.Child = current
+				//prevNode.Parent = prev //Set parent node as previous if not same as current
+				if prevNode.Child != nil {
+					prevNode.Child.SetParents(prevNode)
+				}
 			}
 
 			// May need to fast-forward to deepest child node here
@@ -161,6 +297,15 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// You should never encounter a "previous" conditional inside of a block since
 			// the conditional is always the last node in a CFG block if a conditional is present
 			prevNode.Child = current
+			if prevNode.Child != nil {
+				prevNode.Child.SetParents(prevNode)
+			}
+		case *db.EndConditionalNode:
+			prevNode.Child = current
+			//prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
+			if prevNode.Child != nil {
+				prevNode.Child.SetParents(prevNode)
+			}
 		}
 		prev = current
 
@@ -186,30 +331,51 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			// and set the respective child pointers
 			if succ, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				conditional.TrueChild = succ
+				//conditional.Parent = current //??
 			} else {
 				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+				//conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
+			}
+			// set true child's parent
+			if conditional.TrueChild != nil {
+				conditional.TrueChild.SetParents(conditional)
 			}
 
 			if fail, ok := fnCfg.blocks[block.Succs[1]]; ok {
 				conditional.FalseChild = fail
+				// conditional.Parent = current //??
 			} else {
 				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1], base, fset, regexes)
+				// conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
+			}
+			// set false child's parent
+			if conditional.FalseChild != nil {
+				conditional.FalseChild.SetParents(conditional)
 			}
 
 			// Set the predecessor's child to be the conditional (which may be some initialization call)
 			switch node := prev.(type) {
 			case *db.FunctionNode:
 				node.Child = db.Node(conditional)
+				// node.Parent = current //?
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			case *db.StatementNode:
 				node.Child = db.Node(conditional)
+				// node.Parent = current //?
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			}
 		} else if len(block.Succs) == 1 && last {
 			// The last node was not a conditional but is the last statement, so
 			// retrieve the child sub-cfg of the next block if it exits,
 			// or otherwise compute it
 			var child db.Node
+
 			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				child = subCfg
 			} else {
@@ -221,22 +387,68 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			switch node := prev.(type) {
 			case *db.FunctionNode:
 				node.Child = child
+				// node.Parent = current
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			case *db.StatementNode:
 				node.Child = child
+				// node.Parent = current
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			}
 		}
 
 		current = nil
 	}
 
-	// The root was nil, so try to get the next block.
-	// If the block is part of a for statement it would infinitely recurse, so leave it nil.
-	if root == nil && len(block.Succs) == 1 && !strings.Contains(block.String(), "for") {
-		if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
-			root = subCfg
-		} else {
-			root = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
-			fnCfg.blocks[block.Succs[0]] = root
+	if len(block.Succs) == 1 {
+		// The root was nil, so try to get the next block.
+		// If the block is part of a for statement it would infinitely recurse, so leave it nil.
+		if root == nil && !strings.Contains(block.String(), "for.post") {
+			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
+				root = subCfg
+			} else {
+				root = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+				fnCfg.blocks[block.Succs[0]] = root
+			}
+		} else if root != nil && len(root.GetChildren()) < 1 && strings.Contains(block.String(), "if.done") {
+			// End of a conditional, so make the successor node a child of the endif node
+			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
+				root.SetChild([]db.Node{subCfg})
+				if subCfg != nil {
+					subCfg.SetParents(root)
+				}
+			} else {
+				subCfg = fnCfg.constructSubCfg(block.Succs[0], base, fset, regexes)
+				fnCfg.blocks[block.Succs[0]] = subCfg
+				root.SetChild([]db.Node{subCfg})
+				if subCfg != nil {
+					subCfg.SetParents(root)
+				}
+			}
+		} else if prev != nil && strings.Contains(block.String(), "for.body") {
+			// Fast-forward through the post block and the loop block
+			// and then get the for.done node and chain it with an endIf
+			post := block.Succs[0]
+			loop := post.Succs[0]
+			if len(loop.Succs) > 1 {
+				if subCfg, ok := fnCfg.blocks[loop.Succs[1]]; ok {
+					prev.SetChild([]db.Node{subCfg})
+					if subCfg != nil {
+						subCfg.SetParents(prev)
+					}
+				} else {
+					subCfg = fnCfg.constructSubCfg(loop.Succs[1], base, fset, regexes)
+					fnCfg.blocks[loop.Succs[1]] = subCfg
+					prev.SetChild([]db.Node{subCfg})
+					if subCfg != nil {
+						subCfg.SetParents(prev)
+					}
+				}
+			}
+
 		}
 	}
 
@@ -259,7 +471,12 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 				node = db.Node(&db.StatementNode{
 					Filename:   filepath.ToSlash(relPath),
 					LineNumber: line,
-					LogRegex:   regexes[line],
+					//TODO: there has to be a better way to assign this value.
+					// This array is passed through every single function
+					// in the recursion stack only to be used here?
+					// If the file and linenumber are known,
+					// why not just parse that information when needed?
+					LogRegex:   logsource.GetLogRegexFromInfo(fset.File(expr.Pos()).Name(),line),
 				})
 			} else {
 				// Was a method call.
@@ -365,8 +582,16 @@ func connectToLeaf(root db.Node, node db.Node) {
 		// Chain the nodes together
 		if current != nil {
 			current.Child = node
+			// current.Parent = root //?
+			if current.Child != nil {
+				current.Child.SetParents(current)
+			}
 		} else {
 			call.Child = node
+			//call.Parent = root //??
+			if call.Child != nil {
+				call.Child.SetParents(call)
+			}
 		}
 	}
 }
@@ -409,6 +634,7 @@ func getFuncReturns(fieldList *ast.FieldList) []db.Return {
 	return returns
 }
 
+//Connect expression nodes together
 func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes map[int]string) (first, current, prev db.Node) {
 	for _, expr := range exprs {
 		exprNode := getExprNode(expr, base, fset, false, regexes)
@@ -428,6 +654,10 @@ func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes 
 			// Chain nodes together
 			if node, ok := prev.(*db.FunctionNode); ok && node != nil {
 				node.Child = current
+				//node.Parent = prev //??
+				if node.Child != nil {
+					node.Child.SetParents(node)
+				}
 			}
 
 			prev = current
@@ -437,6 +667,7 @@ func chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet, regexes 
 }
 
 func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes map[int]string) (node db.Node) {
+
 	relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
 
 	switch stmt := stmt.(type) {
@@ -491,7 +722,6 @@ func getStatementNode(stmt ast.Node, base string, fset *token.FileSet, regexes m
 			connectToLeaf(node, ret)
 		} else {
 			node = ret
-			fmt.Println(node)
 		}
 	default:
 		// fmt.Println("\t\tdid not cast")
@@ -593,58 +823,79 @@ func callExprName(call *ast.CallExpr) string {
 	return name
 }
 
-func ConnectStackTrace(fns []db.Node) {
-	for i, fn := range fns {
-		if i < len(fns)-1 {
-			//gather return statements to connect
-			returnStmts := getLeafNodes(fn)
-
-			//find reference to fn in parent fn
-			referenceNode, err := getReference(fn.(*db.FunctionDeclNode), fns[i+1])
-			if err != nil {
-				panic(err)
-			}
-
-			//get reference to parent's child
-			child := referenceNode.Child
-
-			//connect parent refernce to fn
-			referenceNode.Child = fn
-			//and return statements to parent child
-			for _, returnStmt := range returnStmts {
-				returnStmt.SetChild([]db.Node{child})
-			}
-		}
+// CopyCfg lets you copy a CFG beginning at its root
+func CopyCfg(root db.Node) db.Node {
+	if root == nil {
+		return nil
 	}
+	return copyCfgRecur(root, make(map[db.Node]db.Node))
 }
 
-func getLeafNodes(fn db.Node) []db.Node {
-	rets := []db.Node{}
-	for node := range fn.GetChildren() {
-		//if a child is nil (for conditionals
-		//either both will be nil or neither
-		//so only one needs to be checked)
-		//this is a return statement, otherwise,
-		//call this function on the node only
-		//once then break the loop
-		for child := range node.GetChildren() {
-			if child == nil {
-				rets = append(rets, node)
-			} else {
-				rets = append(rets, getLeafNodes(node)...)
-				break
-			}
+func copyCfgRecur(node db.Node, copied map[db.Node]db.Node) (copy db.Node) {
+	if node == nil {
+		return nil
+	}
+
+	switch node := node.(type) {
+	case *db.FunctionDeclNode:
+		copy = &db.FunctionDeclNode{
+			FunctionName: node.FunctionName,
+			Receivers:    node.Receivers,
+			Params:       node.Params,
+			Returns:      node.Returns,
+			Child:        copyChild(node.Child, copied),
+		}
+	case *db.FunctionNode:
+		copy = &db.FunctionNode{
+			FunctionName: node.FunctionName,
+			Child:        copyChild(node.Child, copied),
+		}
+	case *db.ConditionalNode:
+		copy = &db.ConditionalNode{
+			Condition:  node.Condition,
+			TrueChild:  copyChild(node.TrueChild, copied),
+			FalseChild: copyChild(node.FalseChild, copied),
+		}
+	case *db.StatementNode:
+		copy = &db.StatementNode{
+			LogRegex: node.LogRegex,
+			Child:    copyChild(node.Child, copied),
+		}
+	case *db.ReturnNode:
+		copy = &db.ReturnNode{
+			Expression: node.Expression,
+			Child:      copyChild(node.Child, copied),
 		}
 	}
-	return rets
+
+	if copy != nil {
+		copy.SetLineNumber(node.GetLineNumber())
+		copy.SetFilename(node.GetFilename())
+	}
+	return copy
 }
 
-func getReference(fn *db.FunctionDeclNode, parent db.Node) (*db.FunctionNode, error) {
-	for node := range parent.GetChildren() {
-		if node, ok := node.(*db.FunctionNode); ok && node.FunctionName == fn.FunctionName {
-			return node, nil
+func copyChild(node db.Node, copied map[db.Node]db.Node) db.Node {
+	var copy db.Node
+	if node != nil {
+		if n, ok := copied[node]; ok {
+			copy = n
+		} else {
+			copy = copyCfgRecur(node, copied)
+			copied[node] = copy
 		}
-		return getReference(fn, node)
 	}
-	return nil, errors.New("No reference found")
+	return copy
+}
+
+func traverse(root db.Node, visit func(db.Node)) {
+	if root == nil {
+		return
+	}
+	visit(root)
+
+	children := root.GetChildren()
+	for child := range children {
+		traverse(child, visit)
+	}
 }
