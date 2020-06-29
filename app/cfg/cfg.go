@@ -156,19 +156,28 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 					//if not a function declaration, add the cfg, recursively
 					newFn := fnCfg.CreateCfgFromFunctionName(node.FunctionName, base, sourceFiles, append(seenFns, node))
 					if newFn != nil {
+						//add dummy return node to consolidate returns
 						tmp = node.Child
-						leafs := getLeafNodes(newFn)
-						for _, leaf := range leafs {
-							leaf.SetChild([]db.Node{node.Child})
+						tmpReturn := &db.ReturnNode{
+							Filename:   node.Child.GetFilename(),
+							LineNumber: node.Child.GetLineNumber(),
+							Expression: "",
+							Child:      node.Child,
+							Parents:    nil,
+							Label:      0,
+						}
+
+
+						for _, leaf := range getLeafNodes(newFn) {
+							leaf.SetChild([]db.Node{tmpReturn})
+							tmpReturn.SetParents(leaf)
 						}
 						node.Child = newFn
 					}
 				}
 			}
 		}
-		//this wouldn't allow for any function to be called more than once,
-		//so switching to a recursive call that only cares about
-		//next node please
+
 		if tmp != nil {
 			node = tmp
 		}else{
@@ -471,11 +480,6 @@ func getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bo
 				node = db.Node(&db.StatementNode{
 					Filename:   filepath.ToSlash(relPath),
 					LineNumber: line,
-					//TODO: there has to be a better way to assign this value.
-					// This array is passed through every single function
-					// in the recursion stack only to be used here?
-					// If the file and linenumber are known,
-					// why not just parse that information when needed?
 					LogRegex:   logsource.GetLogRegexFromInfo(fset.File(expr.Pos()).Name(),line),
 				})
 			} else {

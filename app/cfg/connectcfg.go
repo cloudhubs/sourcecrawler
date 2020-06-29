@@ -57,17 +57,29 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 		}
 
 		foundRef = true
-		copy := CopyCfg(decl)
+		copyCfg := CopyCfg(decl)
 		child := ref.Child
-		child.SetParents(ref) //TODO: ??
 
-		ref.Child = copy
+		//need to consolidate all returns to a single node before connecting to child
+		//represents the same position as the child node, maybe not necessary
+		tmpReturn := &db.ReturnNode{
+			Filename:   child.GetFilename(),
+			LineNumber: child.GetLineNumber(),
+			Expression: "",
+			Child:      child,
+			Parents:    []db.Node{},
+			Label:      0,
+		}
 
-		for _, leaf := range getLeafNodes(copy) {
+		ref.Child = copyCfg
+
+		for _, leaf := range getLeafNodes(copyCfg) {
 			if _, ok := leaf.(*db.ConditionalNode); ok || leaf == ref {
 				continue
 			}
-			leaf.SetChild([]db.Node{child})
+			//point to single return and set parents to each actual return
+			leaf.SetChild([]db.Node{tmpReturn})
+			tmpReturn.SetParents(leaf)
 		}
 	}
 	return
