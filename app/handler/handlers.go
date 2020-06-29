@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"sourcecrawler/app/helper"
 	"strings"
 
 	"go/ast"
@@ -32,7 +33,7 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	var decls []neoDb.Node
 
 	fset := token.NewFileSet()
-	for _, goFile := range gatherGoFiles(request.ProjectRoot) {
+	for _, goFile := range helper.GatherGoFiles(request.ProjectRoot) {
 		f, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
 		if err != nil {
 			log.Error().Err(err).Msg("unable to parse file")
@@ -186,7 +187,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	// 3 -- Generate CFGs (including log information) for each function in the stack trace
 	var decls []neoDb.Node
 	fset := token.NewFileSet()
-	filesToParse := gatherGoFiles(request.ProjectRoot)
+	filesToParse := helper.GatherGoFiles(request.ProjectRoot)
 	for _, goFile := range filesToParse {
 
 		// only parse this file if it appears in the stack trace
@@ -328,7 +329,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	// 3 -- Generate CFGs (including log information) for each function in the stack trace
 	var decls []neoDb.Node
 	fset := token.NewFileSet()
-	filesToParse := gatherGoFiles(request.ProjectRoot)
+	filesToParse := helper.GatherGoFiles(request.ProjectRoot)
 	for _, goFile := range filesToParse {
 
 		// only parse this file if it appears in the stack trace

@@ -5,10 +5,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"sourcecrawler/app/cfg"
 	"sourcecrawler/app/db"
+	"sourcecrawler/app/helper"
 	"sourcecrawler/app/logsource"
 	"sourcecrawler/app/model"
 	"strconv"
@@ -63,28 +63,6 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 	return -1, false
 }
 
-//Gathers all go files to parse
-func gatherGoFiles(projectRoot string) []string {
-	filesToParse := []string{}
-	//gather all go files in project
-	filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			fmt.Printf("prevent panic by handling failure accessing a path %q: %v\n", path, err)
-			return err
-		}
-		if filepath.Ext(path) == ".go" {
-			fullpath, err := filepath.Abs(path)
-			if err != nil {
-				fmt.Println(err)
-			}
-			filesToParse = append(filesToParse, fullpath)
-		}
-		return nil
-	})
-
-	return filesToParse
-}
-
 //Parse project to create log types
 func parseProject(projectRoot string) []model.LogType {
 
@@ -92,7 +70,7 @@ func parseProject(projectRoot string) []model.LogType {
 	logTypes := []model.LogType{}
 	variableDeclarations := varDecls{}
 	variablesUsedInLogs := map[string]struct{}{}
-	filesToParse := gatherGoFiles(projectRoot)
+	filesToParse := helper.GatherGoFiles(projectRoot)
 
 	//parse each file to collect logs and the variables used in them
 	//as well as collecting variables declared in the file for later use
