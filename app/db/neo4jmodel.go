@@ -3,7 +3,6 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-
 	"github.com/rs/zerolog/log"
 )
 
@@ -112,6 +111,15 @@ type EndConditionalNode struct {
 	Child   Node
 	Parents []Node
 	Label   ExecutionLabel
+}
+
+type VariableNode struct {
+	ScopeId string
+	VarName string
+	Filename   string
+	LineNumber int
+	Value string //should hold an expression
+	ParentValue Node //nil if not from a function call
 }
 
 // STATEMENT NODES
@@ -500,4 +508,38 @@ func (n *EndConditionalNode) SetFilename(filename string) {
 
 func (n *EndConditionalNode) SetLineNumber(line int) {
 
+}
+
+//VARIABLE NODES
+func (n *VariableNode) GetParents() Node {
+	return n.ParentValue
+}
+
+func (n *VariableNode) SetParents(parent Node) {
+	n.ParentValue = parent
+}
+
+func (n *VariableNode) GetProperties() string {
+	return fmt.Sprintf("Variable node %d %s %s %s %v",
+		n.LineNumber, n.Filename, n.Value, n.ScopeId, n.ParentValue)
+}
+
+func (n *VariableNode) GetNodeType() string {
+	return ":VARIABLE:STATEMENT"
+}
+
+func (n *VariableNode) GetFilename() string {
+	return n.Filename
+}
+
+func (n *VariableNode) GetLineNumber() int {
+	return n.LineNumber
+}
+
+func (n *VariableNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *VariableNode) SetLineNumber(line int) {
+	n.LineNumber = line
 }
