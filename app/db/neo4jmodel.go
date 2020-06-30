@@ -113,15 +113,75 @@ type EndConditionalNode struct {
 	Label   ExecutionLabel
 }
 
+
 type VariableNode struct {
-	ScopeId string
-	VarName string
 	Filename   string
 	LineNumber int
+	ScopeId string
+	VarName string
 	Value string //should hold an expression
 	Parent Node
 	Child Node
 	ValueFromParent bool
+}
+
+//VARIABLE NODES
+func (n *VariableNode) GetChildren() map[Node]string {
+	if n.Child == nil {
+		return map[Node]string{}
+	}
+	var m = map[Node]string{
+		n.Child: "",
+	}
+	return m
+}
+
+func (n *VariableNode) SetChild(c []Node) {
+	n.Child = c[0]
+}
+
+func (n *VariableNode) GetParents() []Node {
+	if n.Parent == nil {
+		return []Node{}
+	}
+	return []Node{n.Parent}
+}
+
+func (n *VariableNode) SetParents(parent Node) {
+	n.Parent = parent
+}
+
+func (n *VariableNode) GetProperties() string {
+	return fmt.Sprintf("Variable node %d %s %s %s %v",
+			n.LineNumber, n.Filename, n.Value, n.ScopeId, n.Parent)
+}
+
+func (n *VariableNode) GetNodeType() string {
+	return "VARIABLE"
+}
+
+func (n *VariableNode) GetFilename() string {
+	return n.Filename
+}
+
+func (n *VariableNode) GetLineNumber() int {
+	return n.LineNumber
+}
+
+func (n *VariableNode) GetLabel() ExecutionLabel {
+	return ExecutionLabel(Must)
+}
+
+func (n *VariableNode) SetLabel(l ExecutionLabel) {
+
+}
+
+func (n *VariableNode) SetFilename(filename string) {
+	n.Filename = filename
+}
+
+func (n *VariableNode) SetLineNumber(line int) {
+	n.LineNumber = line
 }
 
 // STATEMENT NODES
@@ -513,54 +573,4 @@ func (n *EndConditionalNode) SetFilename(filename string) {
 
 func (n *EndConditionalNode) SetLineNumber(line int) {
 
-}
-
-//VARIABLE NODES
-func (n *VariableNode) GetChildren() Node {
-	return n.Child
-}
-
-func (n *VariableNode) SetChild(c Node) {
-	n.Child = c
-}
-
-func (n *VariableNode) GetParents() Node {
-	return n.Parent
-}
-
-func (n *VariableNode) SetParents(parent Node) {
-	n.Parent = parent
-}
-
-func (n *VariableNode) GetProperties() string {
-	return fmt.Sprintf("Variable node %d %s %s %s %v",
-		n.LineNumber, n.Filename, n.Value, n.ScopeId, n.Parent)
-}
-
-func (n *VariableNode) GetNodeType() string {
-	return ":VARIABLE:STATEMENT"
-}
-
-func (n *VariableNode) GetFilename() string {
-	return n.Filename
-}
-
-func (n *VariableNode) GetLabel() ExecutionLabel {
-	return ExecutionLabel(MustNot)
-}
-
-func (n *VariableNode) SetLabel(l ExecutionLabel) {
-
-}
-
-func (n *VariableNode) GetLineNumber() int {
-	return n.LineNumber
-}
-
-func (n *VariableNode) SetFilename(filename string) {
-	n.Filename = filename
-}
-
-func (n *VariableNode) SetLineNumber(line int) {
-	n.LineNumber = line
 }
