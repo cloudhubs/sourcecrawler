@@ -25,6 +25,10 @@ type FnCfgCreator struct {
 	CurPkg     string
 	curFnDecl  string
 	curFnLitID uint
+
+	// Properties for keeping track of scope
+	varNameToStack map[string][]uint
+	scopeCount     []uint
 }
 
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
