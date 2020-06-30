@@ -55,6 +55,12 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		}
 		return false
 	})
+
+	fmt.Println("Func", fn.Name.Name)
+	for _, block := range cfg.Blocks{
+		fmt.Println(block)
+	}
+
 	// fmt.Println(fn.Name.Name)
 	// fmt.Println(cfg.Format(fset))
 
@@ -218,6 +224,9 @@ func PrintCfg(node db.Node, level string) {
 	case *db.EndConditionalNode:
 		fmt.Printf("%sendIf (%v)\n", level, node.Label)
 		PrintCfg(node.Child, level)
+		//case *db.VariableNode:
+		//	fmt.Printf(node.GetProperties())
+		//	PrintCfg(node.Child, level)
 	}
 }
 
@@ -242,6 +251,9 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 		prev = current
 		root = current
 	}
+
+	//TODO: Add a variable node if the function returns some variable that is uses
+
 
 	// Convert each node in the block into a db.Node (if it is one we want to keep)
 	for i, node := range block.Nodes {
@@ -302,10 +314,12 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			}
 		case *db.EndConditionalNode:
 			prevNode.Child = current
-			//prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
+			//prevNode.Parent = prev
 			if prevNode.Child != nil {
 				prevNode.Child.SetParents(prevNode)
 			}
+			//Add case for variable node
+
 		}
 		prev = current
 

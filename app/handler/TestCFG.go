@@ -143,3 +143,20 @@ func createChild(str string){
 func createChildOfChild(){
 	panic("panic")
 }
+
+func someFunc(x int) {
+	y := x + 2
+	if y > 5 {
+		message := "in the if block"
+		fmt.Println(message)
+		if (y > 10) {
+			message2 := "in a nested if"
+			fmt.Println(message2)
+		}
+	} else {
+		message := "in the else block"
+		fmt.Println(message)
+	}
+	x = x + 1
+
+}

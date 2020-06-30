@@ -119,7 +119,9 @@ type VariableNode struct {
 	Filename   string
 	LineNumber int
 	Value string //should hold an expression
-	ParentValue Node //nil if not from a function call
+	Parent Node
+	Child Node
+	ValueFromParent bool
 }
 
 // STATEMENT NODES
@@ -511,17 +513,25 @@ func (n *EndConditionalNode) SetLineNumber(line int) {
 }
 
 //VARIABLE NODES
+func (n *VariableNode) GetChildren() Node {
+	return n.Child
+}
+
+func (n *VariableNode) SetChild(c Node) {
+	n.Child = c
+}
+
 func (n *VariableNode) GetParents() Node {
-	return n.ParentValue
+	return n.Parent
 }
 
 func (n *VariableNode) SetParents(parent Node) {
-	n.ParentValue = parent
+	n.Parent = parent
 }
 
 func (n *VariableNode) GetProperties() string {
 	return fmt.Sprintf("Variable node %d %s %s %s %v",
-		n.LineNumber, n.Filename, n.Value, n.ScopeId, n.ParentValue)
+		n.LineNumber, n.Filename, n.Value, n.ScopeId, n.Parent)
 }
 
 func (n *VariableNode) GetNodeType() string {
@@ -530,6 +540,14 @@ func (n *VariableNode) GetNodeType() string {
 
 func (n *VariableNode) GetFilename() string {
 	return n.Filename
+}
+
+func (n *VariableNode) GetLabel() ExecutionLabel {
+	return ExecutionLabel(MustNot)
+}
+
+func (n *VariableNode) SetLabel(l ExecutionLabel) {
+
 }
 
 func (n *VariableNode) GetLineNumber() int {
