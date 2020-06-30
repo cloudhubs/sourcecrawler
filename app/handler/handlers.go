@@ -42,7 +42,7 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
 		regexes := mapLogRegex(logInfo)
 
-		c := cfg.FnCfgCreator{}
+		c := cfg.NewFnCfgCreator("pkg")
 		ast.Inspect(f, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// fmt.Println("parsing", fn)
@@ -216,7 +216,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		regexes := mapLogRegex(logInfo)
 
 		// extract CFGs for all relevant functions from this file
-		c := cfg.FnCfgCreator{}
+		c := cfg.NewFnCfgCreator("pkg")
 		ast.Inspect(f, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
@@ -354,7 +354,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		regexes := mapLogRegex(logInfo)
 
 		// extract CFGs for all relevant functions from this file
-		c := cfg.FnCfgCreator{}
+		c := cfg.NewFnCfgCreator("pkg")
 		ast.Inspect(f, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace

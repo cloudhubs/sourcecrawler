@@ -84,7 +84,7 @@ type ReturnNode struct {
 	LineNumber int
 	Expression string
 	Child      Node
-	Parent     Node
+	Parents    []Node
 	Label      ExecutionLabel
 }
 
@@ -406,14 +406,17 @@ func (n *ReturnNode) SetChild(c []Node) {
 }
 
 func (n *ReturnNode) GetParents() []Node {
-	if n.Parent == nil {
+	if n.Parents == nil {
 		return []Node{}
 	}
-	return []Node{n.Parent}
+	return n.Parents
 }
 
 func (n *ReturnNode) SetParents(parent Node) {
-	n.Parent = parent
+	if n.Parents == nil {
+		n.Parents = []Node{}
+	}
+	n.Parents = append(n.Parents, parent)
 }
 
 func (n *ReturnNode) GetProperties() string {
