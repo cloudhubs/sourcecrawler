@@ -284,6 +284,21 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
+	varNode := &neoDb.VariableNode{
+		Filename:        "",
+		LineNumber:      0,
+		ScopeId:         "",
+		VarName:         "abc",
+		Value:           "",
+		Parent:          nil,
+		Child:           nil,
+		ValueFromParent: false,
+	}
+
+	funcNode := &neoDb.FunctionNode{Child: varNode}
+	varNode.SetParents(funcNode)
+
+
 	respondJSON(w, http.StatusOK, response)
 }
 
