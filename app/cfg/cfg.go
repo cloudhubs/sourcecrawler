@@ -28,11 +28,11 @@ type FnCfgCreator struct {
 }
 
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
-func NewFnCfgCreator() *FnCfgCreator {
+func NewFnCfgCreator(pkg string) *FnCfgCreator {
 	return &FnCfgCreator{
 		blocks:     make(map[*cfg.Block]db.Node),
 		FnLiterals: make(map[string]*db.FunctionDeclNode),
-		CurPkg:     "main",
+		CurPkg:     pkg,
 		curFnLitID: 1,
 	}
 }
