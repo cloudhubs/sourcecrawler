@@ -874,6 +874,26 @@ func expressionString(expr ast.Expr) string {
 		expr := expressionString(condition.X)
 		typecast := expressionString(condition.Type)
 		return fmt.Sprintf("%s(%s)", typecast, expr)
+	case *ast.FuncType:
+		params := getFuncParams(condition.Params)
+		rets := getFuncReturns(condition.Results)
+		b := strings.Builder{}
+		b.Write([]byte("func("))
+		i := 0
+		for name, t := range params {
+			b.Write([]byte(fmt.Sprintf("%s %s", name, t)))
+			if i < len(params)-1 {
+				b.Write([]byte(", "))
+			}
+		}
+		b.Write([]byte(")"))
+		for i, ret := range rets {
+			b.Write([]byte(fmt.Sprintf("%s %s", ret.Name, ret.ReturnType)))
+			if i < len(params)-1 {
+				b.Write([]byte(", "))
+			}
+		}
+		return b.String()
 	}
 	return ""
 }
