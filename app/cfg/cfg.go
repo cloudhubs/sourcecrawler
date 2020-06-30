@@ -34,10 +34,12 @@ type FnCfgCreator struct {
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
 func NewFnCfgCreator(pkg string) *FnCfgCreator {
 	return &FnCfgCreator{
-		blocks:     make(map[*cfg.Block]db.Node),
-		FnLiterals: make(map[string]*db.FunctionDeclNode),
-		CurPkg:     pkg,
-		curFnLitID: 1,
+		blocks:         make(map[*cfg.Block]db.Node),
+		FnLiterals:     make(map[string]*db.FunctionDeclNode),
+		CurPkg:         pkg,
+		curFnLitID:     1,
+		varNameToStack: make(map[string][]uint),
+		scopeCount:     make([]uint, 1),
 	}
 }
 
@@ -63,6 +65,8 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	fnCfg.FnLiterals = make(map[string]*db.FunctionDeclNode)
 	fnCfg.curFnDecl = fn.Name.Name
 	fnCfg.curFnLitID = 1
+	fnCfg.varNameToStack = make(map[string][]uint)
+	fnCfg.scopeCount = make([]uint, 1)
 
 	// Function declaration is the root node
 	root := fnCfg.getStatementNode(fn, base, fset, regexes)
