@@ -60,6 +60,9 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 		copyCfg := CopyCfg(decl)
 		child := ref.Child
 
+		//TODO: insert VariableNodes here from FunctionNode Args
+		// and FunctionDeclNode Params
+		
 		//need to consolidate all returns to a single node before connecting to child
 		//represents the same position as the child node, maybe not necessary
 		tmpReturn := &db.ReturnNode{

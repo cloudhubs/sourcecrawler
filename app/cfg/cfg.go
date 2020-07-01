@@ -181,6 +181,9 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 					//if not a function declaration, add the cfg, recursively
 					newFn := fnCfg.CreateCfgFromFunctionName(node.FunctionName, base, sourceFiles, append(seenFns, node))
 					if newFn != nil {
+						//TODO: insert VariableNodes here from FunctionNode Args
+						// and FunctionDeclNode Params
+
 						//add dummy return node to consolidate returns
 						tmp = node.Child
 						tmpReturn := &db.ReturnNode{
@@ -680,12 +683,32 @@ func iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
 	}
 }
 
-func getFuncParams(fieldList *ast.FieldList) map[string]string {
-	params := make(map[string]string)
+func getFuncReceivers(fieldList *ast.FieldList) map[string]string {
+	receivers := make(map[string]string)
 
 	iterateFields(fieldList, func(returnType, name string) {
-		params[name] = returnType
+		receivers[name] = returnType
 	})
+
+	return receivers
+}
+
+func getFuncParams(fieldList *ast.FieldList) map[int]db.Variable {
+	params := make(map[int]db.Variable)
+
+	if fieldList != nil {
+		for i, p := range fieldList.List {
+			if p != nil {
+				for _, name := range p.Names {
+					variable := db.Variable{
+						Scope: "something",
+						Name:  expressionString(name),
+					}
+					params[i] = variable
+				}
+			}
+		}
+	}
 
 	return params
 }
@@ -743,8 +766,8 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 	case *ast.ExprStmt:
 		node = fnCfg.getExprNode(stmt.X, base, fset, false, regexes)
 	case *ast.FuncDecl:
-		receivers := getFuncParams(stmt.Recv)
-		var params map[string]string
+		receivers := getFuncReceivers(stmt.Recv)
+		var params map[int]db.Variable
 		var returns []db.Return
 		if stmt.Type != nil {
 			params = getFuncParams(stmt.Type.Params)
@@ -752,7 +775,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 				returns = getFuncReturns(stmt.Type.Results)
 			}
 		} else {
-			params = make(map[string]string)
+			params = make(map[int]db.Variable)
 			returns = make([]db.Return, 0)
 		}
 
