@@ -298,7 +298,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			current = fnCfg.getStatementNode(node, base, fset, regexes)
 		case ast.Expr:
 			current = fnCfg.getExprNode(node, base, fset, last && conditional, regexes)
-		case ast.Spec: //TODO: handling variable nodes
+		case ast.Spec: //TODO: handling variable nodes (declarations)
 			current = fnCfg.getSpecNode(node, base, fset)
 			if current != nil{
 				fmt.Println("Variable node exists", current.GetProperties())
@@ -881,21 +881,26 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 			Params:       params,
 			Returns:      returns,
 		})
-	case *ast.AssignStmt:
-		// Found an assignment
-		strLHS := fmt.Sprint(stmt.Lhs) //variable name
-		strRHS := fmt.Sprint(stmt.Rhs) //the value
-		strExpr := stmt.Tok.String()   //assignment operator
-		var scopeID string = ""
-		//fmt.Printf("%s %s %s\n", strLHS, strExpr, strRHS)
+	case *ast.AssignStmt: //TODO: handle variable assignment
 		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs, base, fset, regexes)
 
-		fmt.Printf("(%s) (%s) (%s)", strLHS, strExpr, strRHS)
 
+		//Grab the variable name
+		strLHS := fmt.Sprint(stmt.Lhs) //variable name
+		varName := strLHS[strings.Index(strLHS, "[")+1:strings.Index(strLHS, "]")]
 
-		//TODO: handling variables at assign time
+		//Grab the value being assigned
+		strRHS := fmt.Sprint(stmt.Rhs) //the value
+		assignValue := strRHS[strings.Index(strRHS, "[")+1:strings.Index(strRHS, "]")]
+
+		//Get the expression
+		strExpr := stmt.Tok.String()   //assignment operator
+		var scopeID string = ""
+		fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
+
+		//Handling variable scoping at assign time
 		stackStr := ""
-		if value, ok := fnCfg.varNameToStack[strLHS]; ok{
+		if value, ok := fnCfg.varNameToStack[varName]; ok{
 			//Add all elements as the scope
 			for index := range value{
 				stackStr += value[index]
