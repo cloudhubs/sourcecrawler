@@ -653,12 +653,15 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 				})
 			} else {
 				// Was a method call.
-				args := getFuncArgs(expr.Args)
+				args := make([]db.Node, len(expr.Args))
+				for i, arg := range expr.Args {
+					args[i] = fnCfg.getExprNode(arg,base,fset,conditional)
+				}
 				node = db.Node(&db.FunctionNode{
 					Filename:     filepath.ToSlash(relPath),
 					LineNumber:   fset.Position(expr.Pos()).Line,
 					FunctionName: expressionString(fn),
-					Args: nil, //TODO: generate Args for functionNode
+					Args: args, //TODO: generate Args for functionNode
 				})
 			}
 		case *ast.FuncLit:
@@ -672,17 +675,21 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 				Filename:     filepath.ToSlash(relPath),
 				LineNumber:   fset.Position(expr.Pos()).Line,
 				FunctionName: ident,
-				Args: nil, //TODO: generate Args for functionNode
+				Args: getFuncParams(fn.Type.Params, relPath), //TODO: generate Args for functionNode
 			}
 		default:
 			// fmt.Println(callExprName(expr))
 
 			// Found a function call
+			args := make([]db.Node, len(expr.Args))
+			for i, arg := range expr.Args {
+				args[i] = fnCfg.getExprNode(arg,base,fset,conditional)
+			}
 			node = db.Node(&db.FunctionNode{
 				Filename:     filepath.ToSlash(relPath),
 				LineNumber:   fset.Position(expr.Pos()).Line,
 				FunctionName: callExprName(expr),
-				Args: nil, //TODO: generate Args for functionNode
+				Args: args, //TODO: generate Args for functionNode
 			})
 		}
 	case *ast.FuncLit:
@@ -834,17 +841,8 @@ func getFuncReceivers(fieldList *ast.FieldList) map[string]string {
 	return receivers
 }
 
-func getFuncArgs(args []*ast.Expr) map[int]db.VariableNode {
-	for i, argu := range args {
-
-	}
-
-
-	return nil
-}
-
-func getFuncParams(fieldList *ast.FieldList, file string) map[int]db.VariableNode {
-	params := make(map[int]db.VariableNode)
+func getFuncParams(fieldList *ast.FieldList, file string) []db.VariableNode {
+	params := make([]db.VariableNode, len(fieldList.List))
 
 	if fieldList != nil {
 		for i, p := range fieldList.List {
@@ -920,7 +918,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		node = fnCfg.getExprNode(stmt.X, base, fset, false)
 	case *ast.FuncDecl:
 		receivers := getFuncReceivers(stmt.Recv)
-		var params map[int]db.VariableNode
+		var params []db.VariableNode
 		var returns []db.Return
 		if stmt.Type != nil {
 			params = getFuncParams(stmt.Type.Params, relPath)
@@ -928,7 +926,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 				returns = getFuncReturns(stmt.Type.Results)
 			}
 		} else {
-			params = make(map[int]db.VariableNode)
+			params = make([]db.VariableNode,0)
 			returns = make([]db.Return, 0)
 		}
 
