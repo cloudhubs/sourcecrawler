@@ -39,14 +39,14 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			log.Error().Err(err).Msg("unable to parse file")
 		}
 
-		logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
-		regexes := mapLogRegex(logInfo)
+		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
+		//regexes := mapLogRegex(logInfo)
 
 		c := cfg.NewFnCfgCreator("pkg")
 		ast.Inspect(f, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// fmt.Println("parsing", fn)
-				decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
+				decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset))
 			}
 			return true
 		})
@@ -212,8 +212,8 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get map of linenumber -> regex for thsi file
-		logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
-		regexes := mapLogRegex(logInfo)
+		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
+		//regexes := mapLogRegex(logInfo)
 
 		// extract CFGs for all relevant functions from this file
 		c := cfg.NewFnCfgCreator("pkg")
@@ -231,7 +231,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 				}
 
 				if shouldAppendFunction {
-					decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
+					decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset))
 				}
 			}
 			return true
@@ -365,8 +365,8 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get map of linenumber -> regex for thsi file
-		logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
-		regexes := mapLogRegex(logInfo)
+		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
+		//regexes := mapLogRegex(logInfo)
 
 		// extract CFGs for all relevant functions from this file
 		c := cfg.NewFnCfgCreator("pkg")
@@ -384,7 +384,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 				}
 
 				if shouldAppendFunction {
-					decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset, regexes))
+					decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset))
 				}
 			}
 			return true
@@ -428,6 +428,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
+
 
 	respondJSON(w, http.StatusOK, response)
 }
