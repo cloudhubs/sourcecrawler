@@ -236,6 +236,28 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			}
 			return true
 		})
+
+		//TODO: test
+		//Test if variable are retrieved
+		ast.Inspect(f, func(node ast.Node) bool{
+
+			return true
+		})
+		//for _, dec := range f.Decls{
+		//	switch decl := dec.(type) {
+		//	case *ast.FuncDecl:
+		//		fmt.Println("func",decl.Name.Name)
+		//	case *ast.GenDecl:
+		//		for _, spec := range decl.Specs{
+		//			switch spec := spec.(type){
+		//			case *ast.ValueSpec:
+		//				for _, id := range spec.Names {
+		//					fmt.Printf("Var %s: %v", id.Name, id.Obj.Decl.(*ast.ValueSpec).Values[0].(*ast.BasicLit).Value)
+		//				}
+		//			}
+		//		}
+		//	}
+		//}
 	}
 
 	//4 -- Connect the CFG nodes together
@@ -262,31 +284,20 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
 
-	//Run test nodes and label
-	//testRoot, testNode := cfg.GrabTestNode()
-	//cfg.LabelParentNodes(testNode, make([]model.LogType, 0))
-	//fmt.Println("\nTest case 1 **********************")
-	//cfg.PrintCfg(testRoot, "")
-	//
-	//testRoot2, testNode2 := cfg.GrabTestNode2()
-	//cfg.LabelParentNodes(testNode2, make([]model.LogType, 0))
-	//fmt.Println("\nTest Case 2 ***************")
-	//cfg.PrintCfg(testRoot2, "")
+	varNode := &neoDb.VariableNode{
+		Filename:        "",
+		LineNumber:      0,
+		ScopeId:         "",
+		VarName:         "abc",
+		Value:           "",
+		Parent:          nil,
+		Child:           nil,
+		ValueFromParent: false,
+	}
 
-	//testRoot2, testNode2, testLog2 := cfg.SimpleIfElse()
-	//cfg.LabelParentNodes(testNode2, testLog2)
-	//fmt.Println("\nTest Case 2 ***************")
-	//cfg.PrintCfg(testRoot2, "")
+	funcNode := &neoDb.FunctionNode{Child: varNode}
+	varNode.SetParents(funcNode)
 
-	//testRoot3, testNode3, testLog3 := cfg.GrabTestNode3()
-	//cfg.LabelParentNodes(testNode3, testLog3)
-	//fmt.Println("\nTest Case 3 ***************")
-	//cfg.PrintCfg(testRoot3, "")
-
-	testRoot4, testNode4, testLog4 := cfg.LogNested()
-	cfg.LabelParentNodes(testNode4, testLog4)
-	fmt.Println("\nTest Case 4 ***************")
-	cfg.PrintCfg(testRoot4, "")
 
 	respondJSON(w, http.StatusOK, response)
 }
