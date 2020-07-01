@@ -356,8 +356,13 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if prevNode.Child != nil {
 				prevNode.Child.SetParents(prevNode)
 			}
-			//TODO: Variable node case
+			//Remove last element of master stack for endIf
+			if len(fnCfg.scopeCount) > 0 {
+				fnCfg.scopeCount = fnCfg.scopeCount[:len(fnCfg.scopeCount)-1]
+			}
+			//TODO: Variable node - set child and parent?
 		case *db.VariableNode:
+			//fmt.Println("curr is var node")
 			prevNode.Child = current
 			if prevNode.Child != nil{
 				prevNode.Child.SetParents(prevNode)
@@ -367,6 +372,15 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 
 		// Conditionals are the last node and expression in a block, so if it is a control-flow, handle it
 		if expr, ok := node.(ast.Expr); ok && last && conditional {
+
+			//*Increment last element of master stack for conditional nodes (then add 0)*
+			if len(fnCfg.scopeCount) > 0 {
+				fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+			}else{
+				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+			}
+
 			// If the current node is the conditional, use it
 			// otherwise there was some initialization and it will need to be
 			// a new conditional node as the child of the previous initialization
@@ -524,8 +538,9 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 		var scopeID string = "" //TODO: may need more work
 		var varName string = ""
 		initType := ""
-		initValues := ""
+		initVal := ""
 		stackStr := ""
+		exprStr := ""
 
 		//fmt.Println("Current function", fnCfg.curFnDecl)
 
@@ -547,14 +562,17 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 			if expr != nil{
 				varVal := fmt.Sprint(expr)
 				//fmt.Println("Initial value:", varVal)
-				initValues = varVal
+				initVal += varVal
 			}
 		}
-		fmt.Println()
+		//fmt.Println()
+
+		//Set expr string
+		exprStr = "var " + varName + " " + initType + " = " + initVal
 
 		//TODO: handle variable scoping
 		//If variable is not in the map, then add to map and its scope (add a new state)
-		value, ok := fnCfg.varNameToStack[varName];
+		value, ok := fnCfg.varNameToStack[varName]
 		if ok{
 			fmt.Println(varName, value,  " was found in the map")
 		}else{
@@ -591,13 +609,13 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 			LineNumber:      fset.Position(spec.Pos()).Line,
 			ScopeId:         scopeID,
 			VarName:         varName,
-			Value:           initType + initValues,
+			Value:           exprStr,
 			Parent:          nil,
 			Child:           nil,
 			ValueFromParent: false,
 		})
 
-		fmt.Println("Declaration", node.GetProperties())
+		//fmt.Println("Declaration", node.GetProperties())
 		//TODO: connect to parent function?
 
 
@@ -895,44 +913,107 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 	case *ast.AssignStmt: //TODO: handle variable assignment
 		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs, base, fset)
 
+		var exprValue string = "" //hold the expression as a string
+		var varName string = ""
+		var isFromFunction bool = false
 
-		//Grab the variable name
-		strLHS := fmt.Sprint(stmt.Lhs) //variable name
-		varName := strLHS[strings.Index(strLHS, "[")+1:strings.Index(strLHS, "]")]
-
-		//Grab the value being assigned
-		//strRHS := fmt.Sprint(stmt.Rhs) //the value
-		//assignValue := strRHS[strings.Index(strRHS, "[")+1:strings.Index(strRHS, "]")]
-
-		//Get the expression
-		//strExpr := stmt.Tok.String()   //assignment operator
-		//var scopeID string = ""
-		//fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
-
-		//Handling variable scoping at assign time
-		stackStr := ""
-		if value, ok := fnCfg.varNameToStack[varName]; ok{
-			//Add all elements as the scope
-			for index := range value{
-				stackStr += value[index]
-				//If last element, dont add .
-				if index == len(value)-1{
-					break
-				}else{
-					stackStr += "."
+		//Process left side variable name
+		for _, lhsExpr := range stmt.Lhs{
+			switch expr := lhsExpr.(type){
+			case *ast.SelectorExpr:
+				if expr.Sel.Name != ""{
+					varName = expr.Sel.Name
 				}
 			}
-		}else{ //TODO: handle adding scope if variable not in map at assign time
-			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], "1")
 		}
+
+		//Set variable name if it is still empty
+		if varName == ""{
+			strLHS := fmt.Sprint(stmt.Lhs)
+			varName = strLHS[strings.Index(strLHS, "[")+1:strings.Index(strLHS, "]")]
+		}
+
+		//Get the expression operator
+		exprOp := stmt.Tok.String()   //assignment operator
+
+
+		//TODO: Check rhs if a variable gets a value from a function, literal, or object
+		for _, rhsExpr := range stmt.Rhs{
+			switch expr := rhsExpr.(type){
+			//Basic literals indicate the var shouldn't have been returned from a function
+			case *ast.BasicLit:
+				if exprOp == ":="{
+					exprValue = varName + " " + exprOp +  " " + expr.Value
+				}else if exprOp == "="{
+					exprValue = "var " + varName + " " + expr.Kind.String() + " " + exprOp + " " + expr.Value
+				}
+				isFromFunction = false
+
+			case *ast.FuncLit: //Value should be from function?
+				//Get the parameter list
+				for _, value := range expr.Type.Params.List{
+					//fmt.Println(" Type: ", value.Type) //TODO: Not sure how to get the var type from func literal
+					for _, name := range value.Names{
+						//fmt.Println("  param name: ", name.Name)
+						varName = name.Name //Only handles case with 1 parameter in list (grabs name from parameter list)
+					}
+				}
+				isFromFunction = true
+				exprValue = varName + " " + exprOp + " fill"
+			case *ast.CompositeLit: //TODO: do composite literals indicate return from function or from variables in func args
+				//fmt.Println("Is composite literal", expr.Type)
+				if expr.Incomplete{
+					fmt.Println("Source expressions missing in elt list")
+				}
+
+				//TODO: some of these vars should be from functions, need to extract info from ast node
+
+				//elt := ""
+				//if len(expr.Elts) > 0 {
+				//	for _, elem := range expr.Elts{
+				//		//elt = fmt.Sprint(elem)
+				//	}
+				//}
+
+				fmt.Println()
+				isFromFunction = true
+				exprValue = varName + " " + exprOp + " " + " function()"
+			}
+
+
+			if exprValue != "" {
+				fmt.Printf("Var expr: (%v)\n --isFromFunction: (%v)\n", exprValue, isFromFunction)
+			}
+		}
+
+		//Handling variable scoping at assign time
+		//var scopeID string = ""
+		//fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
+		//stackStr := ""
+		//if value, ok := fnCfg.varNameToStack[varName]; ok{
+		//	//Add all elements as the scope
+		//	for index := range value{
+		//		stackStr += value[index]
+		//		//If last element, dont add .
+		//		if index == len(value)-1{
+		//			break
+		//		}else{
+		//			stackStr += "."
+		//		}
+		//	}
+		//}else{ handle adding scope if variable not in map at assign time
+		//	fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], "1")
+		//}
 
 
 		//scopeID = fnCfg.curFnDecl + "." + stackStr
 		//fmt.Println("Scope id", scopeID)
 
+
+
 		//Build variable node
-		//TODO: throwing stack overflow error if variable node is created
-		//varNode = db.Node(&db.VariableNode{
+		//TODO: throwing stack overflow error if variable node is created (check parent/child connection)
+		//varNode := db.Node(&db.VariableNode{
 		//	Filename:        filepath.ToSlash(relPath),
 		//	LineNumber:      fset.Position(stmt.Pos()).Line,
 		//	ScopeId:         scopeID,
@@ -940,9 +1021,9 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		//	Value:           varName + strExpr + assignValue, //the expression (ex: x := 5)
 		//	Parent:          nil,
 		//	Child:           nil,
-		//	ValueFromParent: false,
+		//	ValueFromParent: isFromFunction,
 		//})
-
+		//
 		//fmt.Println(varNode.GetProperties())
 
 		//if node != nil {
@@ -951,6 +1032,9 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		//} else {
 		//	node = varNode
 		//}
+		if node != nil {
+			//fmt.Println("ASIGGN NODE:", node.GetProperties())
+		}
 
 	case *ast.ReturnStmt:
 		// Find all function calls contained in the return statement

@@ -160,3 +160,13 @@ func someFunc(x int) {
 	x = x + 1
 
 }
+
+func assignVal() {
+	var x int = retVal()
+	y := retVal()
+	fmt.Println(x, y)
+}
+
+func retVal() int{
+	return 10
+}
