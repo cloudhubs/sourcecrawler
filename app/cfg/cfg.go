@@ -14,6 +14,7 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+
 // FnCfgCreator allows you to compute the CFG for a given function declaration
 type FnCfgCreator struct {
 	blocks map[*cfg.Block]db.Node
@@ -27,8 +28,9 @@ type FnCfgCreator struct {
 	curFnLitID uint
 
 	// Properties for keeping track of scope
-	varNameToStack map[string][]uint
-	scopeCount     []uint
+	varNameToStack map[string][]string //maps var names to scope names that represent the scopes this variable was seen in
+	scopeCount     []uint //Holds the current counts for each level of the current subscopes
+
 }
 
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
@@ -38,8 +40,8 @@ func NewFnCfgCreator(pkg string) *FnCfgCreator {
 		FnLiterals:     make(map[string]*db.FunctionDeclNode),
 		CurPkg:         pkg,
 		curFnLitID:     1,
-		varNameToStack: make(map[string][]uint),
-		scopeCount:     make([]uint, 1),
+		varNameToStack: make(map[string][]string),
+		scopeCount:     make([]uint, 0),
 	}
 }
 
@@ -65,7 +67,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	fnCfg.FnLiterals = make(map[string]*db.FunctionDeclNode)
 	fnCfg.curFnDecl = fn.Name.Name
 	fnCfg.curFnLitID = 1
-	fnCfg.varNameToStack = make(map[string][]uint)
+	fnCfg.varNameToStack = make(map[string][]string)
 	fnCfg.scopeCount = make([]uint, 1)
 
 	// Function declaration is the root node
@@ -81,6 +83,11 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		}
 		return false
 	})
+
+	//fmt.Println("Func", fn.Name.Name)
+	//for _, block := range cfg.Blocks{
+	//	fmt.Println(block)
+	//}
 	// fmt.Println(fn.Name.Name)
 	// fmt.Println(cfg.Format(fset))
 
@@ -251,6 +258,9 @@ func PrintCfg(node db.Node, level string) {
 	case *db.EndConditionalNode:
 		fmt.Printf("%sendIf (%v)\n", level, node.Label)
 		PrintCfg(node.Child, level)
+	case *db.VariableNode:
+		fmt.Printf(node.GetProperties())
+		PrintCfg(node.Child, level)
 	}
 }
 
@@ -276,6 +286,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 		root = current
 	}
 
+
 	// Convert each node in the block into a db.Node (if it is one we want to keep)
 	for i, node := range block.Nodes {
 		last := i == len(block.Nodes)-1
@@ -287,11 +298,17 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			current = fnCfg.getStatementNode(node, base, fset, regexes)
 		case ast.Expr:
 			current = fnCfg.getExprNode(node, base, fset, last && conditional, regexes)
+		case ast.Spec: //TODO: handling variable nodes
+			current = fnCfg.getSpecNode(node, base, fset)
+			if current != nil{
+				fmt.Println("Variable node exists", current.GetProperties())
+			}
 		}
 		// Received a nil node, continue to the next one
 		if current == nil {
 			continue
 		}
+
 
 		// Update predecessor pointers
 		if root == nil {
@@ -335,8 +352,14 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			}
 		case *db.EndConditionalNode:
 			prevNode.Child = current
-			//prevNode.Parent = prev //TODO: Not sure if this is the correct parent assignment?
+			//prevNode.Parent = prev
 			if prevNode.Child != nil {
+				prevNode.Child.SetParents(prevNode)
+			}
+			//TODO: Variable node case
+		case *db.VariableNode:
+			prevNode.Child = current
+			if prevNode.Child != nil{
 				prevNode.Child.SetParents(prevNode)
 			}
 		}
@@ -485,7 +508,95 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 		}
 	}
 
+
 	return
+}
+
+
+//Returns a variable node if it is encountered
+// TODO: ast.ValueSpec only holds a constant or variable declaration
+//  ast.AssignStmt handles variable assignments
+func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.FileSet) (node db.Node) {
+	relPath, _ := filepath.Rel(base, fset.File(spec.Pos()).Name())
+
+	switch spec := spec.(type){
+	case *ast.ValueSpec:
+		var scopeID string = "" //TODO: not handled yet
+		var varName string = ""
+		initType := ""
+		initValues := ""
+		stackStr := ""
+
+		//fmt.Println("Current function", fnCfg.curFnDecl)
+
+		//Grab the variable type
+		if spec.Type != nil{
+			varType := fmt.Sprint(spec.Type)
+			//fmt.Println("Var type:", varType)
+			initType = varType
+		}
+
+		//Set variable name
+		if len(spec.Names) > 0{
+			varName = spec.Names[0].Name
+			//fmt.Print("Var name:", varName)
+		}
+
+		//Get variable initial value if it exists
+		for _, expr := range spec.Values{
+			if expr != nil{
+				varVal := fmt.Sprint(expr)
+				//fmt.Println("Initial value:", varVal)
+				initValues = varVal
+			}
+		}
+		fmt.Println()
+
+		//TODO: handle variable scoping
+		//If variable is not in the map, then add to map and its scope (add a new state)
+		value, ok := fnCfg.varNameToStack[varName];
+		if ok{
+			fmt.Println(varName, value,  " was found in the map")
+		}else{
+			for index := range fnCfg.scopeCount{
+				//Exclude last element
+				if index == len(fnCfg.scopeCount)-1{
+					break
+				}
+
+				//Add the scope (Ex: 1.1.2)
+				stackStr += fmt.Sprint(fnCfg.scopeCount[index])
+
+				//If last element, dont add a .
+				if index == len(fnCfg.scopeCount)-2 {
+					continue
+				}else {
+					stackStr += "."
+				}
+			}
+		}
+		//Create scopeID string (ex: testFunc.1.1.2)
+		scopeID = fnCfg.curFnDecl + "." + stackStr
+
+		//Add variable node to cfg
+		node = db.Node(&db.VariableNode{
+			Filename:        filepath.ToSlash(relPath),
+			LineNumber:      fset.Position(spec.Pos()).Line,
+			ScopeId:         scopeID,
+			VarName:         varName,
+			Value:           initType + initValues,
+			Parent:          nil,
+			Child:           nil,
+			ValueFromParent: false,
+		})
+
+	case *ast.ImportSpec:
+		//fmt.Println(spec.Name.Name)
+	case *ast.TypeSpec:
+		//fmt.Println(spec.Type)
+	}
+
+	return node
 }
 
 //Returns the expression Node
@@ -494,8 +605,10 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 	switch expr := expr.(type) {
 	case *ast.CallExpr:
 		// fmt.Print("\t\tfound a callexpr ")
+		//fmt.Println("EXPRESSION args", expr.Args)
 		switch fn := expr.Fun.(type) {
 		case *ast.SelectorExpr:
+
 			val := fmt.Sprint(fn.Sel)
 			// fmt.Println(val)
 
@@ -587,6 +700,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 			node = subExpr
 		}
 	case *ast.BinaryExpr:
+
 		rightSubExpr := fnCfg.getExprNode(expr.X, base, fset, false, regexes)
 		leftSubExpr := fnCfg.getExprNode(expr.Y, base, fset, false, regexes)
 		if conditional {
@@ -718,6 +832,9 @@ func (fnCfg *FnCfgCreator) chainExprNodes(exprs []ast.Expr, base string, fset *t
 				current = exprNode
 			case *db.StatementNode:
 				current = exprNode
+				//TODO: variable node
+			case *db.VariableNode:
+				current = exprNode
 			}
 
 			// Chain nodes together
@@ -766,7 +883,47 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		})
 	case *ast.AssignStmt:
 		// Found an assignment
+		strLHS := fmt.Sprint(stmt.Lhs) //variable name
+		strRHS := fmt.Sprint(stmt.Rhs) //the value
+		strExpr := stmt.Tok.String()   //assignment operator
+		var scopeID string = ""
+		//fmt.Printf("%s %s %s\n", strLHS, strExpr, strRHS)
 		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs, base, fset, regexes)
+
+		fmt.Printf("(%s) (%s) (%s)", strLHS, strExpr, strRHS)
+
+
+		//TODO: handling variables at assign time
+		stackStr := ""
+		if value, ok := fnCfg.varNameToStack[strLHS]; ok{
+			//Add all elements as the scope
+			for index := range value{
+				stackStr += value[index]
+				//If last element, dont add .
+				if index == len(value)-1{
+					break
+				}else{
+					stackStr += "."
+				}
+			}
+		}
+
+		scopeID = fnCfg.curFnDecl + "." + stackStr
+		fmt.Println("Scope id", scopeID)
+
+		//Build variable node
+		//TODO: throwing stack overflow error if variable node is created
+		//node = db.Node(&db.VariableNode{
+		//	Filename:        filepath.ToSlash(relPath),
+		//	LineNumber:      fset.Position(stmt.Pos()).Line,
+		//	ScopeId:         scopeID,
+		//	VarName:         strLHS,
+		//	Value:           strLHS + strExpr + strRHS, //the expression (ex: x := 5)
+		//	Parent:          nil,
+		//	Child:           nil,
+		//	ValueFromParent: false,
+		//})
+
 	case *ast.ReturnStmt:
 		// Find all function calls contained in the return statement
 		node, _, _ = fnCfg.chainExprNodes(stmt.Results, base, fset, regexes)
