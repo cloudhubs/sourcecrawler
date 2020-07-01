@@ -191,10 +191,10 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 						//TODO: insert VariableNodes here from FunctionNode Args
 						// and FunctionDeclNode Params
 						// node is FunctionNode, newFn is FunctionDeclNode
-						vars :=  make([]*db.VariableNode, len(node.Args))
+						//vars :=  make([]*db.VariableNode, len(node.Args))
 						if decl, ok := newFn.(*db.FunctionDeclNode); ok {
 							for i, arg := range node.Args {
-								vars[i] = &db.VariableNode{
+								node.Args[i] = db.VariableNode{
 									Filename:        node.Filename,
 									LineNumber:      node.LineNumber,
 									ScopeId:         "", //TODO: get scope?
@@ -209,25 +209,25 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 						}
 
 						//connect first var to ref
-						if len(vars) > 0 {
-							node.Child = vars[0]
-							vars[0].Parent = node
-						}
-
-						//chain vars together
-						for i, variable := range vars {
-							//skip last
-							if i != len(vars) - 1{
-								variable.Child = vars[i+1]
-								vars[i+1].Parent = variable
-							}
-						}
-
-						//connect last to functionBody
-						if len(vars) > 0 {
-							vars[len(vars)-1].Child = newFn
-							newFn.SetParents(vars[len(vars)-1])
-						}
+						//if len(vars) > 0 {
+						//	node.Child = vars[0]
+						//	vars[0].Parent = node
+						//}
+						//
+						////chain vars together
+						//for i, variable := range vars {
+						//	//skip last
+						//	if i != len(vars) - 1{
+						//		variable.Child = vars[i+1]
+						//		vars[i+1].Parent = variable
+						//	}
+						//}
+						//
+						////connect last to functionBody
+						//if len(vars) > 0 {
+						//	vars[len(vars)-1].Child = newFn
+						//	newFn.SetParents(vars[len(vars)-1])
+						//}
 
 						//add dummy return node to consolidate returns
 						tmp = node.Child
@@ -244,6 +244,7 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 							leaf.SetChild([]db.Node{tmpReturn})
 							tmpReturn.SetParents(leaf)
 						}
+						node.Child = newFn
 					}
 				}
 			}
