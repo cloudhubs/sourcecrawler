@@ -194,18 +194,8 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 						//vars :=  make([]*db.VariableNode, len(node.Args))
 						if decl, ok := newFn.(*db.FunctionDeclNode); ok {
 							for i, arg := range node.Args {
-								node.Args[i] = db.VariableNode{
-									Filename:        node.Filename,
-									LineNumber:      node.LineNumber,
-									ScopeId:         "", //TODO: get scope?
-									VarName:         arg.VarName,
-									Value:           decl.Params[i].VarName, //should exist, same number of args/params
-									Parent:          nil,
-									Child:           nil,
-									ValueFromParent: false,
-								}
+								arg.Value = decl.Params[i].VarName
 							}
-
 						}
 
 						//connect first var to ref
