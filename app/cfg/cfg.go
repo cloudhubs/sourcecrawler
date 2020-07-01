@@ -653,6 +653,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 				})
 			} else {
 				// Was a method call.
+				args := getFuncArgs(expr.Args)
 				node = db.Node(&db.FunctionNode{
 					Filename:     filepath.ToSlash(relPath),
 					LineNumber:   fset.Position(expr.Pos()).Line,
@@ -695,7 +696,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 					Filename:     filepath.ToSlash(relPath),
 					LineNumber:   fset.Position(expr.Pos()).Line,
 					FunctionName: name,
-					Params:       getFuncParams(expr.Type.Params),
+					Params:       getFuncParams(expr.Type.Params, relPath),
 					Receivers:    map[string]string{},
 					Returns:      getFuncReturns(expr.Type.Results),
 					Child:        node,
@@ -833,7 +834,16 @@ func getFuncReceivers(fieldList *ast.FieldList) map[string]string {
 	return receivers
 }
 
-func getFuncParams(fieldList *ast.FieldList) map[int]db.VariableNode {
+func getFuncArgs(args []*ast.Expr) map[int]db.VariableNode {
+	for i, argu := range args {
+
+	}
+
+
+	return nil
+}
+
+func getFuncParams(fieldList *ast.FieldList, file string) map[int]db.VariableNode {
 	params := make(map[int]db.VariableNode)
 
 	if fieldList != nil {
@@ -841,14 +851,8 @@ func getFuncParams(fieldList *ast.FieldList) map[int]db.VariableNode {
 			if p != nil {
 				for _, name := range p.Names {
 					variable := db.VariableNode{
-						Filename:        "",
-						LineNumber:      0,
-						ScopeId:         "",
+						Filename:        file,
 						VarName:         expressionString(name),
-						Value:           "",
-						Parent:          nil,
-						Child:           nil,
-						ValueFromParent: false,
 					}
 					params[i] = variable
 				}
@@ -919,7 +923,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		var params map[int]db.VariableNode
 		var returns []db.Return
 		if stmt.Type != nil {
-			params = getFuncParams(stmt.Type.Params)
+			params = getFuncParams(stmt.Type.Params, relPath)
 			if stmt.Type.Results != nil {
 				returns = getFuncReturns(stmt.Type.Results)
 			}
@@ -1095,7 +1099,7 @@ func expressionString(expr ast.Expr) string {
 		typecast := expressionString(condition.Type)
 		return fmt.Sprintf("%s(%s)", typecast, expr)
 	case *ast.FuncType:
-		params := getFuncParams(condition.Params)
+		params := getFuncParams(condition.Params, "")
 		rets := getFuncReturns(condition.Results)
 		b := strings.Builder{}
 		b.Write([]byte("func("))
