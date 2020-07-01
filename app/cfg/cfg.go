@@ -50,7 +50,7 @@ func (fnCfg *FnCfgCreator) currFnLiteralID() string {
 }
 
 // CreateCfg creates the CFG For a given function declaration, filepath and file, and a map of regexes contained within the file.
-func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.FileSet, regexes map[int]string) db.Node {
+func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.FileSet) db.Node {
 	if fn == nil {
 		log.Warn().Msg("received a null function declaration")
 		return nil
@@ -144,7 +144,7 @@ func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, base string, files 
 		}
 	}
 	if found {
-		node := fnCfg.CreateCfg(fn, base, fset, map[int]string{})
+		node := fnCfg.CreateCfg(fn, base, fset)
 		//add in functions in this cfg, excluding
 		//any functions already seen in this scope
 		//or higher scopes
