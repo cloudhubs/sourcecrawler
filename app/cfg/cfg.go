@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/logsource"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -44,11 +45,19 @@ func NewFnCfgCreator(pkg string) *FnCfgCreator {
 	}
 }
 
-func (fnCfg *FnCfgCreator) incScopeCount() {
-	fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+func (fnCfg *FnCfgCreator) getCurrentScope() string {
+	b := strings.Builder{}
+	for i, s := range fnCfg.scopeCount {
+		b.WriteString(strconv.Itoa(int(s)))
+		if i < len(fnCfg.scopeCount)-1 {
+			b.WriteString(".")
+		}
+	}
+	return b.String()
 }
 
 func (fnCfg *FnCfgCreator) enterScope() {
+	fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
 	fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
 }
 
@@ -406,7 +415,6 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 				conditional.TrueChild = succ
 				//conditional.Parent = current //??
 			} else {
-				fnCfg.incScopeCount()
 				fnCfg.enterScope()
 				fnCfg.debugScope("truechild")
 				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0], base, fset)
@@ -426,7 +434,6 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 				conditional.FalseChild = fail
 				// conditional.Parent = current //??
 			} else {
-				fnCfg.incScopeCount()
 				fnCfg.enterScope()
 				fnCfg.debugScope("falsechild")
 				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1], base, fset)
