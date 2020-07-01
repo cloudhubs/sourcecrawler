@@ -190,6 +190,44 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 					if newFn != nil {
 						//TODO: insert VariableNodes here from FunctionNode Args
 						// and FunctionDeclNode Params
+						// node is FunctionNode, newFn is FunctionDeclNode
+						vars :=  make([]*db.VariableNode, len(node.Args))
+						if decl, ok := newFn.(*db.FunctionDeclNode); ok {
+							for i, arg := range node.Args {
+								vars[i] = &db.VariableNode{
+									Filename:        node.Filename,
+									LineNumber:      node.LineNumber,
+									ScopeId:         "", //TODO: get scope?
+									VarName:         arg.VarName,
+									Value:           decl.Params[i].VarName, //should exist, same number of args/params
+									Parent:          nil,
+									Child:           nil,
+									ValueFromParent: false,
+								}
+							}
+
+						}
+
+						//connect first var to ref
+						if len(vars) > 0 {
+							node.Child = vars[0]
+							vars[0].Parent = node
+						}
+
+						//chain vars together
+						for i, variable := range vars {
+							//skip last
+							if i != len(vars) - 1{
+								variable.Child = vars[i+1]
+								vars[i+1].Parent = variable
+							}
+						}
+
+						//connect last to functionBody
+						if len(vars) > 0 {
+							vars[len(vars)-1].Child = newFn
+							newFn.SetParents(vars[len(vars)-1])
+						}
 
 						//add dummy return node to consolidate returns
 						tmp = node.Child
@@ -206,7 +244,6 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 							leaf.SetChild([]db.Node{tmpReturn})
 							tmpReturn.SetParents(leaf)
 						}
-						node.Child = newFn
 					}
 				}
 			}
@@ -621,11 +658,6 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 				node = db.Node(&db.StatementNode{
 					Filename:   filepath.ToSlash(relPath),
 					LineNumber: line,
-					//TODO: there has to be a better way to assign this value.
-					// This array is passed through every single function
-					// in the recursion stack only to be used here?
-					// If the file and linenumber are known,
-					// why not just parse that information when needed?
 					LogRegex: logsource.GetLogRegexFromInfo(fset.File(expr.Pos()).Name(), line),
 				})
 			} else {
@@ -634,6 +666,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 					Filename:     filepath.ToSlash(relPath),
 					LineNumber:   fset.Position(expr.Pos()).Line,
 					FunctionName: expressionString(fn),
+					Args: nil, //TODO: generate Args for functionNode
 				})
 			}
 		case *ast.FuncLit:
@@ -647,6 +680,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 				Filename:     filepath.ToSlash(relPath),
 				LineNumber:   fset.Position(expr.Pos()).Line,
 				FunctionName: ident,
+				Args: nil, //TODO: generate Args for functionNode
 			}
 		default:
 			// fmt.Println(callExprName(expr))
@@ -656,6 +690,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 				Filename:     filepath.ToSlash(relPath),
 				LineNumber:   fset.Position(expr.Pos()).Line,
 				FunctionName: callExprName(expr),
+				Args: nil, //TODO: generate Args for functionNode
 			})
 		}
 	case *ast.FuncLit:
@@ -807,16 +842,22 @@ func getFuncReceivers(fieldList *ast.FieldList) map[string]string {
 	return receivers
 }
 
-func getFuncParams(fieldList *ast.FieldList) map[int]db.Variable {
-	params := make(map[int]db.Variable)
+func getFuncParams(fieldList *ast.FieldList) map[int]db.VariableNode {
+	params := make(map[int]db.VariableNode)
 
 	if fieldList != nil {
 		for i, p := range fieldList.List {
 			if p != nil {
 				for _, name := range p.Names {
-					variable := db.Variable{
-						Scope: "something",
-						Name:  expressionString(name),
+					variable := db.VariableNode{
+						Filename:        "",
+						LineNumber:      0,
+						ScopeId:         "",
+						VarName:         expressionString(name),
+						Value:           "",
+						Parent:          nil,
+						Child:           nil,
+						ValueFromParent: false,
 					}
 					params[i] = variable
 				}
@@ -884,7 +925,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		node = fnCfg.getExprNode(stmt.X, base, fset, false, regexes)
 	case *ast.FuncDecl:
 		receivers := getFuncReceivers(stmt.Recv)
-		var params map[int]db.Variable
+		var params map[int]db.VariableNode
 		var returns []db.Return
 		if stmt.Type != nil {
 			params = getFuncParams(stmt.Type.Params)
@@ -892,7 +933,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 				returns = getFuncReturns(stmt.Type.Results)
 			}
 		} else {
-			params = make(map[int]db.Variable)
+			params = make(map[int]db.VariableNode)
 			returns = make([]db.Return, 0)
 		}
 
@@ -1068,8 +1109,8 @@ func expressionString(expr ast.Expr) string {
 		b := strings.Builder{}
 		b.Write([]byte("func("))
 		i := 0
-		for name, t := range params {
-			b.Write([]byte(fmt.Sprintf("%s %s", name, t)))
+		for _, param := range params {
+			b.Write([]byte(fmt.Sprintf("%s", param.VarName)))
 			if i < len(params)-1 {
 				b.Write([]byte(", "))
 			}

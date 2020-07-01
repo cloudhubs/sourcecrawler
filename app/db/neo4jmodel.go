@@ -54,7 +54,7 @@ type FunctionNode struct {
 	Filename     string
 	LineNumber   int
 	FunctionName string
-	Args 		 map[int]Variable //
+	Args 		 map[int]VariableNode //
 	Child        Node
 	Parent       Node
 	Label        ExecutionLabel
@@ -70,16 +70,11 @@ type FunctionDeclNode struct {
 	LineNumber   int
 	FunctionName string
 	Receivers    map[string]string // for methods, name to type
-	Params       map[int]Variable
+	Params       map[int]VariableNode
 	Returns      []Return          // not a map since you don't have to name return variables
 	Child        Node
 	Parent       Node
 	Label        ExecutionLabel
-}
-
-type Variable struct {
-	Scope	string
-	Name 	string
 }
 
 // in the event of return fnCall() a FunctionNode will be its predecessor node
