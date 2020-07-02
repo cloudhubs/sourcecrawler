@@ -419,7 +419,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 				conditional = &db.ConditionalNode{
 					Filename:   filepath.ToSlash(relPath),
 					LineNumber: fset.Position(expr.Pos()).Line,
-					Condition:  expressionString(expr),
+					Condition:  fnCfg.expressionString(expr),
 				}
 			}
 
@@ -662,15 +662,11 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 				})
 			} else {
 				// Was a method call.
-				args := make([]db.Node, len(expr.Args))
-				for i, arg := range expr.Args {
-					args[i] = fnCfg.getExprNode(arg,base,fset,conditional)
-				}
 				node = db.Node(&db.FunctionNode{
 					Filename:     filepath.ToSlash(relPath),
 					LineNumber:   fset.Position(expr.Pos()).Line,
-					FunctionName: expressionString(fn),
-					Args: args, //TODO: generate Args for functionNode
+					FunctionName: fnCfg.expressionString(fn),
+					Args: fnCfg.getFuncArgs(expr.Args,base,fset), //TODO: generate Args for functionNode
 				})
 			}
 		case *ast.FuncLit:
@@ -684,21 +680,16 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 				Filename:     filepath.ToSlash(relPath),
 				LineNumber:   fset.Position(expr.Pos()).Line,
 				FunctionName: ident,
-				Args: getFuncParams(fn.Type.Params, relPath), //TODO: generate Args for functionNode
+				Args: fnCfg.getFuncParams(fn.Type.Params, relPath), //TODO: generate Args for functionNode
 			}
 		default:
 			// fmt.Println(callExprName(expr))
-
 			// Found a function call
-			args := make([]db.Node, len(expr.Args))
-			for i, arg := range expr.Args {
-				args[i] = fnCfg.getExprNode(arg,base,fset,conditional)
-			}
 			node = db.Node(&db.FunctionNode{
 				Filename:     filepath.ToSlash(relPath),
 				LineNumber:   fset.Position(expr.Pos()).Line,
-				FunctionName: callExprName(expr),
-				Args: args, //TODO: generate Args for functionNode
+				FunctionName: fnCfg.callExprName(expr),
+				Args: fnCfg.getFuncArgs(expr.Args, base, fset), //TODO: generate Args for functionNode
 			})
 		}
 	case *ast.FuncLit:
@@ -712,9 +703,9 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 					Filename:     filepath.ToSlash(relPath),
 					LineNumber:   fset.Position(expr.Pos()).Line,
 					FunctionName: name,
-					Params:       getFuncParams(expr.Type.Params, relPath),
+					Params:       fnCfg.getFuncParams(expr.Type.Params, relPath),
 					Receivers:    map[string]string{},
-					Returns:      getFuncReturns(expr.Type.Results),
+					Returns:      fnCfg.getFuncReturns(expr.Type.Results),
 					Child:        node,
 				}
 				node.SetParents(root)
@@ -731,7 +722,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 			conditional := db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fset.Position(expr.Pos()).Line,
-				Condition:  expressionString(expr),
+				Condition:  fnCfg.expressionString(expr),
 			})
 			// subExpr was a function call of some kind
 			if subExpr != nil {
@@ -754,7 +745,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 			conditional := db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fset.Position(expr.Pos()).Line,
-				Condition:  expressionString(expr),
+				Condition:  fnCfg.expressionString(expr),
 			})
 			if rightSubExpr != nil && leftSubExpr != nil {
 				node = leftSubExpr
@@ -786,8 +777,10 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 			node = db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fset.Position(expr.Pos()).Line,
-				Condition:  expressionString(expr),
+				Condition:  fnCfg.expressionString(expr),
 			})
+		} else {
+			//TODO: could be a variable?
 		}
 	}
 	return
@@ -826,13 +819,13 @@ func connectToLeaf(root db.Node, node db.Node) {
 }
 
 // Iterates over each item in a field list and does some operation passed to it
-func iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
+func (fnCfg *FnCfgCreator) iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
 	if fieldList != nil {
 		for _, p := range fieldList.List {
 			if p != nil {
-				returnType := expressionString(p.Type)
+				returnType := fnCfg.expressionString(p.Type)
 				for _, name := range p.Names {
-					varName := expressionString(name)
+					varName := fnCfg.expressionString(name)
 					op(returnType, varName)
 				}
 			}
@@ -840,17 +833,17 @@ func iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
 	}
 }
 
-func getFuncReceivers(fieldList *ast.FieldList) map[string]string {
+func (fnCfg *FnCfgCreator) getFuncReceivers(fieldList *ast.FieldList) map[string]string {
 	receivers := make(map[string]string)
 
-	iterateFields(fieldList, func(returnType, name string) {
+	fnCfg.iterateFields(fieldList, func(returnType, name string) {
 		receivers[name] = returnType
 	})
 
 	return receivers
 }
 
-func getFuncParams(fieldList *ast.FieldList, file string) []db.VariableNode {
+func (fnCfg *FnCfgCreator) getFuncParams(fieldList *ast.FieldList, file string) []db.VariableNode {
 	params := make([]db.VariableNode, len(fieldList.List))
 
 	if fieldList != nil {
@@ -859,7 +852,8 @@ func getFuncParams(fieldList *ast.FieldList, file string) []db.VariableNode {
 				for _, name := range p.Names {
 					variable := db.VariableNode{
 						Filename:        file,
-						VarName:         expressionString(name),
+						VarName:         fnCfg.expressionString(name),
+						//TODO: scope
 					}
 					params[i] = variable
 				}
@@ -870,10 +864,23 @@ func getFuncParams(fieldList *ast.FieldList, file string) []db.VariableNode {
 	return params
 }
 
-func getFuncReturns(fieldList *ast.FieldList) []db.Return {
+func (fnCfg *FnCfgCreator) getFuncArgs(exprs []ast.Expr, base string, fset *token.FileSet) []db.VariableNode {
+	args := make([]db.VariableNode, len(exprs))
+	if exprs != nil {
+		for _, exp := range exprs {
+			if exp != nil {
+				exprNode := fnCfg.getExprNode(exp, base, fset, false)
+				fmt.Printf("%T",exprNode)
+			}
+		}
+	}
+	return args
+}
+
+func (fnCfg *FnCfgCreator) getFuncReturns(fieldList *ast.FieldList) []db.Return {
 	returns := make([]db.Return, 0)
 
-	iterateFields(fieldList, func(returnType, name string) {
+	fnCfg.iterateFields(fieldList, func(returnType, name string) {
 		returns = append(returns, db.Return{
 			Name:       name,
 			ReturnType: returnType,
@@ -926,13 +933,13 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 	case *ast.ExprStmt:
 		node = fnCfg.getExprNode(stmt.X, base, fset, false)
 	case *ast.FuncDecl:
-		receivers := getFuncReceivers(stmt.Recv)
+		receivers := fnCfg.getFuncReceivers(stmt.Recv)
 		var params []db.VariableNode
 		var returns []db.Return
 		if stmt.Type != nil {
-			params = getFuncParams(stmt.Type.Params, relPath)
+			params = fnCfg.getFuncParams(stmt.Type.Params, relPath)
 			if stmt.Type.Results != nil {
-				returns = getFuncReturns(stmt.Type.Results)
+				returns = fnCfg.getFuncReturns(stmt.Type.Results)
 			}
 		} else {
 			params = make([]db.VariableNode,0)
@@ -996,7 +1003,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 
 		var bldr strings.Builder
 		for i, result := range stmt.Results {
-			bldr.WriteString(fmt.Sprintf("%s", expressionString(result)))
+			bldr.WriteString(fmt.Sprintf("%s", fnCfg.expressionString(result)))
 			if i < len(stmt.Results)-1 {
 				bldr.WriteString(", ")
 			}
@@ -1026,7 +1033,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 }
 
 // Recursively creates the string of an `ast.Expr`.
-func expressionString(expr ast.Expr) string {
+func (fnCfg *FnCfgCreator) expressionString(expr ast.Expr) string {
 	if expr == nil {
 		return ""
 	}
@@ -1039,27 +1046,27 @@ func expressionString(expr ast.Expr) string {
 		return condition.Name
 	case *ast.BinaryExpr:
 		leftStr, rightStr := "", ""
-		leftStr = expressionString(condition.X)
-		rightStr = expressionString(condition.Y)
+		leftStr = fnCfg.expressionString(condition.X)
+		rightStr = fnCfg.expressionString(condition.Y)
 		return fmt.Sprint(leftStr, condition.Op, rightStr)
 	case *ast.UnaryExpr:
 		op := condition.Op.String()
-		str := expressionString(condition.X)
+		str := fnCfg.expressionString(condition.X)
 		return fmt.Sprint(op, str)
 	case *ast.SelectorExpr:
 		selector := ""
 		if condition.Sel != nil {
 			selector = condition.Sel.String()
 		}
-		str := expressionString(condition.X)
+		str := fnCfg.expressionString(condition.X)
 		return fmt.Sprintf("%s.%s", str, selector)
 	case *ast.ParenExpr:
-		return fmt.Sprintf("(%s)", expressionString(condition.X))
+		return fmt.Sprintf("(%s)", fnCfg.expressionString(condition.X))
 	case *ast.CallExpr:
-		fn := expressionString(condition.Fun)
+		fn := fnCfg.expressionString(condition.Fun)
 		args := make([]string, 0)
 		for _, arg := range condition.Args {
-			args = append(args, expressionString(arg))
+			args = append(args, fnCfg.expressionString(arg))
 		}
 		if condition.Ellipsis != token.NoPos {
 			args[len(args)-1] = fmt.Sprintf("%s...", args[len(args)-1])
@@ -1082,32 +1089,32 @@ func expressionString(expr ast.Expr) string {
 
 		return builder.String()
 	case *ast.IndexExpr:
-		expr := expressionString(condition.X)
-		ndx := expressionString(condition.Index)
+		expr := fnCfg.expressionString(condition.X)
+		ndx := fnCfg.expressionString(condition.Index)
 		return fmt.Sprintf("%s[%s]", expr, ndx)
 	case *ast.KeyValueExpr:
-		key := expressionString(condition.Key)
-		value := expressionString(condition.Value)
+		key := fnCfg.expressionString(condition.Key)
+		value := fnCfg.expressionString(condition.Value)
 		return fmt.Sprint(key, ":", value)
 	case *ast.SliceExpr: // not sure about this one
-		expr := expressionString(condition.X)
-		low := expressionString(condition.Low)
-		high := expressionString(condition.High)
+		expr := fnCfg.expressionString(condition.X)
+		low := fnCfg.expressionString(condition.Low)
+		high := fnCfg.expressionString(condition.High)
 		if condition.Slice3 {
-			max := expressionString(condition.Max)
+			max := fnCfg.expressionString(condition.Max)
 			return fmt.Sprintf("%s[%s : %s : %s]", expr, low, high, max)
 		}
 		return fmt.Sprintf("%s[%s : %s]", expr, low, high)
 	case *ast.StarExpr:
-		expr := expressionString(condition.X)
+		expr := fnCfg.expressionString(condition.X)
 		return fmt.Sprintf("*%s", expr)
 	case *ast.TypeAssertExpr:
-		expr := expressionString(condition.X)
-		typecast := expressionString(condition.Type)
+		expr := fnCfg.expressionString(condition.X)
+		typecast := fnCfg.expressionString(condition.Type)
 		return fmt.Sprintf("%s(%s)", typecast, expr)
 	case *ast.FuncType:
-		params := getFuncParams(condition.Params, "")
-		rets := getFuncReturns(condition.Results)
+		params := fnCfg.getFuncParams(condition.Params, "")
+		rets := fnCfg.getFuncReturns(condition.Results)
 		b := strings.Builder{}
 		b.Write([]byte("func("))
 		i := 0
@@ -1130,8 +1137,8 @@ func expressionString(expr ast.Expr) string {
 }
 
 //Gets the name of a call expression
-func callExprName(call *ast.CallExpr) string {
-	fn := expressionString(call)
+func (fnCfg *FnCfgCreator) callExprName(call *ast.CallExpr) string {
+	fn := fnCfg.expressionString(call)
 	name := ""
 	if s := strings.Split(fn, "("); len(s) > 0 {
 		name = s[0]
