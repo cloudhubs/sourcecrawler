@@ -31,7 +31,7 @@ type stackTraceStruct struct {
 }
 
 //Helper function to grab OS separator
-func grabOS() string {
+func GrabOS() string {
 	if runtime.GOOS == "windows" {
 		return "\\"
 	} else {
@@ -50,7 +50,7 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	//testPanic()
 
 	//Grab separator
-	separator := grabOS()
+	separator := GrabOS()
 
 	//Grab files to parse, split stack trace string, get project root
 	filesToParse := helper.GatherGoFiles(projectRoot)

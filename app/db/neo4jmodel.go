@@ -115,14 +115,15 @@ type EndConditionalNode struct {
 
 
 type VariableNode struct {
-	Filename   string
-	LineNumber int
-	ScopeId string
-	VarName string
-	Value string //should hold an expression
-	Parent Node
-	Child Node
-	ValueFromParent bool
+	Filename        string
+	LineNumber      int
+	ScopeId         string
+	VarName         string
+	Value           string //should hold an expression
+	Parent          Node
+	Child           Node
+	ValueFromParent bool //true = value is received from function | false = value from literal
+	IsReal          bool //true = real value (hard literal value) | false = symbolic value (variable value)
 }
 
 //VARIABLE NODES
@@ -152,7 +153,7 @@ func (n *VariableNode) SetParents(parent Node) {
 }
 
 func (n *VariableNode) GetProperties() string {
-	return fmt.Sprintf("Variable node (%d) (%s) expr(%s) scope(%s) parent(%v)",
+	return fmt.Sprintf("Variable node: {line: %d, file: %s, expr: %s, scope: %s, parent %v\n",
 			n.LineNumber, n.Filename, n.Value, n.ScopeId, n.Parent)
 }
 
