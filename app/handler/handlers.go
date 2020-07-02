@@ -42,11 +42,11 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
 		//regexes := mapLogRegex(logInfo)
 
-		c := cfg.NewFnCfgCreator("pkg")
+		c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
 		ast.Inspect(f, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// fmt.Println("parsing", fn)
-				decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset))
+				decls = append(decls, c.CreateCfg(fn))
 			}
 			return true
 		})
@@ -216,7 +216,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		//regexes := mapLogRegex(logInfo)
 
 		// extract CFGs for all relevant functions from this file
-		c := cfg.NewFnCfgCreator("pkg")
+		c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
 		ast.Inspect(f, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
@@ -231,7 +231,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 				}
 
 				if shouldAppendFunction {
-					decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset))
+					decls = append(decls, c.CreateCfg(fn))
 				}
 			}
 			return true
@@ -239,7 +239,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 		//TODO: test
 		//Test if variable are retrieved
-		ast.Inspect(f, func(node ast.Node) bool{
+		ast.Inspect(f, func(node ast.Node) bool {
 
 			return true
 		})
@@ -297,7 +297,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	funcNode := &neoDb.FunctionNode{Child: varNode}
 	varNode.SetParents(funcNode)
-
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -369,7 +368,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		//regexes := mapLogRegex(logInfo)
 
 		// extract CFGs for all relevant functions from this file
-		c := cfg.NewFnCfgCreator("pkg")
+		c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
 		ast.Inspect(f, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
@@ -384,7 +383,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 				}
 
 				if shouldAppendFunction {
-					decls = append(decls, c.CreateCfg(fn, request.ProjectRoot, fset))
+					decls = append(decls, c.CreateCfg(fn))
 				}
 			}
 			return true
@@ -428,7 +427,6 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
 	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
-
 
 	respondJSON(w, http.StatusOK, response)
 }
