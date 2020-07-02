@@ -1,4 +1,4 @@
-package handler
+package unsafe
 
 import (
 	"fmt"
@@ -14,12 +14,12 @@ type SomeStruct struct {
 	Count int
 }
 
-func Unsafe(nilAssignment, badIndex bool) []string {
-	if nilAssignment && badIndex {
+func Unsafe(x int) []string {
+	if x > 100 {
 		warning()
 	}
 
-	obj := getStruct(nilAssignment)
+	obj := getStruct(x)
 	log.Info().Msgf("We are executing with message %v", obj.GetMessage())
 
 	var array []string
@@ -31,8 +31,8 @@ func Unsafe(nilAssignment, badIndex bool) []string {
 	return array
 }
 
-func getStruct(nilAssignment bool) SomeInterface {
-	if nilAssignment {
+func getStruct(y int) SomeInterface {
+	if x > 75 {
 		return nil
 	} else {
 		return &SomeStruct{0}
