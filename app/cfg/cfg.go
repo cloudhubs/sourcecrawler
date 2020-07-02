@@ -52,6 +52,10 @@ func NewFnCfgCreator(pkg string, base string, fset *token.FileSet) *FnCfgCreator
 
 func (fnCfg *FnCfgCreator) getCurrentScope() string {
 	b := strings.Builder{}
+	b.WriteString(fnCfg.CurPkg)
+	b.WriteString(".")
+	b.WriteString(fnCfg.curFnDecl)
+	b.WriteString(".")
 	for i, s := range fnCfg.scopeCount {
 		b.WriteString(strconv.Itoa(int(s)))
 		if i < len(fnCfg.scopeCount)-1 {
