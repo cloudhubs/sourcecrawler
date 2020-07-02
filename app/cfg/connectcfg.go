@@ -62,34 +62,44 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 
 		//TODO: insert VariableNodes here from FunctionNode Args
 		// and FunctionDeclNode Params
-		//vars :=  make([]*db.VariableNode, len(ref.Args))
+		vars :=  make([]*db.VariableNode, len(ref.Args))
 		if decl, ok := decl.(*db.FunctionDeclNode); ok {
 			for i, arg := range ref.Args {
-					arg.Value = decl.Params[i].VarName
+					vars[i] = &db.VariableNode{
+					Filename:        ref.Filename,
+					LineNumber:      ref.LineNumber,
+					ScopeId:         "", //TODO: get scope?
+					VarName:         arg.VarName,
+					Value:           decl.Params[i].VarName, //should exist, same number of args/params
+					Parent:          nil,
+					Child:           nil,
+					ValueFromParent: false,
+				}
 			}
+
 		}
 
 
 		//connect first var to ref
-		//if len(vars) > 0 {
-		//	ref.Child = vars[0]
-		//	vars[0].Parent = ref
-		//}
-		//
-		////chain vars together
-		//for i, variable := range vars {
-		//	//skip last
-		//	if i != len(vars) - 1{
-		//		variable.Child = vars[i+1]
-		//		vars[i+1].Parent = variable
-		//	}
-		//}
-		//
-		////connect last to functionBody
-		//if len(vars) > 0 {
-		//	vars[len(vars)-1].Child = copyCfg
-		//	copyCfg.SetParents(vars[len(vars)-1])
-		//}
+		if len(vars) > 0 {
+			ref.Child = vars[0]
+			vars[0].Parent = ref
+		}
+
+		//chain vars together
+		for i, variable := range vars {
+			//skip last
+			if i != len(vars) - 1{
+				variable.Child = vars[i+1]
+				vars[i+1].Parent = variable
+			}
+		}
+
+		//connect last to functionBody
+		if len(vars) > 0 {
+			vars[len(vars)-1].Child = copyCfg
+			copyCfg.SetParents(vars[len(vars)-1])
+		}
 
 		//need to consolidate all returns to a single node before connecting to child
 		//represents the same position as the child node, maybe not necessary
@@ -111,7 +121,6 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 			leaf.SetChild([]db.Node{tmpReturn})
 			tmpReturn.SetParents(leaf)
 		}
-		ref.Child = copyCfg
 	}
 	return
 }
