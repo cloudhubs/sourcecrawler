@@ -2,11 +2,12 @@ package cfg
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"os"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/helper"
 	"testing"
+
+	"github.com/rs/zerolog/log"
 )
 
 type addingTestCase struct {
@@ -14,7 +15,7 @@ type addingTestCase struct {
 	Root db.Node
 }
 
-func addThisFunc(){
+func addThisFunc() {
 	addThisFunc()
 	fmt.Println("hi")
 }
@@ -24,12 +25,12 @@ func addThisIndirect2() {
 	log.Info().Msg("a log")
 }
 
-func addThisIndirect1(){
+func addThisIndirect1() {
 	addThisIndirect2()
 	fmt.Println("one")
 }
 
-func TestAddingFuncs(t *testing.T){
+func TestAddingFuncs(t *testing.T) {
 	cases := []func() addingTestCase{
 		func() addingTestCase {
 			//construct a graph to represent a cfg
@@ -66,13 +67,13 @@ func TestAddingFuncs(t *testing.T){
 		test := testCase()
 		t.Run(test.Name, func(t *testing.T) {
 			wd, err := os.Getwd()
-			if err != nil{
+			if err != nil {
 				t.Fatal(err)
 			}
 			//run function to add in additional graphs
 			sources := helper.GatherGoFiles(wd)
-			ConnectExternalFunctions(test.Root,[]*db.FunctionNode{},sources,wd)
-			PrintCfg(test.Root,"")
+			ConnectExternalFunctions(test.Root, []*db.FunctionNode{}, sources, wd)
+			PrintCfg(test.Root, "")
 
 		})
 	}
