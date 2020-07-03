@@ -548,7 +548,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 	}
 
 	//Create CFG -- NEED to call after regex has been created
-	// regexes := mapLogRegex(logInfo)
+	//regexes := mapLogRegex(logInfo)
 	ast.Inspect(node, func(n ast.Node) bool {
 		// Keep track of the current parent function the log statement is contained in
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
