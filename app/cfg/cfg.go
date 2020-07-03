@@ -72,12 +72,16 @@ func (fnCfg *FnCfgCreator) getCurrentScope() string {
 }
 
 func (fnCfg *FnCfgCreator) enterScope() {
-	fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+	if len(fnCfg.scopeCount) > 0 {
+		fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+	}
 	fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
 }
 
 func (fnCfg *FnCfgCreator) leaveScope() {
-	fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
+	if len(fnCfg.scopeCount) < 1 {
+		fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
+	}
 	// Remove out of scope variable declarations
 	for key, stack := range fnCfg.varNameToStack {
 		if len(stack) > 0 {
@@ -376,7 +380,9 @@ func PrintCfg(node db.Node, level string) {
 		PrintCfg(node.Child, level)
 	case *db.VariableNode:
 		fmt.Printf("%sVariable--Name: %v Value: %v Scope: %v", level, node.VarName, node.Value, node.ScopeId)
-		PrintCfg(node.Child, level)
+		if node.Child != node {
+			PrintCfg(node.Child, level)
+		}
 	}
 }
 
