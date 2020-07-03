@@ -115,6 +115,22 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		}
 	}
 
+	//Test print variable nodes
+	//for varName, scopeVal := range fnCfg.varNameToStack{
+	//	fmt.Print("Variable ", varName, " {Scopes: ")
+	//	for _, str := range scopeVal{
+	//		fmt.Print(" ", str)
+	//	}
+	//	fmt.Printf("}\n")
+	//}
+
+	//Print master stack
+	//fmt.Print("Master stack: ")
+	//for _, scopeVal := range fnCfg.scopeCount{
+	//	fmt.Print(scopeVal, " ")
+	//}
+	//fmt.Println()
+
 	return root
 }
 
@@ -531,7 +547,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 
 
 //Returns a variable node if it is encountered
-// TODO: ast.ValueSpec only holds a constant or variable declaration
+//  ast.ValueSpec only holds a constant or variable declaration
 //  ast.AssignStmt handles variable assignments
 func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.FileSet) (node db.Node) {
 	relPath, _ := filepath.Rel(base, fset.File(spec.Pos()).Name())
@@ -910,7 +926,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 			Params:       params,
 			Returns:      returns,
 		})
-	case *ast.AssignStmt: //TODO: handle variable assignment
+	case *ast.AssignStmt: //Handles variables when being assigned
 		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs, base, fset)
 
 		var exprValue string = "" //hold the expression as a string
@@ -1014,7 +1030,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 
 		//Print the final expression
 		if exprValue != "" {
-			//fmt.Printf("Var expr: (%v)\n --fromFunction: %v\n --realValue: %v\n", exprValue, isFromFunction, isReal)
+			fmt.Printf("Var expr: (%v)\n --fromFunction: %v\n --realValue: %v\n", exprValue, isFromFunction, isReal)
 		}
 
 		//Handling variable scoping at assign time
@@ -1065,9 +1081,14 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 			IsReal:          isReal,
 		})
 
+		//Check if a variable contains two variables
+		//if strings.Contains(exprValue, ",") && strings.Contains(exprValue, ":="){
+		//
+		//}
+
 		//TODO: currently connects first variable to function, but will need to chain
 		if node != nil {
-			// Append the function node to the last function call
+			// Append the variable node to the last function call
 			connectToLeaf(node, varNode)
 		}else{
 			node = varNode
