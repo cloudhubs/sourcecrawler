@@ -3,6 +3,7 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/rs/zerolog/log"
 )
 
@@ -54,7 +55,7 @@ type FunctionNode struct {
 	Filename     string
 	LineNumber   int
 	FunctionName string
-	Args 		 []VariableNode //
+	Args         []VariableNode //
 	Child        Node
 	Parent       Node
 	Label        ExecutionLabel
@@ -71,7 +72,7 @@ type FunctionDeclNode struct {
 	FunctionName string
 	Receivers    map[string]string // for methods, name to type
 	Params       []VariableNode
-	Returns      []Return          // not a map since you don't have to name return variables
+	Returns      []Return // not a map since you don't have to name return variables
 	Child        Node
 	Parent       Node
 	Label        ExecutionLabel
@@ -106,6 +107,7 @@ type ConditionalNode struct {
 	FalseChild Node
 	Parent     Node
 	Label      ExecutionLabel
+	VarsUsed   []*VariableNode
 }
 
 type EndConditionalNode struct {
@@ -113,7 +115,6 @@ type EndConditionalNode struct {
 	Parents []Node
 	Label   ExecutionLabel
 }
-
 
 type VariableNode struct {
 	Filename        string
@@ -155,7 +156,7 @@ func (n *VariableNode) SetParents(parent Node) {
 
 func (n *VariableNode) GetProperties() string {
 	return fmt.Sprintf("Variable node: {line: %d, file: %s, expr: %s, scope: %s, parent %v\n",
-			n.LineNumber, n.Filename, n.Value, n.ScopeId, n.Parent)
+		n.LineNumber, n.Filename, n.Value, n.ScopeId, n.Parent)
 }
 
 func (n *VariableNode) GetNodeType() string {
