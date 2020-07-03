@@ -104,9 +104,10 @@ func (fnCfg *FnCfgCreator) currFnLiteralID() string {
 }
 
 //Process a variable node if it found
-func (fnCfg *FnCfgCreator) processVariable(varNode *db.VariableNode) (string, []*db.VariableNode){
+func (fnCfg *FnCfgCreator) ProcessVariable(varNode *db.VariableNode) (string, []*db.VariableNode){
 	varExpr := varNode.Value
 	involvedVars := []*db.VariableNode{}
+
 
 	//If it is symbolic -> get the other variable node to keep track of
 	//May need more depth if a variable is assigned from another variable that was assigned a variable
@@ -118,8 +119,14 @@ func (fnCfg *FnCfgCreator) processVariable(varNode *db.VariableNode) (string, []
 		//Check if the value came from another variable ()
 		for _, node := range fnCfg.varList{
 			nodeFullScope := node.ScopeId + ":" + node.VarName //Full scope identifier used to get var node in map (ex: getName.1.1:name)
-			if strings.Contains(symbol, node.VarName){
+			//fmt.Printf("Node full scope: (%s) MapKey: (%s)\n",nodeFullScope, key)
+			//fmt.Println(" -- Node varname", node.VarName)
+
+			//If the assigned var matches a var in the list, then add to variables to track
+			if symbol == node.VarName{
 				involvedVars = append(involvedVars, fnCfg.varList[nodeFullScope]) //add the other var node to keep track
+				fmt.Println("variable name is: ", node.VarName)
+				fmt.Println("Node found is", fnCfg.varList[nodeFullScope].GetProperties())
 			}
 		}
 
@@ -194,11 +201,14 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl) db.Node {
 	}
 
 	//Test print the list of variables
-	//for _, node := range fnCfg.varList {
-	//	//fmt.Println("scope id", key)
-	//	fmt.Println(node.GetProperties())
-	//}
+	for key, node := range fnCfg.varList {
+		fmt.Println("scope id", key)
+		fmt.Println(node.GetProperties())
+	}
 
+	//_, _ = fnCfg.ProcessVariable(testVarNode)
+	//fmt.Println("Expression should be ", testExp)
+	//fmt.Println("Nodes shouldbe empty", nodes)
 
 	return root
 }
