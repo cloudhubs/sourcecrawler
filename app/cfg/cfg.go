@@ -379,7 +379,7 @@ func PrintCfg(node db.Node, level string) {
 		fmt.Printf("%sendIf Label: (%v)\n", level, node.Label)
 		PrintCfg(node.Child, level)
 	case *db.VariableNode:
-		fmt.Printf("%sVariable--Name: %v Value: %v Scope: %v", level, node.VarName, node.Value, node.ScopeId)
+		fmt.Printf("%sVariable--Name: %v Value: %v Scope: %v\n", level, node.VarName, node.Value, node.ScopeId)
 		if node.Child != node {
 			PrintCfg(node.Child, level)
 		}
@@ -1165,10 +1165,13 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		//fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
 		scopeID := ""
 		if value, ok := fnCfg.varNameToStack[varName]; ok && len(value) > 0 {
+			fmt.Printf("scope:'%s'\n", scopeID)
 			scopeID = value[len(value)-1]
 		} else {
 			//handle adding scope if variable not in map at assign time
+			fmt.Printf("record scope:'%s'\n", fnCfg.getCurrentScope())
 			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], fnCfg.getCurrentScope())
+			scopeID = fnCfg.varNameToStack[varName][len(fnCfg.varNameToStack[varName])-1]
 		}
 
 		//Add the scope ID to the variable node
