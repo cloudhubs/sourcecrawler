@@ -63,26 +63,22 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 
 		//TODO: insert VariableNodes here from FunctionNode Args
 		// and FunctionDeclNode Params
-		vars :=  make([]*db.VariableNode, len(ref.Args))
+		vars := make([]*db.VariableNode, len(ref.Args))
 		if decl, ok := decl.(*db.FunctionDeclNode); ok {
 			for i, arg := range ref.Args {
-				//Check for invalid index
-				if i <= len(decl.Params)-1 {
-					vars[i] = &db.VariableNode{
-						Filename:        ref.Filename,
-						LineNumber:      ref.LineNumber,
-						ScopeId:         "", //TODO: get scope?
-						VarName:         arg.VarName,
-						Value:           decl.Params[i].VarName, //should exist, same number of args/params
-						Parent:          nil,
-						Child:           nil,
-						ValueFromParent: false,
-					}
+				vars[i] = &db.VariableNode{
+					Filename:        ref.Filename,
+					LineNumber:      ref.LineNumber,
+					ScopeId:         "", //TODO: get scope?
+					VarName:         arg.VarName,
+					Value:           decl.Params[i].VarName, //should exist, same number of args/params
+					Parent:          nil,
+					Child:           nil,
+					ValueFromParent: false,
 				}
 			}
 
 		}
-
 
 		//connect first var to ref
 		if len(vars) > 0 {
@@ -93,9 +89,7 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 		//chain vars together
 		for i, variable := range vars {
 			//skip last
-			if i != len(vars) - 1{
-				//Check bad index
-
+			if i != len(vars)-1 {
 				variable.Child = vars[i+1]
 				vars[i+1].Parent = variable
 
@@ -118,7 +112,6 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 			Parents:    []db.Node{},
 			Label:      0,
 		}
-
 
 		for _, leaf := range getLeafNodes(copyCfg) {
 			if _, ok := leaf.(*db.ConditionalNode); ok || leaf == ref {
@@ -153,7 +146,7 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 				refs = append(refs, node)
 			}
 		}
-		if node != nil {
+		if node != nil && node != parent {
 			refs = append(refs, getReferencesRecur(fn, node, refs)...)
 		}
 	}

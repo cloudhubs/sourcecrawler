@@ -177,7 +177,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl) db.Node {
 
 	// Begin constructing the cfg
 	fmt.Println("scope entering:", fnCfg.curFnDecl)
-	fnCfg.debugScope("begin")
+	//fnCfg.debugScope("begin")
 	block := cfg.Blocks[0]
 	node := fnCfg.constructSubCfg(block)
 	if node == nil {
@@ -193,26 +193,12 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl) db.Node {
 		}
 	}
 
+	//Test print the list of variables
 	for key, node := range fnCfg.varList {
 		fmt.Println("scope id", key)
 		fmt.Println(node.GetProperties())
 	}
 
-	//Test print variable nodes
-	//for varName, scopeVal := range fnCfg.varNameToStack{
-	//	fmt.Print("Variable ", varName, " {Scopes: ")
-	//	for _, str := range scopeVal{
-	//		fmt.Print(" ", str)
-	//	}
-	//	fmt.Printf("}\n")
-	//}
-
-	//Print master stack
-	//fmt.Print("Master stack: ")
-	//for _, scopeVal := range fnCfg.scopeCount{
-	//	fmt.Print(scopeVal, " ")
-	//}
-	//fmt.Println()
 
 	return root
 }
@@ -427,7 +413,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 			current = endIf
 		} else {
 			fnCfg.leaveScope()
-			fnCfg.debugScope("ifdone/fordone")
+			//fnCfg.debugScope("ifdone/fordone")
 			current = &db.EndConditionalNode{}
 			fnCfg.blocks[block] = current
 		}
@@ -541,11 +527,11 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 				//conditional.Parent = current //??
 			} else {
 				fnCfg.enterScope()
-				fnCfg.debugScope("truechild")
+				//fnCfg.debugScope("truechild")
 				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0])
 				if len(block.Succs[0].Succs) == 0 {
 					fnCfg.leaveScope()
-					fnCfg.debugScope("truechild no successor")
+					//fnCfg.debugScope("truechild no successor")
 				}
 				//conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
@@ -560,11 +546,11 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 				// conditional.Parent = current //??
 			} else {
 				fnCfg.enterScope()
-				fnCfg.debugScope("falsechild")
+				//fnCfg.debugScope("falsechild")
 				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1])
 				if len(block.Succs[0].Succs) == 0 {
 					fnCfg.leaveScope()
-					fnCfg.debugScope("falsechild no successor")
+					//fnCfg.debugScope("falsechild no successor")
 				}
 				// conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
@@ -1109,7 +1095,6 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		var varName string = ""
 		var isFromFunction bool = false
 		var isReal bool = true
-		var scopeID string
 
 		//Process left side variable name
 		for _, lhsExpr := range stmt.Lhs {
@@ -1206,7 +1191,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 
 		//Print the final expression
 		if exprValue != "" {
-			fmt.Printf("Var expr: (%v)\n --fromFunction: %v\n --realValue: %v\n", exprValue, isFromFunction, isReal)
+			//fmt.Printf("Var expr: (%v)\n --fromFunction: %v\n --realValue: %v\n", exprValue, isFromFunction, isReal)
 		}
 
 		//Handling variable scoping at assign time
@@ -1218,13 +1203,12 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 			scopeID = value[len(value)-1]
 		} else {
 			//handle adding scope if variable not in map at assign time
-			fmt.Printf("record scope:'%s'\n", fnCfg.getCurrentScope())
+			//fmt.Printf("record scope:'%s'\n", fnCfg.getCurrentScope())
 			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], fnCfg.getCurrentScope())
 			scopeID = fnCfg.varNameToStack[varName][len(fnCfg.varNameToStack[varName])-1]
 		}
 
 		//Add the scope ID to the variable node
-		//fmt.Println("Scope id", scopeID, isReal)
 
 		var separator string
 		if runtime.GOOS == "windows" {
@@ -1257,7 +1241,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		//Add to list of variables
 		fnCfg.varList[scopeID+":"+varName] = varNode
 
-		//TODO: currently connects first variable to function, but will need to chain
+		//TODO: Might need to chain vars here?
 		if node != nil {
 			// Append the variable node to the last function call
 			connectToLeaf(node, varNode)
