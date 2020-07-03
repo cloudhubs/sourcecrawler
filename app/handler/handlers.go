@@ -239,7 +239,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 		//TODO: test
 		//Test if variable are retrieved
-		ast.Inspect(f, func(node ast.Node) bool{
+		ast.Inspect(f, func(node ast.Node) bool {
 
 			return true
 		})
@@ -297,7 +297,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	funcNode := &neoDb.FunctionNode{Child: varNode}
 	varNode.SetParents(funcNode)
-
 
 	respondJSON(w, http.StatusOK, response)
 }
