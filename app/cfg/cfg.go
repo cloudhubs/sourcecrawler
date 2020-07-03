@@ -1470,7 +1470,7 @@ func (fnCfg *FnCfgCreator) extractUsedVars(expr ast.Expr) []*db.VariableNode {
 
 func (fnCfg *FnCfgCreator) latestDeclarationOfVar(name string) *db.VariableNode {
 	if stack, ok := fnCfg.varNameToStack[name]; ok && len(stack) > 0 {
-		topDeclaredScope := stack[0]
+		topDeclaredScope := stack[len(stack)-1]
 		if v, ok := fnCfg.varList[topDeclaredScope+":"+name]; ok {
 			return v
 		}
