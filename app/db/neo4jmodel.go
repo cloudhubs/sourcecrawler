@@ -107,7 +107,7 @@ type ConditionalNode struct {
 	FalseChild Node
 	Parent     Node
 	Label      ExecutionLabel
-	VarsUsed   []VariableNode
+	VarsUsed   []*VariableNode
 }
 
 type EndConditionalNode struct {
