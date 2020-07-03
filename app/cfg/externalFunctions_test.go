@@ -2,12 +2,11 @@ package cfg
 
 import (
 	"fmt"
+	"go/token"
 	"os"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/helper"
 	"testing"
-
-	"github.com/rs/zerolog/log"
 )
 
 type addingTestCase struct {
@@ -15,19 +14,17 @@ type addingTestCase struct {
 	Root db.Node
 }
 
-func addThisFunc() {
-	addThisFunc()
+func addThisFunc(a int) {
+	addThisFunc(a)
 	fmt.Println("hi")
 }
-func addThisIndirect2() {
+func addThisIndirect2(b int) {
 	addThisIndirect1()
-	fmt.Println("two")
-	log.Info().Msg("a log")
 }
 
 func addThisIndirect1() {
-	addThisIndirect2()
-	fmt.Println("one")
+	a := 2
+	addThisIndirect2(a)
 }
 
 func TestAddingFuncs(t *testing.T) {
@@ -36,7 +33,25 @@ func TestAddingFuncs(t *testing.T) {
 			//construct a graph to represent a cfg
 
 			leaf := &db.StatementNode{}
-			fnCall := &db.FunctionNode{FunctionName: "addThisFunc", Child: leaf}
+			var fnCall = &db.FunctionNode{
+				Filename:     "",
+				LineNumber:   0,
+				FunctionName: "addThisFunc",
+				Args: []db.VariableNode{
+					{
+						Filename:        "",
+						LineNumber:      0,
+						ScopeId:         "addThisFunc",
+						VarName:         "a",
+						Value:           "",
+						Parent:          nil,
+						Child:           nil,
+						ValueFromParent: false,
+					},},
+				Child:  leaf,
+				Parent: nil,
+				Label:  0,
+			}
 			leaf.SetParents(fnCall)
 			root := &db.StatementNode{Child: fnCall}
 			fnCall.SetParents(root)
@@ -72,7 +87,8 @@ func TestAddingFuncs(t *testing.T) {
 			}
 			//run function to add in additional graphs
 			sources := helper.GatherGoFiles(wd)
-			ConnectExternalFunctions(test.Root, []*db.FunctionNode{}, sources, wd)
+			fnCfg := NewFnCfgCreator("",wd, token.NewFileSet())
+			fnCfg.ConnectExternalFunctions(test.Root, []*db.FunctionNode{}, sources)
 			PrintCfg(test.Root, "")
 
 		})

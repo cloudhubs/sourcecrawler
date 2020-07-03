@@ -82,7 +82,7 @@ func (fnCfg *FnCfgCreator) currFnLiteralID() string {
 	return fmt.Sprintf("%s.%s.func%v", fnCfg.CurPkg, fnCfg.curFnDecl, fnCfg.curFnLitID)
 }
 
-// CreateCfg creates the CFG For a given function declaration, filepath and file, and a map of regexes contained within the file.
+// CreateCfg creates the CFG For a given function declaration
 func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl) db.Node {
 	if fn == nil {
 		log.Warn().Msg("received a null function declaration")
@@ -154,11 +154,10 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl) db.Node {
 //this will be useful for connecting external functions after an
 //initial cfg is created
 func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName string, files []string, seenFn []*db.FunctionNode) db.Node {
-	fset := token.NewFileSet()
 	found := false
 	var fn *ast.FuncDecl
 	for _, file := range files {
-		node, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
+		node, err := parser.ParseFile(fnCfg.fset, file, nil, parser.ParseComments)
 		if err != nil {
 			panic(err)
 		}
@@ -183,7 +182,7 @@ func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName string, files []stri
 		//add in functions in this cfg, excluding
 		//any functions already seen in this scope
 		//or higher scopes
-		ConnectExternalFunctions(node, seenFn, files, fnCfg.base)
+		fnCfg.ConnectExternalFunctions(node, seenFn, files)
 		return node
 	}
 	return nil
@@ -193,9 +192,8 @@ func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName string, files []stri
 //root = first iteration of cfg containing stacktrace functions
 //seenFns = []*db.FunctionNode{} (empty)
 //base = project root (needed for cfg construction)
-//regexes = NOT NEEDED/DEPRICATED ARRAY REPLACED BY INLINE FUNCTION TO GRAB REGEX
-func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFiles []string, base string) {
-	var fnCfg FnCfgCreator
+func (fnCfg *FnCfgCreator) ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFiles []string) {
+
 	node := root
 	for node != nil {
 		var tmp db.Node
@@ -232,9 +230,9 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 								vars[i] = &db.VariableNode{
 									Filename:        node.Filename,
 									LineNumber:      node.LineNumber,
-									ScopeId:         "", //TODO: get scope?
+									ScopeId:         fnCfg.getCurrentScope(), //TODO: get scope?
 									VarName:         arg.VarName,
-									Value:           decl.Params[i].VarName, //should exist, same number of args/params
+									Value:           decl.Params[i].VarName, //TODO: ^^get opinion on the order of these
 									Parent:          nil,
 									Child:           nil,
 									ValueFromParent: false,
@@ -242,6 +240,9 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 							}
 
 						}
+
+						//hold next node to skip the subtree attached
+						tmp = node.Child
 
 						//connect first var to ref
 						if len(vars) > 0 {
@@ -262,15 +263,19 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 						if len(vars) > 0 {
 							vars[len(vars)-1].Child = newFn
 							newFn.SetParents(vars[len(vars)-1])
+						}else {
+							node.Child = newFn
+							newFn.SetParents(node)
 						}
 
+
+
 						//add dummy return node to consolidate returns
-						tmp = node.Child
 						tmpReturn := &db.ReturnNode{
 							Filename:   node.Child.GetFilename(),
 							LineNumber: node.Child.GetLineNumber(),
 							Expression: "",
-							Child:      node.Child,
+							Child:      tmp,
 							Parents:    nil,
 							Label:      0,
 						}
@@ -289,7 +294,7 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 		} else {
 			for child := range node.GetChildren() {
 				//repeat
-				ConnectExternalFunctions(child, seenFns, sourceFiles, base)
+				fnCfg.ConnectExternalFunctions(child, seenFns, sourceFiles)
 			}
 			node = nil
 		}
@@ -301,7 +306,7 @@ func PrintCfg(node db.Node, level string) {
 	if node == nil {
 		return
 	}
-	var parStr string = "Parent: "
+	var parStr = "Parent: "
 	if node.GetParents() != nil {
 		//parStr += node.GetProperties()
 		parStr = node.GetFilename()
@@ -309,32 +314,32 @@ func PrintCfg(node db.Node, level string) {
 
 	switch node := node.(type) {
 	case *db.FunctionDeclNode:
-		fmt.Printf("%s(%v) %s(%v) (%v) (%v) (%v)\n", level,
+		fmt.Printf("%sDeclaration--Receivers: (%v) Signature: %s(%v) Returns: (%v) Label: (%v) ParStr(%v)\n", level,
 			node.Receivers, node.FunctionName, node.Params, node.Returns, node.Label, parStr)
 		PrintCfg(node.Child, level+"  ")
 	case *db.FunctionNode:
-		fmt.Printf("%s%s (%v) (%v) \n", level, node.FunctionName, node.Label, parStr)
+		fmt.Printf("%sFunction--Name: %s Label: (%v) parStr: (%v) \n", level, node.FunctionName, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.StatementNode:
-		fmt.Printf("%s%s (%v) (%v)\n", level, node.LogRegex, node.Label, parStr)
+		fmt.Printf("%sStatement--Regex: %s Label: (%v) ParStr: (%v)\n", level, node.LogRegex, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.ConditionalNode:
-		fmt.Printf("%sif %s (%v) (%v)\n", level, node.Condition, node.Label, parStr)
+		fmt.Printf("%sif %s Label: (%v) ParStr: (%v)\n", level, node.Condition, node.Label, parStr)
 		PrintCfg(node.TrueChild, level+"  ")
 		fmt.Println(level + "else")
 		PrintCfg(node.FalseChild, level+"  ")
 	case *db.ReturnNode:
-		fmt.Printf("%sreturn %s (%v) (%v)\n", level, node.Expression, node.Label, parStr)
+		fmt.Printf("%sreturn %s Label: (%v) ParStr: (%v)\n", level, node.Expression, node.Label, parStr)
 		lv := ""
 		for i := 0; i < len(level)-2; i++ {
 			lv += " "
 		}
 		PrintCfg(node.Child, lv)
 	case *db.EndConditionalNode:
-		fmt.Printf("%sendIf (%v)\n", level, node.Label)
+		fmt.Printf("%sendIf Label: (%v)\n", level, node.Label)
 		PrintCfg(node.Child, level)
 	case *db.VariableNode:
-		fmt.Printf(node.GetProperties())
+		fmt.Printf("%sVariable--Name: %v Value: %v Scope: %v", level, node.VarName, node.Value, node.ScopeId)
 		PrintCfg(node.Child, level)
 	}
 }
@@ -713,7 +718,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, conditional bool) (node db
 				node = db.Node(&db.StatementNode{
 					Filename:   filepath.ToSlash(relPath),
 					LineNumber: line,
-					LogRegex:   logsource.GetLogRegexFromInfo(fset.File(expr.Pos()).Name(), line),
+					LogRegex:   logsource.GetLogRegexFromInfo(fnCfg.fset.File(expr.Pos()).Name(), line),
 				})
 			} else {
 				// Was a method call.
@@ -721,7 +726,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, conditional bool) (node db
 					Filename:     filepath.ToSlash(relPath),
 					LineNumber:   fnCfg.fset.Position(expr.Pos()).Line,
 					FunctionName: fnCfg.expressionString(fn),
-					Args:         fnCfg.getFuncArgs(expr.Args, base, fset), //TODO: generate Args for functionNode
+					Args:         fnCfg.getFuncArgs(expr.Args), //TODO: generate Args for functionNode
 				})
 			}
 		case *ast.FuncLit:
@@ -744,7 +749,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, conditional bool) (node db
 				Filename:     filepath.ToSlash(relPath),
 				LineNumber:   fnCfg.fset.Position(expr.Pos()).Line,
 				FunctionName: fnCfg.callExprName(expr),
-				Args:         fnCfg.getFuncArgs(expr.Args, base, fset), //TODO: generate Args for functionNode
+				Args:         fnCfg.getFuncArgs(expr.Args), //TODO: generate Args for functionNode
 			})
 		}
 	case *ast.FuncLit:
@@ -908,7 +913,7 @@ func (fnCfg *FnCfgCreator) getFuncParams(fieldList *ast.FieldList, file string) 
 					variable := db.VariableNode{
 						Filename: file,
 						VarName:  fnCfg.expressionString(name),
-						//TODO: scope
+						ScopeId: fnCfg.getCurrentScope(),
 					}
 					params[i] = variable
 				}
@@ -919,13 +924,23 @@ func (fnCfg *FnCfgCreator) getFuncParams(fieldList *ast.FieldList, file string) 
 	return params
 }
 
-func (fnCfg *FnCfgCreator) getFuncArgs(exprs []ast.Expr, base string, fset *token.FileSet) []db.VariableNode {
+func (fnCfg *FnCfgCreator) getFuncArgs(exprs []ast.Expr) []db.VariableNode {
 	args := make([]db.VariableNode, len(exprs))
 	if exprs != nil {
-		for _, exp := range exprs {
-			if exp != nil {
-				exprNode := fnCfg.getExprNode(exp, base, fset, false)
-				fmt.Printf("%T", exprNode)
+		for i, exp := range exprs {
+			if exp, ok := exp.(*ast.Ident); ok && exp != nil {
+				//fmt.Printf("%T %v\n", exp, exp)
+				//TODO: construct VariableNode from Expr
+				args[i] = db.VariableNode{
+					Filename:        fnCfg.fset.File(exp.Pos()).Name(),
+					LineNumber:      fnCfg.fset.Position(exp.Pos()).Line,
+					ScopeId:         fnCfg.getCurrentScope(),
+					VarName:         exp.Name,
+					Value:           "",
+					Parent:          nil,
+					Child:           nil,
+					ValueFromParent: false,
+				}
 			}
 		}
 	}
