@@ -79,7 +79,7 @@ func (fnCfg *FnCfgCreator) enterScope() {
 }
 
 func (fnCfg *FnCfgCreator) leaveScope() {
-	if len(fnCfg.scopeCount) < 1 {
+	if len(fnCfg.scopeCount) > 1 {
 		fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
 	}
 	// Remove out of scope variable declarations
@@ -478,10 +478,10 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 			if prevNode.Child != nil {
 				prevNode.Child.SetParents(prevNode)
 			}
-			//Remove last element of master stack for endIf
-			if len(fnCfg.scopeCount) > 0 {
-				fnCfg.scopeCount = fnCfg.scopeCount[:len(fnCfg.scopeCount)-1]
-			}
+			// //Remove last element of master stack for endIf
+			// if len(fnCfg.scopeCount) > 0 {
+			// 	fnCfg.scopeCount = fnCfg.scopeCount[:len(fnCfg.scopeCount)-1]
+			// }
 			//TODO: Variable node - set child and parent?
 		case *db.VariableNode:
 			//fmt.Println("curr is var node")
@@ -519,11 +519,11 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 				//conditional.Parent = current //??
 			} else {
 				fnCfg.enterScope()
-				// fnCfg.debugScope("truechild")
+				fnCfg.debugScope("truechild")
 				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0])
 				if len(block.Succs[0].Succs) == 0 {
 					fnCfg.leaveScope()
-					// fnCfg.debugScope("truechild no successor")
+					fnCfg.debugScope("truechild no successor")
 				}
 				//conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
