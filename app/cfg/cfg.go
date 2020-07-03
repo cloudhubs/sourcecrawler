@@ -38,7 +38,7 @@ type FnCfgCreator struct {
 	scopeCount     []uint              //Holds the current counts for each level of the current subscopes
 
 	//Holds all variable nodes
-	varList map[string]db.VariableNode
+	varList map[string]*db.VariableNode
 }
 
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
@@ -52,7 +52,7 @@ func NewFnCfgCreator(pkg string, base string, fset *token.FileSet) *FnCfgCreator
 		curFnLitID:     1,
 		varNameToStack: make(map[string][]string),
 		scopeCount:     make([]uint, 0),
-		varList:		make(map[string]db.VariableNode),
+		varList:		make(map[string]*db.VariableNode),
 	}
 }
 
@@ -72,12 +72,16 @@ func (fnCfg *FnCfgCreator) getCurrentScope() string {
 }
 
 func (fnCfg *FnCfgCreator) enterScope() {
-	fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
-	fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+	if len(fnCfg.scopeCount) > 0 {
+		fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+		fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+	}
 }
 
 func (fnCfg *FnCfgCreator) leaveScope() {
-	fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
+	if len(fnCfg.scopeCount) > 0 {
+		fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
+	}
 }
 
 func (fnCfg *FnCfgCreator) debugScope(where string) {
@@ -86,6 +90,31 @@ func (fnCfg *FnCfgCreator) debugScope(where string) {
 
 func (fnCfg *FnCfgCreator) currFnLiteralID() string {
 	return fmt.Sprintf("%s.%s.func%v", fnCfg.CurPkg, fnCfg.curFnDecl, fnCfg.curFnLitID)
+}
+
+//Process a variable node if it found
+func (fnCfg *FnCfgCreator) processVariable(varNode *db.VariableNode) (string, []*db.VariableNode){
+	varExpr := varNode.Value
+
+	involvedVars := []*db.VariableNode{}
+
+	//If it is symbolic -> get the other variable node to keep track of
+	//May need more depth if a variable is assigned from another variable that was assigned a variable
+	// (ex:  c:=10,  -> b := c, a:= b)
+	if !varNode.IsReal{
+		startNdx := strings.Index(varExpr, "=")+2
+		symbol := varExpr[startNdx:] // could be a func() or a variable name
+
+		//Check if the value came from another variable ()
+		for _, node := range fnCfg.varList{
+			if strings.Contains(symbol, node.VarName){
+				involvedVars = append(involvedVars, fnCfg.varList[node.ScopeId]) //add the other var node to keep track
+			}
+		}
+
+	}
+
+	return varExpr, involvedVars
 }
 
 // CreateCfg creates the CFG For a given function declaration
@@ -462,9 +491,10 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 				prevNode.Child.SetParents(prevNode)
 			}
 			//Remove last element of master stack for endIf
-			if len(fnCfg.scopeCount) > 0 {
-				fnCfg.scopeCount = fnCfg.scopeCount[:len(fnCfg.scopeCount)-1]
-			}
+			//if len(fnCfg.scopeCount) > 0 {
+			//	fnCfg.scopeCount = fnCfg.scopeCount[:len(fnCfg.scopeCount)-1]
+			//}
+
 			//TODO: Variable node - set child and parent?
 		case *db.VariableNode:
 			//fmt.Println("curr is var node")
@@ -479,12 +509,12 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 		if expr, ok := node.(ast.Expr); ok && last && conditional {
 
 			//*Increment last element of master stack for conditional nodes (then add 0)*
-			if len(fnCfg.scopeCount) > 0 {
-				fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
-				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
-			} else {
-				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
-			}
+			//if len(fnCfg.scopeCount) > 0 {
+			//	fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+			//	fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+			//} else {
+			//	fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+			//}
 
 			// If the current node is the conditional, use it
 			// otherwise there was some initialization and it will need to be
@@ -654,7 +684,7 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
 		var varName string = ""
 		initType := ""
 		initVal := ""
-		stackStr := ""
+		//stackStr := ""
 		exprStr := ""
 
 		//Grab the variable type
@@ -681,38 +711,43 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
 		//Set expr string
 		exprStr = "var " + varName + " " + initType + " = " + initVal
 
-		//TODO: handle variable scoping
 		//If variable is not in the map, then add to map and its scope (add a new state)
 		value, ok := fnCfg.varNameToStack[varName]
 		if ok {
 			fmt.Println(varName, value, " was found in the map")
+			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], fnCfg.getCurrentScope()) //append
 		} else {
-			for index := range fnCfg.scopeCount {
-				//Exclude last element
-				if index == len(fnCfg.scopeCount)-1 {
-					break
-				}
+			//scopeID = fnCfg.getCurrentScope()
+			//for index := range fnCfg.scopeCount {
+			//	//Exclude last element
+			//	if index == len(fnCfg.scopeCount)-1 {
+			//		break
+			//	}
+			//
+			//	//Add the scope (Ex: 1.1.2)
+			//	stackStr += fmt.Sprint(fnCfg.scopeCount[index])
+			//
+			//	//If last element, dont add a .
+			//	if index == len(fnCfg.scopeCount)-2 {
+			//		continue
+			//	} else {
+			//		stackStr += "."
+			//	}
+			//}
+			////If there was only 1 element in master stack, set to 0
+			//if stackStr == "" {
+			//	stackStr = "0"
+			//}
 
-				//Add the scope (Ex: 1.1.2)
-				stackStr += fmt.Sprint(fnCfg.scopeCount[index])
-
-				//If last element, dont add a .
-				if index == len(fnCfg.scopeCount)-2 {
-					continue
-				} else {
-					stackStr += "."
-				}
-			}
-			//If there was only 1 element in master stack, set to 0
-			if stackStr == "" {
-				stackStr = "0"
-			}
 			//Create entry
-			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], stackStr)
+			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], fnCfg.getCurrentScope())
 		}
 
+
 		//Create scopeID string (ex: testFunc.1.1.2)
-		scopeID = fnCfg.curFnDecl + "." + stackStr
+		//scopeID = fnCfg.curFnDecl + "." + stackStr
+		scopeID = fnCfg.getCurrentScope()
+		fmt.Println("Current scope in var decl", scopeID)
 
 		//Add variable node to cfg
 		//TODO: not shown in current cfg since most vars are handled in the assignStmt
@@ -1070,6 +1105,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		var varName string = ""
 		var isFromFunction bool = false
 		var isReal bool = true
+		var scopeID string
 
 		//Process left side variable name
 		for _, lhsExpr := range stmt.Lhs {
@@ -1172,26 +1208,28 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		//Handling variable scoping at assign time
 		//var scopeID string = ""
 		//fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
-		stackStr := ""
-		if value, ok := fnCfg.varNameToStack[varName]; ok {
+		//stackStr := ""
+		if _, ok := fnCfg.varNameToStack[varName]; ok {
 			//Add all elements as the scope
-			for index := range value {
-				stackStr += value[index]
-				//If last element, dont add .
-				if index == len(value)-1 {
-					break
-				} else {
-					stackStr += "."
-				}
-			}
+			//for index := range value {
+			//	stackStr += value[index]
+			//	//If last element, dont add .
+			//	if index == len(value)-1 {
+			//		break
+			//	} else {
+			//		stackStr += "."
+			//	}
+			//}
+			scopeID = fnCfg.getCurrentScope()
 		} else {
 			//handle adding scope if variable not in map at assign time
 			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], "1")
+			scopeID = fnCfg.getCurrentScope()
 		}
 
-		//Add the scope ID to the variable node
-		scopeID := fnCfg.curFnDecl + "." + stackStr
-		//fmt.Println("Scope id", scopeID, isReal)
+		//Set scope ID
+		scopeID = fnCfg.getCurrentScope()
+		fmt.Println("Scope in var assignment", scopeID)
 
 		var separator string
 		if runtime.GOOS == "windows" {
@@ -1209,7 +1247,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 			LineNumber:      fnCfg.fset.Position(stmt.Pos()).Line,
 			ScopeId:         scopeID,
 			VarName:         varName,
-			Value:           exprValue, //the expression (ex: x := 5)
+			Value:           exprValue, //the expression (ex: x := 5, temp := foo())
 			Parent:          nil,
 			Child:           nil,
 			ValueFromParent: isFromFunction,
@@ -1222,7 +1260,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		//}
 
 		//Add to list of variables
-		fnCfg.varList[scopeID] = *varNode
+		fnCfg.varList[scopeID] = varNode
 
 		//TODO: currently connects first variable to function, but will need to chain
 		if node != nil {
