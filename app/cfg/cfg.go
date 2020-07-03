@@ -1,11 +1,14 @@
 package cfg
 
 import (
+	"bufio"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
+	"runtime"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/logsource"
 	"strconv"
@@ -146,7 +149,23 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl) db.Node {
 			fn.Child.SetParents(fn)
 		}
 	}
-	fmt.Println()
+
+	//Test print variable nodes
+	//for varName, scopeVal := range fnCfg.varNameToStack{
+	//	fmt.Print("Variable ", varName, " {Scopes: ")
+	//	for _, str := range scopeVal{
+	//		fmt.Print(" ", str)
+	//	}
+	//	fmt.Printf("}\n")
+	//}
+
+	//Print master stack
+	//fmt.Print("Master stack: ")
+	//for _, scopeVal := range fnCfg.scopeCount{
+	//	fmt.Print(scopeVal, " ")
+	//}
+	//fmt.Println()
+
 	return root
 }
 
@@ -263,12 +282,10 @@ func (fnCfg *FnCfgCreator) ConnectExternalFunctions(root db.Node, seenFns []*db.
 						if len(vars) > 0 {
 							vars[len(vars)-1].Child = newFn
 							newFn.SetParents(vars[len(vars)-1])
-						}else {
+						} else {
 							node.Child = newFn
 							newFn.SetParents(node)
 						}
-
-
 
 						//add dummy return node to consolidate returns
 						tmpReturn := &db.ReturnNode{
@@ -436,8 +453,13 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 			if prevNode.Child != nil {
 				prevNode.Child.SetParents(prevNode)
 			}
-			//TODO: Variable node case
+			//Remove last element of master stack for endIf
+			if len(fnCfg.scopeCount) > 0 {
+				fnCfg.scopeCount = fnCfg.scopeCount[:len(fnCfg.scopeCount)-1]
+			}
+			//TODO: Variable node - set child and parent?
 		case *db.VariableNode:
+			//fmt.Println("curr is var node")
 			prevNode.Child = current
 			if prevNode.Child != nil {
 				prevNode.Child.SetParents(prevNode)
@@ -447,6 +469,15 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 
 		// Conditionals are the last node and expression in a block, so if it is a control-flow, handle it
 		if expr, ok := node.(ast.Expr); ok && last && conditional {
+
+			//*Increment last element of master stack for conditional nodes (then add 0)*
+			if len(fnCfg.scopeCount) > 0 {
+				fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+			} else {
+				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+			}
+
 			// If the current node is the conditional, use it
 			// otherwise there was some initialization and it will need to be
 			// a new conditional node as the child of the previous initialization
@@ -604,32 +635,29 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 }
 
 //Returns a variable node if it is encountered
-// TODO: ast.ValueSpec only holds a constant or variable declaration
+//  ast.ValueSpec only holds a constant or variable declaration
 //  ast.AssignStmt handles variable assignments
 func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
 	relPath, _ := filepath.Rel(fnCfg.base, fnCfg.fset.File(spec.Pos()).Name())
 
 	switch spec := spec.(type) {
 	case *ast.ValueSpec:
-		var scopeID string = "" //TODO: may need more work
+		var scopeID string = ""
 		var varName string = ""
 		initType := ""
-		initValues := ""
+		initVal := ""
 		stackStr := ""
-
-		//fmt.Println("Current function", fnCfg.curFnDecl)
+		exprStr := ""
 
 		//Grab the variable type
 		if spec.Type != nil {
 			varType := fmt.Sprint(spec.Type)
-			//fmt.Println("Var type:", varType)
 			initType = varType
 		}
 
 		//Set variable name
 		if len(spec.Names) > 0 {
 			varName = spec.Names[0].Name
-			//fmt.Print("Var name:", varName)
 		}
 
 		//Get variable initial value if it exists
@@ -637,10 +665,13 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
 			if expr != nil {
 				varVal := fmt.Sprint(expr)
 				//fmt.Println("Initial value:", varVal)
-				initValues = varVal
+				initVal += varVal
 			}
 		}
-		fmt.Println()
+		//fmt.Println()
+
+		//Set expr string
+		exprStr = "var " + varName + " " + initType + " = " + initVal
 
 		//TODO: handle variable scoping
 		//If variable is not in the map, then add to map and its scope (add a new state)
@@ -676,19 +707,19 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
 		scopeID = fnCfg.curFnDecl + "." + stackStr
 
 		//Add variable node to cfg
+		//TODO: not shown in current cfg since most vars are handled in the assignStmt
 		node = db.Node(&db.VariableNode{
 			Filename:        filepath.ToSlash(relPath),
 			LineNumber:      fnCfg.fset.Position(spec.Pos()).Line,
 			ScopeId:         scopeID,
 			VarName:         varName,
-			Value:           initType + initValues,
+			Value:           exprStr,
 			Parent:          nil,
 			Child:           nil,
 			ValueFromParent: false,
 		})
 
-		fmt.Println("Declaration", node.GetProperties())
-		//TODO: connect to parent function?
+		//fmt.Println("Var declaration:", node.GetProperties())
 
 	case *ast.ImportSpec:
 		//fmt.Println(spec.Name.Name)
@@ -913,7 +944,7 @@ func (fnCfg *FnCfgCreator) getFuncParams(fieldList *ast.FieldList, file string) 
 					variable := db.VariableNode{
 						Filename: file,
 						VarName:  fnCfg.expressionString(name),
-						ScopeId: fnCfg.getCurrentScope(),
+						ScopeId:  fnCfg.getCurrentScope(),
 					}
 					params[i] = variable
 				}
@@ -1024,23 +1055,115 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 			Params:       params,
 			Returns:      returns,
 		})
-	case *ast.AssignStmt: //TODO: handle variable assignment
-		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs)
+	case *ast.AssignStmt: //Handles variables when being assigned
+		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs, base, fset)
 
-		//Grab the variable name
-		strLHS := fmt.Sprint(stmt.Lhs) //variable name
-		varName := strLHS[strings.Index(strLHS, "[")+1 : strings.Index(strLHS, "]")]
+		var exprValue string = "" //hold the expression as a string
+		var varName string = ""
+		var isFromFunction bool = false
+		var isReal bool = true
 
-		//Grab the value being assigned
-		//strRHS := fmt.Sprint(stmt.Rhs) //the value
-		//assignValue := strRHS[strings.Index(strRHS, "[")+1:strings.Index(strRHS, "]")]
+		//Process left side variable name
+		for _, lhsExpr := range stmt.Lhs {
+			switch expr := lhsExpr.(type) {
+			case *ast.SelectorExpr:
+				if expr.Sel.Name != "" {
+					varName = expr.Sel.Name
+				}
+			}
+		}
 
-		//Get the expression
-		//strExpr := stmt.Tok.String()   //assignment operator
-		//var scopeID string = ""
-		//fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
+		//Set variable name if it is still empty
+		if varName == "" {
+			strLHS := fmt.Sprint(stmt.Lhs)
+			varName = strLHS[strings.Index(strLHS, "[")+1 : strings.Index(strLHS, "]")]
+		}
+
+		//Get the expression operator
+		exprOp := stmt.Tok.String() //assignment operator
+
+		//Checks if rhs if a variable gets a value from a function or literal
+		for _, rhsExpr := range stmt.Rhs {
+			switch expr := rhsExpr.(type) {
+			//Basic literals indicate the var shouldn't have been returned from a function and a real value
+			case *ast.BasicLit:
+				if exprOp == ":=" {
+					exprValue = varName + " " + exprOp + " " + expr.Value
+				} else if exprOp == "=" {
+					exprValue = "var " + varName + " " + expr.Kind.String() + " " + exprOp + " " + expr.Value
+				}
+				isFromFunction = false
+				isReal = true
+
+			case *ast.CompositeLit: //Indicates a variable being assigned a struct/slice/array (real value?)
+				//fmt.Println("Is composite literal", expr.Type)
+				if expr.Incomplete {
+					fmt.Println("Source expressions missing in elt list")
+				}
+
+				//Grabbing the struct/slice assignment from the composite literal
+				litPos := expr.Type.Pos()
+				tempFile := fset.Position(litPos).Filename
+				lineNum := fset.Position(litPos).Line
+				file, err := os.Open(tempFile)
+				if err != nil {
+					fmt.Println("Error opening file")
+				}
+
+				//Read file at specific line to get function name
+				cnt := 1
+				var rightValue string = ""
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					if cnt == lineNum {
+						rightValue = scanner.Text()
+						break
+					}
+					cnt++
+				}
+
+				//Get the right side value assignment
+				rightValue = rightValue[strings.Index(rightValue, "=")+2 : strings.Index(rightValue, "{")]
+
+				isFromFunction = false
+				isReal = false
+				exprValue = varName + " " + exprOp + " " + rightValue
+
+			default: //If it isn't a literal, it will be a symbolic value (from variable or from function)
+				litPos := expr.Pos()
+				tempFile := fset.Position(litPos).Filename
+				lineNum := fset.Position(litPos).Line
+				file, err := os.Open(tempFile)
+				if err != nil {
+					fmt.Println("Error opening file")
+				}
+
+				//Read file at specific line to get function name
+				cnt := 1
+				var rightValue string = ""
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					if cnt == lineNum {
+						rightValue = scanner.Text()
+						break
+					}
+					cnt++
+				}
+
+				//Sets the variable expression
+				isFromFunction, exprValue = isFunctionAssignment(rightValue)
+				isReal = false
+			}
+		}
+
+		//Print the final expression
+		if exprValue != "" {
+			fmt.Printf("Var expr: (%v)\n --fromFunction: %v\n --realValue: %v\n", exprValue, isFromFunction, isReal)
+		}
 
 		//Handling variable scoping at assign time
+		//var scopeID string = ""
+		//fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
 		stackStr := ""
 		if value, ok := fnCfg.varNameToStack[varName]; ok {
 			//Add all elements as the scope
@@ -1053,34 +1176,50 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 					stackStr += "."
 				}
 			}
-		} else { //TODO: handle adding scope if variable not in map at assign time
+		} else {
+			//handle adding scope if variable not in map at assign time
 			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], "1")
 		}
 
-		//scopeID = fnCfg.curFnDecl + "." + stackStr
-		//fmt.Println("Scope id", scopeID)
+		//Add the scope ID to the variable node
+		scopeID := fnCfg.curFnDecl + "." + stackStr
+		//fmt.Println("Scope id", scopeID, isReal)
+
+		var separator string
+		if runtime.GOOS == "windows" {
+			separator = "\\"
+		} else {
+			separator = "/"
+		}
+		longFile := fset.File(stmt.Pos()).Name()
+		file := longFile[strings.LastIndex(longFile, separator)+1:]
 
 		//Build variable node
-		//TODO: throwing stack overflow error if variable node is created
-		//varNode = db.Node(&db.VariableNode{
-		//	Filename:        filepath.ToSlash(relPath),
-		//	LineNumber:      fset.Position(stmt.Pos()).Line,
-		//	ScopeId:         scopeID,
-		//	VarName:         strLHS,
-		//	Value:           varName + strExpr + assignValue, //the expression (ex: x := 5)
-		//	Parent:          nil,
-		//	Child:           nil,
-		//	ValueFromParent: false,
-		//})
+		// TODO: Would be easiest to make a chain of variable nodes here, but not sure if child nodes will be overwritten later
+		varNode := db.Node(&db.VariableNode{
+			Filename:        file,
+			LineNumber:      fset.Position(stmt.Pos()).Line,
+			ScopeId:         scopeID,
+			VarName:         varName,
+			Value:           exprValue, //the expression (ex: x := 5)
+			Parent:          nil,
+			Child:           nil,
+			ValueFromParent: isFromFunction,
+			IsReal:          isReal,
+		})
 
-		//fmt.Println(varNode.GetProperties())
-
-		//if node != nil {
-		//	// Append the function node to the last function call
-		//	connectToLeaf(node, varNode)
-		//} else {
-		//	node = varNode
+		//Check if a variable contains two variables
+		//if strings.Contains(exprValue, ",") && strings.Contains(exprValue, ":="){
+		//
 		//}
+
+		//TODO: currently connects first variable to function, but will need to chain
+		if node != nil {
+			// Append the variable node to the last function call
+			connectToLeaf(node, varNode)
+		} else {
+			node = varNode
+		}
 
 	case *ast.ReturnStmt:
 		// Find all function calls contained in the return statement
@@ -1115,6 +1254,37 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		// fmt.Println("\t\tdid not cast")
 	}
 	return
+}
+
+//Helper function to determine if a variable gets its value from a function
+// May need to handle more cases later, but it works well for now
+func isFunctionAssignment(str string) (bool, string) {
+	isFunction := false
+
+	var compStr string = str
+	var endIndex int = 0
+	if strings.Contains(compStr, ";") {
+		endIndex = strings.Index(str, ";")
+	}
+
+	//slice out just the assignment part
+	if strings.Contains(compStr, "if") && strings.Contains(compStr, ";") {
+		compStr = str[strings.Index(compStr, "if")+3 : endIndex]
+		//fmt.Println("If strings", compStr)
+	}
+	if strings.Contains(compStr, "for") && strings.Contains(compStr, ";") {
+		compStr = str[strings.Index(compStr, "for")+4 : endIndex]
+		//fmt.Println("For strings", compStr)
+	}
+
+	//If it contains a set of parenthesis, most likely a function
+	if strings.Contains(str, "(") && strings.Contains(str, ")") {
+		if strings.Contains(str, ".") {
+			isFunction = true
+		}
+	}
+
+	return isFunction, compStr
 }
 
 // Recursively creates the string of an `ast.Expr`.

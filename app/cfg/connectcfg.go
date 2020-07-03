@@ -18,6 +18,7 @@ func ConnectFnCfgs(funcs []db.Node) []db.Node {
 					if foundCalls := connectCallsToDecls(fn, otherFn); foundCalls {
 						unecessaryDecls[j+1] = struct{}{}
 					}
+
 				}
 			}
 		}
