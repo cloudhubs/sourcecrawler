@@ -553,8 +553,8 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		// Keep track of the current parent function the log statement is contained in
 		if funcDecl, ok := n.(*ast.FuncDecl); ok {
 			//fmt.Println("checking funcDecl", funcDecl.Name)
-			cfg := cfg.NewFnCfgCreator("pkg")
-			/*root := */ cfg.CreateCfg(funcDecl, base, fset)
+			cfg := cfg.NewFnCfgCreator("pkg", base, fset)
+			/*root := */ cfg.CreateCfg(funcDecl)
 			//printCfg(root, "")
 			//fmt.Println()
 		}

@@ -11,16 +11,19 @@ import (
 	"runtime"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/logsource"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/tools/go/cfg"
 )
 
-
 // FnCfgCreator allows you to compute the CFG for a given function declaration
 type FnCfgCreator struct {
 	blocks map[*cfg.Block]db.Node
+
+	base string
+	fset *token.FileSet
 
 	// Map of literal identifiers to their CFG
 	FnLiterals map[string]*db.FunctionDeclNode
@@ -32,16 +35,18 @@ type FnCfgCreator struct {
 
 	// Properties for keeping track of scope
 	varNameToStack map[string][]string //maps var names to scope names that represent the scopes this variable was seen in
-	scopeCount     []uint //Holds the current counts for each level of the current subscopes
+	scopeCount     []uint              //Holds the current counts for each level of the current subscopes
 
 	//Holds all variable nodes
 	varList map[string]db.VariableNode
 }
 
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
-func NewFnCfgCreator(pkg string) *FnCfgCreator {
+func NewFnCfgCreator(pkg string, base string, fset *token.FileSet) *FnCfgCreator {
 	return &FnCfgCreator{
 		blocks:         make(map[*cfg.Block]db.Node),
+		base:           base,
+		fset:           fset,
 		FnLiterals:     make(map[string]*db.FunctionDeclNode),
 		CurPkg:         pkg,
 		curFnLitID:     1,
@@ -51,12 +56,40 @@ func NewFnCfgCreator(pkg string) *FnCfgCreator {
 	}
 }
 
+func (fnCfg *FnCfgCreator) getCurrentScope() string {
+	b := strings.Builder{}
+	b.WriteString(fnCfg.CurPkg)
+	b.WriteString(".")
+	b.WriteString(fnCfg.curFnDecl)
+	b.WriteString(".")
+	for i, s := range fnCfg.scopeCount {
+		b.WriteString(strconv.Itoa(int(s)))
+		if i < len(fnCfg.scopeCount)-1 {
+			b.WriteString(".")
+		}
+	}
+	return b.String()
+}
+
+func (fnCfg *FnCfgCreator) enterScope() {
+	fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+	fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
+}
+
+func (fnCfg *FnCfgCreator) leaveScope() {
+	fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
+}
+
+func (fnCfg *FnCfgCreator) debugScope(where string) {
+	fmt.Println("scopeCount:", fnCfg.scopeCount, "\t", "varToStack:", fnCfg.varNameToStack, "where:", where)
+}
+
 func (fnCfg *FnCfgCreator) currFnLiteralID() string {
 	return fmt.Sprintf("%s.%s.func%v", fnCfg.CurPkg, fnCfg.curFnDecl, fnCfg.curFnLitID)
 }
 
-// CreateCfg creates the CFG For a given function declaration, filepath and file, and a map of regexes contained within the file.
-func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.FileSet) db.Node {
+// CreateCfg creates the CFG For a given function declaration
+func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl) db.Node {
 	if fn == nil {
 		log.Warn().Msg("received a null function declaration")
 		return nil
@@ -77,7 +110,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	fnCfg.scopeCount = make([]uint, 1)
 
 	// Function declaration is the root node
-	root := fnCfg.getStatementNode(fn, base, fset)
+	root := fnCfg.getStatementNode(fn)
 
 	//Create new CFG, make sure it is not an exit/fatal/panic statement
 	cfg := cfg.New(fn.Body, func(call *ast.CallExpr) bool {
@@ -103,8 +136,10 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 	}
 
 	// Begin constructing the cfg
+	fmt.Println("scope entering:", fnCfg.curFnDecl)
+	fnCfg.debugScope("begin")
 	block := cfg.Blocks[0]
-	node := fnCfg.constructSubCfg(block, base, fset)
+	node := fnCfg.constructSubCfg(block)
 	if node == nil {
 		return root
 	}
@@ -145,12 +180,11 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 //from the name of a function and its file, create the cfg for it
 //this will be useful for connecting external functions after an
 //initial cfg is created
-func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, base string, files []string, seenFn []*db.FunctionNode) db.Node {
-	fset := token.NewFileSet()
+func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName string, files []string, seenFn []*db.FunctionNode) db.Node {
 	found := false
 	var fn *ast.FuncDecl
 	for _, file := range files {
-		node, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
+		node, err := parser.ParseFile(fnCfg.fset, file, nil, parser.ParseComments)
 		if err != nil {
 			panic(err)
 		}
@@ -171,11 +205,11 @@ func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, base string, files 
 		}
 	}
 	if found {
-		node := fnCfg.CreateCfg(fn, base, fset)
+		node := fnCfg.CreateCfg(fn)
 		//add in functions in this cfg, excluding
 		//any functions already seen in this scope
 		//or higher scopes
-		ConnectExternalFunctions(node, seenFn, files, base)
+		fnCfg.ConnectExternalFunctions(node, seenFn, files)
 		return node
 	}
 	return nil
@@ -185,9 +219,8 @@ func (fnCfg *FnCfgCreator) CreateCfgFromFunctionName(fnName, base string, files 
 //root = first iteration of cfg containing stacktrace functions
 //seenFns = []*db.FunctionNode{} (empty)
 //base = project root (needed for cfg construction)
-//regexes = NOT NEEDED/DEPRICATED ARRAY REPLACED BY INLINE FUNCTION TO GRAB REGEX
-func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFiles []string, base string) {
-	var fnCfg FnCfgCreator
+func (fnCfg *FnCfgCreator) ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFiles []string) {
+
 	node := root
 	for node != nil {
 		var tmp db.Node
@@ -213,15 +246,61 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 					//within this scope so they can be
 					//removed
 					//if not a function declaration, add the cfg, recursively
-					newFn := fnCfg.CreateCfgFromFunctionName(node.FunctionName, base, sourceFiles, append(seenFns, node))
+					newFn := fnCfg.CreateCfgFromFunctionName(node.FunctionName, sourceFiles, append(seenFns, node))
 					if newFn != nil {
-						//add dummy return node to consolidate returns
+						//TODO: insert VariableNodes here from FunctionNode Args
+						// and FunctionDeclNode Params
+						// node is FunctionNode, newFn is FunctionDeclNode
+						vars := make([]*db.VariableNode, len(node.Args))
+						if decl, ok := newFn.(*db.FunctionDeclNode); ok {
+							for i, arg := range node.Args {
+								vars[i] = &db.VariableNode{
+									Filename:        node.Filename,
+									LineNumber:      node.LineNumber,
+									ScopeId:         fnCfg.getCurrentScope(), //TODO: get scope?
+									VarName:         arg.VarName,
+									Value:           decl.Params[i].VarName, //TODO: ^^get opinion on the order of these
+									Parent:          nil,
+									Child:           nil,
+									ValueFromParent: false,
+								}
+							}
+
+						}
+
+						//hold next node to skip the subtree attached
 						tmp = node.Child
+
+						//connect first var to ref
+						if len(vars) > 0 {
+							node.Child = vars[0]
+							vars[0].Parent = node
+						}
+
+						//chain vars together
+						for i, variable := range vars {
+							//skip last
+							if i != len(vars)-1 {
+								variable.Child = vars[i+1]
+								vars[i+1].Parent = variable
+							}
+						}
+
+						//connect last to functionBody
+						if len(vars) > 0 {
+							vars[len(vars)-1].Child = newFn
+							newFn.SetParents(vars[len(vars)-1])
+						} else {
+							node.Child = newFn
+							newFn.SetParents(node)
+						}
+
+						//add dummy return node to consolidate returns
 						tmpReturn := &db.ReturnNode{
 							Filename:   node.Child.GetFilename(),
 							LineNumber: node.Child.GetLineNumber(),
 							Expression: "",
-							Child:      node.Child,
+							Child:      tmp,
 							Parents:    nil,
 							Label:      0,
 						}
@@ -230,7 +309,6 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 							leaf.SetChild([]db.Node{tmpReturn})
 							tmpReturn.SetParents(leaf)
 						}
-						node.Child = newFn
 					}
 				}
 			}
@@ -241,7 +319,7 @@ func ConnectExternalFunctions(root db.Node, seenFns []*db.FunctionNode, sourceFi
 		} else {
 			for child := range node.GetChildren() {
 				//repeat
-				ConnectExternalFunctions(child, seenFns, sourceFiles, base)
+				fnCfg.ConnectExternalFunctions(child, seenFns, sourceFiles)
 			}
 			node = nil
 		}
@@ -253,7 +331,7 @@ func PrintCfg(node db.Node, level string) {
 	if node == nil {
 		return
 	}
-	var parStr string = "Parent: "
+	var parStr = "Parent: "
 	if node.GetParents() != nil {
 		//parStr += node.GetProperties()
 		parStr = node.GetFilename()
@@ -261,37 +339,37 @@ func PrintCfg(node db.Node, level string) {
 
 	switch node := node.(type) {
 	case *db.FunctionDeclNode:
-		fmt.Printf("%s(%v) %s(%v) (%v) (%v) (%v)\n", level,
+		fmt.Printf("%sDeclaration--Receivers: (%v) Signature: %s(%v) Returns: (%v) Label: (%v) ParStr(%v)\n", level,
 			node.Receivers, node.FunctionName, node.Params, node.Returns, node.Label, parStr)
 		PrintCfg(node.Child, level+"  ")
 	case *db.FunctionNode:
-		fmt.Printf("%s%s (%v) (%v) \n", level, node.FunctionName, node.Label, parStr)
+		fmt.Printf("%sFunction--Name: %s Label: (%v) parStr: (%v) \n", level, node.FunctionName, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.StatementNode:
-		fmt.Printf("%s%s (%v) (%v)\n", level, node.LogRegex, node.Label, parStr)
+		fmt.Printf("%sStatement--Regex: %s Label: (%v) ParStr: (%v)\n", level, node.LogRegex, node.Label, parStr)
 		PrintCfg(node.Child, level)
 	case *db.ConditionalNode:
-		fmt.Printf("%sif %s (%v) (%v)\n", level, node.Condition, node.Label, parStr)
+		fmt.Printf("%sif %s Label: (%v) ParStr: (%v)\n", level, node.Condition, node.Label, parStr)
 		PrintCfg(node.TrueChild, level+"  ")
 		fmt.Println(level + "else")
 		PrintCfg(node.FalseChild, level+"  ")
 	case *db.ReturnNode:
-		fmt.Printf("%sreturn %s (%v) (%v)\n", level, node.Expression, node.Label, parStr)
+		fmt.Printf("%sreturn %s Label: (%v) ParStr: (%v)\n", level, node.Expression, node.Label, parStr)
 		lv := ""
 		for i := 0; i < len(level)-2; i++ {
 			lv += " "
 		}
 		PrintCfg(node.Child, lv)
 	case *db.EndConditionalNode:
-		fmt.Printf("%sendIf (%v)\n", level, node.Label)
+		fmt.Printf("%sendIf Label: (%v)\n", level, node.Label)
 		PrintCfg(node.Child, level)
 	case *db.VariableNode:
-		fmt.Printf(node.GetProperties())
+		fmt.Printf("%sVariable--Name: %v Value: %v Scope: %v", level, node.VarName, node.Value, node.ScopeId)
 		PrintCfg(node.Child, level)
 	}
 }
 
-func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *token.FileSet) (root db.Node) {
+func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 	if block == nil {
 		return nil
 	}
@@ -306,13 +384,14 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 		if endIf, ok := fnCfg.blocks[block]; ok {
 			current = endIf
 		} else {
+			fnCfg.leaveScope()
+			fnCfg.debugScope("ifdone/fordone")
 			current = &db.EndConditionalNode{}
 			fnCfg.blocks[block] = current
 		}
 		prev = current
 		root = current
 	}
-
 
 	// Convert each node in the block into a db.Node (if it is one we want to keep)
 	for i, node := range block.Nodes {
@@ -322,12 +401,12 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 		//Process node based on its type
 		switch node := node.(type) {
 		case ast.Stmt:
-			current = fnCfg.getStatementNode(node, base, fset)
+			current = fnCfg.getStatementNode(node)
 		case ast.Expr:
-			current = fnCfg.getExprNode(node, base, fset, last && conditional)
+			current = fnCfg.getExprNode(node, last && conditional)
 		case ast.Spec: //TODO: handling variable nodes (declarations)
-			current = fnCfg.getSpecNode(node, base, fset)
-			if current != nil{
+			current = fnCfg.getSpecNode(node)
+			if current != nil {
 				//fmt.Println("Variable node exists", current.GetProperties())
 			}
 		}
@@ -335,7 +414,6 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 		if current == nil {
 			continue
 		}
-
 
 		// Update predecessor pointers
 		if root == nil {
@@ -391,7 +469,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 		case *db.VariableNode:
 			//fmt.Println("curr is var node")
 			prevNode.Child = current
-			if prevNode.Child != nil{
+			if prevNode.Child != nil {
 				prevNode.Child.SetParents(prevNode)
 			}
 		}
@@ -404,7 +482,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if len(fnCfg.scopeCount) > 0 {
 				fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
 				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
-			}else{
+			} else {
 				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
 			}
 
@@ -416,11 +494,11 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if cond, ok := current.(*db.ConditionalNode); ok && cond != nil {
 				conditional = cond
 			} else {
-				relPath, _ := filepath.Rel(base, fset.File(expr.Pos()).Name())
+				relPath, _ := filepath.Rel(fnCfg.base, fnCfg.fset.File(expr.Pos()).Name())
 				conditional = &db.ConditionalNode{
 					Filename:   filepath.ToSlash(relPath),
-					LineNumber: fset.Position(expr.Pos()).Line,
-					Condition:  expressionString(expr),
+					LineNumber: fnCfg.fset.Position(expr.Pos()).Line,
+					Condition:  fnCfg.expressionString(expr),
 				}
 			}
 
@@ -430,7 +508,13 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 				conditional.TrueChild = succ
 				//conditional.Parent = current //??
 			} else {
-				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0], base, fset)
+				fnCfg.enterScope()
+				fnCfg.debugScope("truechild")
+				conditional.TrueChild = fnCfg.constructSubCfg(block.Succs[0])
+				if len(block.Succs[0].Succs) == 0 {
+					fnCfg.leaveScope()
+					fnCfg.debugScope("truechild no successor")
+				}
 				//conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[0]] = conditional.TrueChild
 			}
@@ -443,7 +527,13 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 				conditional.FalseChild = fail
 				// conditional.Parent = current //??
 			} else {
-				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1], base, fset)
+				fnCfg.enterScope()
+				fnCfg.debugScope("falsechild")
+				conditional.FalseChild = fnCfg.constructSubCfg(block.Succs[1])
+				if len(block.Succs[0].Succs) == 0 {
+					fnCfg.leaveScope()
+					fnCfg.debugScope("falsechild no successor")
+				}
 				// conditional.Parent = current //??
 				fnCfg.blocks[block.Succs[1]] = conditional.FalseChild
 			}
@@ -476,7 +566,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				child = subCfg
 			} else {
-				child = fnCfg.constructSubCfg(block.Succs[0], base, fset)
+				child = fnCfg.constructSubCfg(block.Succs[0])
 				fnCfg.blocks[block.Succs[0]] = child
 			}
 
@@ -507,7 +597,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 			if subCfg, ok := fnCfg.blocks[block.Succs[0]]; ok {
 				root = subCfg
 			} else {
-				root = fnCfg.constructSubCfg(block.Succs[0], base, fset)
+				root = fnCfg.constructSubCfg(block.Succs[0])
 				fnCfg.blocks[block.Succs[0]] = root
 			}
 		} else if root != nil && len(root.GetChildren()) < 1 && strings.Contains(block.String(), "if.done") {
@@ -518,7 +608,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 					subCfg.SetParents(root)
 				}
 			} else {
-				subCfg = fnCfg.constructSubCfg(block.Succs[0], base, fset)
+				subCfg = fnCfg.constructSubCfg(block.Succs[0])
 				fnCfg.blocks[block.Succs[0]] = subCfg
 				root.SetChild([]db.Node{subCfg})
 				if subCfg != nil {
@@ -537,7 +627,7 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 						subCfg.SetParents(prev)
 					}
 				} else {
-					subCfg = fnCfg.constructSubCfg(loop.Succs[1], base, fset)
+					subCfg = fnCfg.constructSubCfg(loop.Succs[1])
 					fnCfg.blocks[loop.Succs[1]] = subCfg
 					prev.SetChild([]db.Node{subCfg})
 					if subCfg != nil {
@@ -549,18 +639,16 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block, base string, fset *
 		}
 	}
 
-
 	return
 }
-
 
 //Returns a variable node if it is encountered
 //  ast.ValueSpec only holds a constant or variable declaration
 //  ast.AssignStmt handles variable assignments
-func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.FileSet) (node db.Node) {
-	relPath, _ := filepath.Rel(base, fset.File(spec.Pos()).Name())
+func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
+	relPath, _ := filepath.Rel(fnCfg.base, fnCfg.fset.File(spec.Pos()).Name())
 
-	switch spec := spec.(type){
+	switch spec := spec.(type) {
 	case *ast.ValueSpec:
 		var scopeID string = ""
 		var varName string = ""
@@ -569,21 +657,20 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 		stackStr := ""
 		exprStr := ""
 
-
 		//Grab the variable type
-		if spec.Type != nil{
+		if spec.Type != nil {
 			varType := fmt.Sprint(spec.Type)
 			initType = varType
 		}
 
 		//Set variable name
-		if len(spec.Names) > 0{
+		if len(spec.Names) > 0 {
 			varName = spec.Names[0].Name
 		}
 
 		//Get variable initial value if it exists
-		for _, expr := range spec.Values{
-			if expr != nil{
+		for _, expr := range spec.Values {
+			if expr != nil {
 				varVal := fmt.Sprint(expr)
 				//fmt.Println("Initial value:", varVal)
 				initVal += varVal
@@ -597,12 +684,12 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 		//TODO: handle variable scoping
 		//If variable is not in the map, then add to map and its scope (add a new state)
 		value, ok := fnCfg.varNameToStack[varName]
-		if ok{
-			fmt.Println(varName, value,  " was found in the map")
-		}else{
-			for index := range fnCfg.scopeCount{
+		if ok {
+			fmt.Println(varName, value, " was found in the map")
+		} else {
+			for index := range fnCfg.scopeCount {
 				//Exclude last element
-				if index == len(fnCfg.scopeCount)-1{
+				if index == len(fnCfg.scopeCount)-1 {
 					break
 				}
 
@@ -612,12 +699,12 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 				//If last element, dont add a .
 				if index == len(fnCfg.scopeCount)-2 {
 					continue
-				}else {
+				} else {
 					stackStr += "."
 				}
 			}
 			//If there was only 1 element in master stack, set to 0
-			if stackStr == ""{
+			if stackStr == "" {
 				stackStr = "0"
 			}
 			//Create entry
@@ -631,7 +718,7 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 		//TODO: not shown in current cfg since most vars are handled in the assignStmt
 		node = db.Node(&db.VariableNode{
 			Filename:        filepath.ToSlash(relPath),
-			LineNumber:      fset.Position(spec.Pos()).Line,
+			LineNumber:      fnCfg.fset.Position(spec.Pos()).Line,
 			ScopeId:         scopeID,
 			VarName:         varName,
 			Value:           exprStr,
@@ -641,7 +728,6 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 		})
 
 		//fmt.Println("Var declaration:", node.GetProperties())
-
 
 	case *ast.ImportSpec:
 		//fmt.Println(spec.Name.Name)
@@ -653,8 +739,8 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec, base string, fset *token.F
 }
 
 //Returns the expression Node
-func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.FileSet, conditional bool) (node db.Node) {
-	relPath, _ := filepath.Rel(base, fset.File(expr.Pos()).Name())
+func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, conditional bool) (node db.Node) {
+	relPath, _ := filepath.Rel(fnCfg.base, fnCfg.fset.File(expr.Pos()).Name())
 	switch expr := expr.(type) {
 	case *ast.CallExpr:
 		// fmt.Print("\t\tfound a callexpr ")
@@ -667,23 +753,19 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 
 			// Check if the statement is a logging statement, if it is return a StatementNode
 			if (strings.Contains(val, "Msg") || strings.Contains(val, "Err")) && logsource.IsFromLog(fn) {
-				line := fset.Position(expr.Pos()).Line
+				line := fnCfg.fset.Position(expr.Pos()).Line
 				node = db.Node(&db.StatementNode{
 					Filename:   filepath.ToSlash(relPath),
 					LineNumber: line,
-					//TODO: there has to be a better way to assign this value.
-					// This array is passed through every single function
-					// in the recursion stack only to be used here?
-					// If the file and linenumber are known,
-					// why not just parse that information when needed?
-					LogRegex: logsource.GetLogRegexFromInfo(fset.File(expr.Pos()).Name(), line),
+					LogRegex:   logsource.GetLogRegexFromInfo(fnCfg.fset.File(expr.Pos()).Name(), line),
 				})
 			} else {
 				// Was a method call.
 				node = db.Node(&db.FunctionNode{
 					Filename:     filepath.ToSlash(relPath),
-					LineNumber:   fset.Position(expr.Pos()).Line,
-					FunctionName: expressionString(fn),
+					LineNumber:   fnCfg.fset.Position(expr.Pos()).Line,
+					FunctionName: fnCfg.expressionString(fn),
+					Args:         fnCfg.getFuncArgs(expr.Args), //TODO: generate Args for functionNode
 				})
 			}
 		case *ast.FuncLit:
@@ -692,20 +774,21 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 			// when we connect everything it can refer to that if it's a function literal call. Maybe add
 			// a boolean flag to the FunctionNode
 			ident := fnCfg.currFnLiteralID()
-			_ = fnCfg.getExprNode(fn, base, fset, false)
+			_ = fnCfg.getExprNode(fn, false)
 			node = &db.FunctionNode{
 				Filename:     filepath.ToSlash(relPath),
-				LineNumber:   fset.Position(expr.Pos()).Line,
+				LineNumber:   fnCfg.fset.Position(expr.Pos()).Line,
 				FunctionName: ident,
+				Args:         fnCfg.getFuncParams(fn.Type.Params, relPath), //TODO: generate Args for functionNode
 			}
 		default:
 			// fmt.Println(callExprName(expr))
-
 			// Found a function call
 			node = db.Node(&db.FunctionNode{
 				Filename:     filepath.ToSlash(relPath),
-				LineNumber:   fset.Position(expr.Pos()).Line,
-				FunctionName: callExprName(expr),
+				LineNumber:   fnCfg.fset.Position(expr.Pos()).Line,
+				FunctionName: fnCfg.callExprName(expr),
+				Args:         fnCfg.getFuncArgs(expr.Args), //TODO: generate Args for functionNode
 			})
 		}
 	case *ast.FuncLit:
@@ -714,14 +797,14 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 			if cfg != nil && len(cfg.Blocks) > 0 {
 				name := fnCfg.currFnLiteralID()
 				fnCfg.curFnLitID++
-				node := fnCfg.constructSubCfg(cfg.Blocks[0], base, fset)
+				node := fnCfg.constructSubCfg(cfg.Blocks[0])
 				root := &db.FunctionDeclNode{
 					Filename:     filepath.ToSlash(relPath),
-					LineNumber:   fset.Position(expr.Pos()).Line,
+					LineNumber:   fnCfg.fset.Position(expr.Pos()).Line,
 					FunctionName: name,
-					Params:       getFuncParams(expr.Type.Params),
+					Params:       fnCfg.getFuncParams(expr.Type.Params, relPath),
 					Receivers:    map[string]string{},
-					Returns:      getFuncReturns(expr.Type.Results),
+					Returns:      fnCfg.getFuncReturns(expr.Type.Results),
 					Child:        node,
 				}
 				node.SetParents(root)
@@ -732,13 +815,13 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 			}
 		}
 	case *ast.UnaryExpr:
-		subExpr := fnCfg.getExprNode(expr.X, base, fset, conditional)
+		subExpr := fnCfg.getExprNode(expr.X, conditional)
 		if conditional {
 			// Found a unary conditional
 			conditional := db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
-				LineNumber: fset.Position(expr.Pos()).Line,
-				Condition:  expressionString(expr),
+				LineNumber: fnCfg.fset.Position(expr.Pos()).Line,
+				Condition:  fnCfg.expressionString(expr),
 			})
 			// subExpr was a function call of some kind
 			if subExpr != nil {
@@ -754,14 +837,14 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 		}
 	case *ast.BinaryExpr:
 
-		rightSubExpr := fnCfg.getExprNode(expr.X, base, fset, false)
-		leftSubExpr := fnCfg.getExprNode(expr.Y, base, fset, false)
+		rightSubExpr := fnCfg.getExprNode(expr.X, false)
+		leftSubExpr := fnCfg.getExprNode(expr.Y, false)
 		if conditional {
 			// Found a binary conditional
 			conditional := db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
-				LineNumber: fset.Position(expr.Pos()).Line,
-				Condition:  expressionString(expr),
+				LineNumber: fnCfg.fset.Position(expr.Pos()).Line,
+				Condition:  fnCfg.expressionString(expr),
 			})
 			if rightSubExpr != nil && leftSubExpr != nil {
 				node = leftSubExpr
@@ -792,9 +875,11 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, base string, fset *token.F
 			// fmt.Println("\t\tfound a condition")
 			node = db.Node(&db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
-				LineNumber: fset.Position(expr.Pos()).Line,
-				Condition:  expressionString(expr),
+				LineNumber: fnCfg.fset.Position(expr.Pos()).Line,
+				Condition:  fnCfg.expressionString(expr),
 			})
+		} else {
+			//TODO: could be a variable?
 		}
 	}
 	return
@@ -833,13 +918,13 @@ func connectToLeaf(root db.Node, node db.Node) {
 }
 
 // Iterates over each item in a field list and does some operation passed to it
-func iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
+func (fnCfg *FnCfgCreator) iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
 	if fieldList != nil {
 		for _, p := range fieldList.List {
 			if p != nil {
-				returnType := expressionString(p.Type)
+				returnType := fnCfg.expressionString(p.Type)
 				for _, name := range p.Names {
-					varName := expressionString(name)
+					varName := fnCfg.expressionString(name)
 					op(returnType, varName)
 				}
 			}
@@ -847,20 +932,64 @@ func iterateFields(fieldList *ast.FieldList, op func(returnType, name string)) {
 	}
 }
 
-func getFuncParams(fieldList *ast.FieldList) map[string]string {
-	params := make(map[string]string)
+func (fnCfg *FnCfgCreator) getFuncReceivers(fieldList *ast.FieldList) map[string]string {
+	receivers := make(map[string]string)
 
-	iterateFields(fieldList, func(returnType, name string) {
-		params[name] = returnType
+	fnCfg.iterateFields(fieldList, func(returnType, name string) {
+		receivers[name] = returnType
 	})
+
+	return receivers
+}
+
+func (fnCfg *FnCfgCreator) getFuncParams(fieldList *ast.FieldList, file string) []db.VariableNode {
+	params := make([]db.VariableNode, len(fieldList.List))
+
+	if fieldList != nil {
+		for i, p := range fieldList.List {
+			if p != nil {
+				for _, name := range p.Names {
+					variable := db.VariableNode{
+						Filename: file,
+						VarName:  fnCfg.expressionString(name),
+						ScopeId:  fnCfg.getCurrentScope(),
+					}
+					params[i] = variable
+				}
+			}
+		}
+	}
 
 	return params
 }
 
-func getFuncReturns(fieldList *ast.FieldList) []db.Return {
+func (fnCfg *FnCfgCreator) getFuncArgs(exprs []ast.Expr) []db.VariableNode {
+	args := make([]db.VariableNode, len(exprs))
+	if exprs != nil {
+		for i, exp := range exprs {
+			if exp, ok := exp.(*ast.Ident); ok && exp != nil {
+				//fmt.Printf("%T %v\n", exp, exp)
+				//TODO: construct VariableNode from Expr
+				args[i] = db.VariableNode{
+					Filename:        fnCfg.fset.File(exp.Pos()).Name(),
+					LineNumber:      fnCfg.fset.Position(exp.Pos()).Line,
+					ScopeId:         fnCfg.getCurrentScope(),
+					VarName:         exp.Name,
+					Value:           "",
+					Parent:          nil,
+					Child:           nil,
+					ValueFromParent: false,
+				}
+			}
+		}
+	}
+	return args
+}
+
+func (fnCfg *FnCfgCreator) getFuncReturns(fieldList *ast.FieldList) []db.Return {
 	returns := make([]db.Return, 0)
 
-	iterateFields(fieldList, func(returnType, name string) {
+	fnCfg.iterateFields(fieldList, func(returnType, name string) {
 		returns = append(returns, db.Return{
 			Name:       name,
 			ReturnType: returnType,
@@ -871,9 +1000,9 @@ func getFuncReturns(fieldList *ast.FieldList) []db.Return {
 }
 
 //Connect expression nodes together
-func (fnCfg *FnCfgCreator) chainExprNodes(exprs []ast.Expr, base string, fset *token.FileSet) (first, current, prev db.Node) {
+func (fnCfg *FnCfgCreator) chainExprNodes(exprs []ast.Expr) (first, current, prev db.Node) {
 	for _, expr := range exprs {
-		exprNode := fnCfg.getExprNode(expr, base, fset, false)
+		exprNode := fnCfg.getExprNode(expr, false)
 		// Initialize first node pointer
 		if first == nil {
 			first = exprNode
@@ -905,37 +1034,37 @@ func (fnCfg *FnCfgCreator) chainExprNodes(exprs []ast.Expr, base string, fset *t
 	return
 }
 
-func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *token.FileSet) (node db.Node) {
+func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 
-	relPath, _ := filepath.Rel(base, fset.File(stmt.Pos()).Name())
+	relPath, _ := filepath.Rel(fnCfg.base, fnCfg.fset.File(stmt.Pos()).Name())
 
 	switch stmt := stmt.(type) {
 	case *ast.ExprStmt:
-		node = fnCfg.getExprNode(stmt.X, base, fset, false)
+		node = fnCfg.getExprNode(stmt.X, false)
 	case *ast.FuncDecl:
-		receivers := getFuncParams(stmt.Recv)
-		var params map[string]string
+		receivers := fnCfg.getFuncReceivers(stmt.Recv)
+		var params []db.VariableNode
 		var returns []db.Return
 		if stmt.Type != nil {
-			params = getFuncParams(stmt.Type.Params)
+			params = fnCfg.getFuncParams(stmt.Type.Params, relPath)
 			if stmt.Type.Results != nil {
-				returns = getFuncReturns(stmt.Type.Results)
+				returns = fnCfg.getFuncReturns(stmt.Type.Results)
 			}
 		} else {
-			params = make(map[string]string)
+			params = make([]db.VariableNode, 0)
 			returns = make([]db.Return, 0)
 		}
 
 		node = db.Node(&db.FunctionDeclNode{
 			Filename:     filepath.ToSlash(relPath),
-			LineNumber:   fset.Position(stmt.Pos()).Line,
+			LineNumber:   fnCfg.fset.Position(stmt.Pos()).Line,
 			FunctionName: stmt.Name.Name,
 			Receivers:    receivers,
 			Params:       params,
 			Returns:      returns,
 		})
 	case *ast.AssignStmt: //Handles variables when being assigned
-		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs, base, fset)
+		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs)
 
 		var exprValue string = "" //hold the expression as a string
 		var varName string = ""
@@ -943,33 +1072,32 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		var isReal bool = true
 
 		//Process left side variable name
-		for _, lhsExpr := range stmt.Lhs{
-			switch expr := lhsExpr.(type){
+		for _, lhsExpr := range stmt.Lhs {
+			switch expr := lhsExpr.(type) {
 			case *ast.SelectorExpr:
-				if expr.Sel.Name != ""{
+				if expr.Sel.Name != "" {
 					varName = expr.Sel.Name
 				}
 			}
 		}
 
 		//Set variable name if it is still empty
-		if varName == ""{
+		if varName == "" {
 			strLHS := fmt.Sprint(stmt.Lhs)
-			varName = strLHS[strings.Index(strLHS, "[")+1:strings.Index(strLHS, "]")]
+			varName = strLHS[strings.Index(strLHS, "[")+1 : strings.Index(strLHS, "]")]
 		}
 
 		//Get the expression operator
-		exprOp := stmt.Tok.String()   //assignment operator
-
+		exprOp := stmt.Tok.String() //assignment operator
 
 		//Checks if rhs if a variable gets a value from a function or literal
-		for _, rhsExpr := range stmt.Rhs{
-			switch expr := rhsExpr.(type){
+		for _, rhsExpr := range stmt.Rhs {
+			switch expr := rhsExpr.(type) {
 			//Basic literals indicate the var shouldn't have been returned from a function and a real value
 			case *ast.BasicLit:
-				if exprOp == ":="{
-					exprValue = varName + " " + exprOp +  " " + expr.Value
-				}else if exprOp == "="{
+				if exprOp == ":=" {
+					exprValue = varName + " " + exprOp + " " + expr.Value
+				} else if exprOp == "=" {
 					exprValue = "var " + varName + " " + expr.Kind.String() + " " + exprOp + " " + expr.Value
 				}
 				isFromFunction = false
@@ -977,16 +1105,16 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 
 			case *ast.CompositeLit: //Indicates a variable being assigned a struct/slice/array (real value?)
 				//fmt.Println("Is composite literal", expr.Type)
-				if expr.Incomplete{
+				if expr.Incomplete {
 					fmt.Println("Source expressions missing in elt list")
 				}
 
 				//Grabbing the struct/slice assignment from the composite literal
 				litPos := expr.Type.Pos()
-				tempFile := fset.Position(litPos).Filename
-				lineNum := fset.Position(litPos).Line
+				tempFile := fnCfg.fset.Position(litPos).Filename
+				lineNum := fnCfg.fset.Position(litPos).Line
 				file, err := os.Open(tempFile)
-				if err != nil{
+				if err != nil {
 					fmt.Println("Error opening file")
 				}
 
@@ -994,8 +1122,8 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 				cnt := 1
 				var rightValue string = ""
 				scanner := bufio.NewScanner(file)
-				for scanner.Scan(){
-					if cnt == lineNum{
+				for scanner.Scan() {
+					if cnt == lineNum {
 						rightValue = scanner.Text()
 						break
 					}
@@ -1003,7 +1131,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 				}
 
 				//Get the right side value assignment
-				rightValue = rightValue[strings.Index(rightValue, "=")+2:strings.Index(rightValue, "{")]
+				rightValue = rightValue[strings.Index(rightValue, "=")+2 : strings.Index(rightValue, "{")]
 
 				isFromFunction = false
 				isReal = false
@@ -1011,10 +1139,10 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 
 			default: //If it isn't a literal, it will be a symbolic value (from variable or from function)
 				litPos := expr.Pos()
-				tempFile := fset.Position(litPos).Filename
-				lineNum := fset.Position(litPos).Line
+				tempFile := fnCfg.fset.Position(litPos).Filename
+				lineNum := fnCfg.fset.Position(litPos).Line
 				file, err := os.Open(tempFile)
-				if err != nil{
+				if err != nil {
 					fmt.Println("Error opening file")
 				}
 
@@ -1022,8 +1150,8 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 				cnt := 1
 				var rightValue string = ""
 				scanner := bufio.NewScanner(file)
-				for scanner.Scan(){
-					if cnt == lineNum{
+				for scanner.Scan() {
+					if cnt == lineNum {
 						rightValue = scanner.Text()
 						break
 					}
@@ -1045,22 +1173,21 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		//var scopeID string = ""
 		//fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
 		stackStr := ""
-		if value, ok := fnCfg.varNameToStack[varName]; ok{
+		if value, ok := fnCfg.varNameToStack[varName]; ok {
 			//Add all elements as the scope
-			for index := range value{
+			for index := range value {
 				stackStr += value[index]
 				//If last element, dont add .
-				if index == len(value)-1{
+				if index == len(value)-1 {
 					break
-				}else{
+				} else {
 					stackStr += "."
 				}
 			}
-		}else{
+		} else {
 			//handle adding scope if variable not in map at assign time
 			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], "1")
 		}
-
 
 		//Add the scope ID to the variable node
 		scopeID := fnCfg.curFnDecl + "." + stackStr
@@ -1072,14 +1199,14 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		} else {
 			separator = "/"
 		}
-		longFile := fset.File(stmt.Pos()).Name()
+		longFile := fnCfg.fset.File(stmt.Pos()).Name()
 		file := longFile[strings.LastIndex(longFile, separator)+1:]
 
 		//Build variable node
 		// TODO: Would be easiest to make a chain of variable nodes here, but not sure if child nodes will be overwritten later
 		varNode := &db.VariableNode{
 			Filename:        file,
-			LineNumber:      fset.Position(stmt.Pos()).Line,
+			LineNumber:      fnCfg.fset.Position(stmt.Pos()).Line,
 			ScopeId:         scopeID,
 			VarName:         varName,
 			Value:           exprValue, //the expression (ex: x := 5)
@@ -1101,17 +1228,17 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 		if node != nil {
 			// Append the variable node to the last function call
 			connectToLeaf(node, varNode)
-		}else{
+		} else {
 			node = varNode
 		}
 
 	case *ast.ReturnStmt:
 		// Find all function calls contained in the return statement
-		node, _, _ = fnCfg.chainExprNodes(stmt.Results, base, fset)
+		node, _, _ = fnCfg.chainExprNodes(stmt.Results)
 
 		var bldr strings.Builder
 		for i, result := range stmt.Results {
-			bldr.WriteString(fmt.Sprintf("%s", expressionString(result)))
+			bldr.WriteString(fmt.Sprintf("%s", fnCfg.expressionString(result)))
 			if i < len(stmt.Results)-1 {
 				bldr.WriteString(", ")
 			}
@@ -1120,7 +1247,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 
 		ret := db.Node(&db.ReturnNode{
 			Filename:   filepath.ToSlash(relPath),
-			LineNumber: fset.Position(stmt.Pos()).Line,
+			LineNumber: fnCfg.fset.Position(stmt.Pos()).Line,
 			Expression: expr,
 		})
 
@@ -1131,9 +1258,9 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 			node = ret
 		}
 	case *ast.GoStmt:
-		node = fnCfg.getExprNode(stmt.Call, base, fset, false)
+		node = fnCfg.getExprNode(stmt.Call, false)
 	case *ast.DeferStmt:
-		node = fnCfg.getExprNode(stmt.Call, base, fset, false)
+		node = fnCfg.getExprNode(stmt.Call, false)
 	default:
 		// fmt.Println("\t\tdid not cast")
 	}
@@ -1142,37 +1269,37 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 
 //Helper function to determine if a variable gets its value from a function
 // May need to handle more cases later, but it works well for now
-func isFunctionAssignment(str string) (bool, string){
+func isFunctionAssignment(str string) (bool, string) {
 	isFunction := false
 
 	var compStr string = str
 	var endIndex int = 0
-	if strings.Contains(compStr, ";"){
+	if strings.Contains(compStr, ";") {
 		endIndex = strings.Index(str, ";")
 	}
 
 	//slice out just the assignment part
-	if strings.Contains(compStr, "if") && strings.Contains(compStr, ";"){
-		compStr = str[strings.Index(compStr, "if")+3: endIndex]
+	if strings.Contains(compStr, "if") && strings.Contains(compStr, ";") {
+		compStr = str[strings.Index(compStr, "if")+3 : endIndex]
 		//fmt.Println("If strings", compStr)
 	}
-	if strings.Contains(compStr, "for") && strings.Contains(compStr, ";"){
-		compStr = str[strings.Index(compStr, "for")+4: endIndex]
+	if strings.Contains(compStr, "for") && strings.Contains(compStr, ";") {
+		compStr = str[strings.Index(compStr, "for")+4 : endIndex]
 		//fmt.Println("For strings", compStr)
 	}
 
 	//If it contains a set of parenthesis, most likely a function
-	if strings.Contains(str, "(") && strings.Contains(str, ")"){
-		if strings.Contains(str, "."){
+	if strings.Contains(str, "(") && strings.Contains(str, ")") {
+		if strings.Contains(str, ".") {
 			isFunction = true
 		}
 	}
 
-	return isFunction,compStr
+	return isFunction, compStr
 }
 
 // Recursively creates the string of an `ast.Expr`.
-func expressionString(expr ast.Expr) string {
+func (fnCfg *FnCfgCreator) expressionString(expr ast.Expr) string {
 	if expr == nil {
 		return ""
 	}
@@ -1185,27 +1312,27 @@ func expressionString(expr ast.Expr) string {
 		return condition.Name
 	case *ast.BinaryExpr:
 		leftStr, rightStr := "", ""
-		leftStr = expressionString(condition.X)
-		rightStr = expressionString(condition.Y)
+		leftStr = fnCfg.expressionString(condition.X)
+		rightStr = fnCfg.expressionString(condition.Y)
 		return fmt.Sprint(leftStr, condition.Op, rightStr)
 	case *ast.UnaryExpr:
 		op := condition.Op.String()
-		str := expressionString(condition.X)
+		str := fnCfg.expressionString(condition.X)
 		return fmt.Sprint(op, str)
 	case *ast.SelectorExpr:
 		selector := ""
 		if condition.Sel != nil {
 			selector = condition.Sel.String()
 		}
-		str := expressionString(condition.X)
+		str := fnCfg.expressionString(condition.X)
 		return fmt.Sprintf("%s.%s", str, selector)
 	case *ast.ParenExpr:
-		return fmt.Sprintf("(%s)", expressionString(condition.X))
+		return fmt.Sprintf("(%s)", fnCfg.expressionString(condition.X))
 	case *ast.CallExpr:
-		fn := expressionString(condition.Fun)
+		fn := fnCfg.expressionString(condition.Fun)
 		args := make([]string, 0)
 		for _, arg := range condition.Args {
-			args = append(args, expressionString(arg))
+			args = append(args, fnCfg.expressionString(arg))
 		}
 		if condition.Ellipsis != token.NoPos {
 			args[len(args)-1] = fmt.Sprintf("%s...", args[len(args)-1])
@@ -1228,37 +1355,37 @@ func expressionString(expr ast.Expr) string {
 
 		return builder.String()
 	case *ast.IndexExpr:
-		expr := expressionString(condition.X)
-		ndx := expressionString(condition.Index)
+		expr := fnCfg.expressionString(condition.X)
+		ndx := fnCfg.expressionString(condition.Index)
 		return fmt.Sprintf("%s[%s]", expr, ndx)
 	case *ast.KeyValueExpr:
-		key := expressionString(condition.Key)
-		value := expressionString(condition.Value)
+		key := fnCfg.expressionString(condition.Key)
+		value := fnCfg.expressionString(condition.Value)
 		return fmt.Sprint(key, ":", value)
 	case *ast.SliceExpr: // not sure about this one
-		expr := expressionString(condition.X)
-		low := expressionString(condition.Low)
-		high := expressionString(condition.High)
+		expr := fnCfg.expressionString(condition.X)
+		low := fnCfg.expressionString(condition.Low)
+		high := fnCfg.expressionString(condition.High)
 		if condition.Slice3 {
-			max := expressionString(condition.Max)
+			max := fnCfg.expressionString(condition.Max)
 			return fmt.Sprintf("%s[%s : %s : %s]", expr, low, high, max)
 		}
 		return fmt.Sprintf("%s[%s : %s]", expr, low, high)
 	case *ast.StarExpr:
-		expr := expressionString(condition.X)
+		expr := fnCfg.expressionString(condition.X)
 		return fmt.Sprintf("*%s", expr)
 	case *ast.TypeAssertExpr:
-		expr := expressionString(condition.X)
-		typecast := expressionString(condition.Type)
+		expr := fnCfg.expressionString(condition.X)
+		typecast := fnCfg.expressionString(condition.Type)
 		return fmt.Sprintf("%s(%s)", typecast, expr)
 	case *ast.FuncType:
-		params := getFuncParams(condition.Params)
-		rets := getFuncReturns(condition.Results)
+		params := fnCfg.getFuncParams(condition.Params, "")
+		rets := fnCfg.getFuncReturns(condition.Results)
 		b := strings.Builder{}
 		b.Write([]byte("func("))
 		i := 0
-		for name, t := range params {
-			b.Write([]byte(fmt.Sprintf("%s %s", name, t)))
+		for _, param := range params {
+			b.Write([]byte(fmt.Sprintf("%s", param.VarName)))
 			if i < len(params)-1 {
 				b.Write([]byte(", "))
 			}
@@ -1276,8 +1403,8 @@ func expressionString(expr ast.Expr) string {
 }
 
 //Gets the name of a call expression
-func callExprName(call *ast.CallExpr) string {
-	fn := expressionString(call)
+func (fnCfg *FnCfgCreator) callExprName(call *ast.CallExpr) string {
+	fn := fnCfg.expressionString(call)
 	name := ""
 	if s := strings.Split(fn, "("); len(s) > 0 {
 		name = s[0]
