@@ -78,6 +78,17 @@ func (fnCfg *FnCfgCreator) enterScope() {
 
 func (fnCfg *FnCfgCreator) leaveScope() {
 	fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
+	// Remove out of scope variable declarations
+	for key, stack := range fnCfg.varNameToStack {
+		if len(stack) > 0 {
+			// Check if the latest declaration is out of scope
+			varScope := stack[len(stack)-1]
+			scope := fnCfg.getCurrentScope()
+			if len(varScope) > len(scope) {
+				fnCfg.varNameToStack[key] = stack[0 : len(stack)-1]
+			}
+		}
+	}
 }
 
 func (fnCfg *FnCfgCreator) debugScope(where string) {
