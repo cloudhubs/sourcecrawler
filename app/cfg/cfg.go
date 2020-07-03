@@ -106,7 +106,6 @@ func (fnCfg *FnCfgCreator) currFnLiteralID() string {
 //Process a variable node if it found
 func (fnCfg *FnCfgCreator) processVariable(varNode *db.VariableNode) (string, []*db.VariableNode){
 	varExpr := varNode.Value
-
 	involvedVars := []*db.VariableNode{}
 
 	//If it is symbolic -> get the other variable node to keep track of
@@ -118,8 +117,9 @@ func (fnCfg *FnCfgCreator) processVariable(varNode *db.VariableNode) (string, []
 
 		//Check if the value came from another variable ()
 		for _, node := range fnCfg.varList{
+			nodeFullScope := node.ScopeId + ":" + node.VarName //Full scope identifier used to get var node in map (ex: getName.1.1:name)
 			if strings.Contains(symbol, node.VarName){
-				involvedVars = append(involvedVars, fnCfg.varList[node.ScopeId]) //add the other var node to keep track
+				involvedVars = append(involvedVars, fnCfg.varList[nodeFullScope]) //add the other var node to keep track
 			}
 		}
 
