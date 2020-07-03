@@ -1056,7 +1056,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 			Returns:      returns,
 		})
 	case *ast.AssignStmt: //Handles variables when being assigned
-		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs, base, fset)
+		node, _, _ = fnCfg.chainExprNodes(stmt.Rhs)
 
 		var exprValue string = "" //hold the expression as a string
 		var varName string = ""
@@ -1103,8 +1103,8 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 
 				//Grabbing the struct/slice assignment from the composite literal
 				litPos := expr.Type.Pos()
-				tempFile := fset.Position(litPos).Filename
-				lineNum := fset.Position(litPos).Line
+				tempFile := fnCfg.fset.Position(litPos).Filename
+				lineNum := fnCfg.fset.Position(litPos).Line
 				file, err := os.Open(tempFile)
 				if err != nil {
 					fmt.Println("Error opening file")
@@ -1131,8 +1131,8 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 
 			default: //If it isn't a literal, it will be a symbolic value (from variable or from function)
 				litPos := expr.Pos()
-				tempFile := fset.Position(litPos).Filename
-				lineNum := fset.Position(litPos).Line
+				tempFile := fnCfg.fset.Position(litPos).Filename
+				lineNum := fnCfg.fset.Position(litPos).Line
 				file, err := os.Open(tempFile)
 				if err != nil {
 					fmt.Println("Error opening file")
@@ -1191,14 +1191,14 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		} else {
 			separator = "/"
 		}
-		longFile := fset.File(stmt.Pos()).Name()
+		longFile := fnCfg.fset.File(stmt.Pos()).Name()
 		file := longFile[strings.LastIndex(longFile, separator)+1:]
 
 		//Build variable node
 		// TODO: Would be easiest to make a chain of variable nodes here, but not sure if child nodes will be overwritten later
 		varNode := db.Node(&db.VariableNode{
 			Filename:        file,
-			LineNumber:      fset.Position(stmt.Pos()).Line,
+			LineNumber:      fnCfg.fset.Position(stmt.Pos()).Line,
 			ScopeId:         scopeID,
 			VarName:         varName,
 			Value:           exprValue, //the expression (ex: x := 5)
