@@ -34,6 +34,8 @@ type FnCfgCreator struct {
 	varNameToStack map[string][]string //maps var names to scope names that represent the scopes this variable was seen in
 	scopeCount     []uint //Holds the current counts for each level of the current subscopes
 
+	//Holds all variable nodes
+	varList map[string]db.VariableNode
 }
 
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
@@ -45,6 +47,7 @@ func NewFnCfgCreator(pkg string) *FnCfgCreator {
 		curFnLitID:     1,
 		varNameToStack: make(map[string][]string),
 		scopeCount:     make([]uint, 0),
+		varList:		make(map[string]db.VariableNode),
 	}
 }
 
@@ -113,6 +116,11 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl, base string, fset *token.
 		if fn.Child != nil {
 			fn.Child.SetParents(fn)
 		}
+	}
+
+	for key, node := range fnCfg.varList{
+		fmt.Println("scope id", key)
+		fmt.Println(node.GetProperties())
 	}
 
 	//Test print variable nodes
@@ -1069,7 +1077,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 
 		//Build variable node
 		// TODO: Would be easiest to make a chain of variable nodes here, but not sure if child nodes will be overwritten later
-		varNode := db.Node(&db.VariableNode{
+		varNode := &db.VariableNode{
 			Filename:        file,
 			LineNumber:      fset.Position(stmt.Pos()).Line,
 			ScopeId:         scopeID,
@@ -1079,12 +1087,15 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node, base string, fset *to
 			Child:           nil,
 			ValueFromParent: isFromFunction,
 			IsReal:          isReal,
-		})
+		}
 
 		//Check if a variable contains two variables
 		//if strings.Contains(exprValue, ",") && strings.Contains(exprValue, ":="){
 		//
 		//}
+
+		//Add to list of variables
+		fnCfg.varList[scopeID] = *varNode
 
 		//TODO: currently connects first variable to function, but will need to chain
 		if node != nil {
