@@ -1,9 +1,12 @@
 package cfg
 
 import (
+	"fmt"
 	"go/ast"
-
+	"go/parser"
+	"go/token"
 	"golang.org/x/tools/go/cfg"
+	"strings"
 )
 
 type Wrapper interface {
@@ -13,6 +16,8 @@ type Wrapper interface {
 	GetChildren() []Wrapper
 	GetOuterWrapper() Wrapper
 	SetOuterWrapper(w Wrapper)
+
+	GetFileSet() *token.FileSet
 }
 
 type FnWrapper struct {
@@ -21,6 +26,7 @@ type FnWrapper struct {
 	Parents    []Wrapper
 	Outer      Wrapper
 	// ...?
+	Fset 	   *token.FileSet
 }
 
 type BlockWrapper struct {
@@ -63,6 +69,14 @@ func (fn *FnWrapper) SetOuterWrapper(w Wrapper) {
 	fn.Outer = w
 }
 
+func (fn *FnWrapper) GetFileSet() *token.FileSet{
+	if fn.Fset != nil {
+		return fn.Fset
+	} else {
+		return fn.Outer.GetFileSet()
+	}
+}
+
 // ------------------ BlockWrapper ----------------------
 
 func (b *BlockWrapper) AddParent(w Wrapper) {
@@ -91,6 +105,10 @@ func (b *BlockWrapper) GetOuterWrapper() Wrapper {
 
 func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
+}
+
+func (b *BlockWrapper) GetFileSet() *token.FileSet{
+	return b.Outer.GetFileSet()
 }
 
 // func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
@@ -139,7 +157,7 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 
 func (fn *FnWrapper) expandCFG() {
 	block := fn.FirstBlock
-	for block != nil {
+	if block != nil {
 		switch block := block.(type) {
 		case *BlockWrapper:
 			//check if the next block is a FnWrapper
@@ -153,20 +171,70 @@ func (fn *FnWrapper) expandCFG() {
 			}
 
 			if shouldConnect {
-
-			}
-			//For every node in the block
-			cfgBlock := block.Block
-			for _, node := range cfgBlock.Nodes {
-				//check if the node is a callExpr
+				//For every node in the block
+				cfgBlock := block.Block
+				for i, node := range cfgBlock.Nodes {
+					//check if the node is a callExpr
+					if node, ok := node.(*ast.CallExpr); ok {
+						//connect the block to the other block
+						block.connectToFunctionBlock(node, i)
+					}
+				}
 			}
 
 
 		}
+
 	}
 	//
 }
 
-func (b *BlockWrapper) connectToFunctionBlock() {
+func (b *BlockWrapper) connectToFunctionBlock(node *ast.CallExpr, ndx int) {
+	//iterate over files in the fileset
+	//to find the functionDeclaration of
+	//the call expr n
+	var fn *ast.FuncDecl
+	b.GetFileSet().Iterate(func(f *token.File) bool {
+		file, err := parser.ParseFile(b.GetFileSet(),f.Name(),nil,parser.ParseComments)
+		if err != nil {
+			fmt.Println(err)
+		}
+		continueSearching := true
+		ast.Inspect(file, func(n ast.Node) bool {
+			if n, ok := n.(*ast.FuncDecl); ok {
+				//TODO: get function name from node.Fun
+				if strings.EqualFold("GET NAME", n.Name.Name) {
+					fn = n
+					//stop when you find it
+					continueSearching = false
+					return false
+				}
+			}
+			//if you don't find it, keep looking
+			return true
+		})
+		return continueSearching
+	})
+
+	
+
+	//TODO: wrap newCFG
+
+	//split b at the current node
+	// this only copies the nodes,
+	// since the successors of the
+	// inner cfg.Block are not utilized
+	topB := BlockWrapper{
+		Block:   &cfg.Block{
+			Nodes: b.Block.Nodes[:ndx],
+			Succs: nil,
+			Index: 0,
+			Live:  false,
+		},
+		Parents: nil,
+		Succs:   nil, //TODO: connected wrapped newCFG
+		Outer:   b.Outer,
+	}
+
 
 }
