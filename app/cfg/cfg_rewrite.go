@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"go/ast"
+	"strings"
 
 	"golang.org/x/tools/go/cfg"
 )
@@ -20,7 +21,6 @@ type FnWrapper struct {
 	FirstBlock Wrapper
 	Parents    []Wrapper
 	Outer      Wrapper
-	// ...?
 }
 
 type BlockWrapper struct {
@@ -28,8 +28,6 @@ type BlockWrapper struct {
 	Parents []Wrapper
 	Succs   []Wrapper
 	Outer   Wrapper
-	// ...
-	// method to get condition (can return nil if not conditional)
 }
 
 // ------------------ FnWrapper ----------------------
@@ -93,25 +91,79 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
 
-// func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
-// 	return &CfgWrapper{
-// 		FirstBlock: NewBlockWrapper(first, nil),
-// 	}
-// }
+// NewFnWrapper creates a wrapper around the `*cfg.CFG` for
+// a given function.
+func NewFnWrapper(root ast.Node) *FnWrapper {
+	var c *cfg.CFG
+	switch fn := root.(type) {
+	case *ast.FuncDecl:
+		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
+			if call != nil {
+				// Functions that won't potentially cause the program will return.
+				if fn.Name.Name != "Exit" && !strings.Contains(fn.Name.Name, "Fatal") && fn.Name.Name != "panic" {
+					return true
+				}
+			}
+			return false
+		})
+	case *ast.FuncLit:
+		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
+			return true
+		})
+	}
 
-// call with nil parent if it's a root block
-// func NewBlockWrapper(block *cfg.Block, parent *BlockWrapper) *BlockWrapper {
-// 	b := &BlockWrapper{
-// 		Block: block,
-// 		// Parent: parent,
-// 		Succs: make([]*BlockWrapper, 0),
-// 	}
-// 	for _, succ := range block.Succs {
-// 		b.Succs = append(b.Succs, NewBlockWrapper(succ, b)) // right now this will create duplicate wrappers, need caching
-// 	}
-// 	// need to construct block wrappers for each function literal found
-// 	return b
-// }
+	fn := &FnWrapper{
+		Fn:      root,
+		Parents: make([]Wrapper, 0),
+	}
+
+	if c != nil && len(c.Blocks) > 0 {
+		fn.FirstBlock = NewBlockWrapper(c.Blocks[0], fn)
+	}
+
+	return fn
+}
+
+// NewBlockWrapper creates a wrapper around a `*cfg.Block` which points to
+// the outer `Wrapper`
+func NewBlockWrapper(block *cfg.Block, outer Wrapper) *BlockWrapper {
+	return newBlockWrapper(block, nil, outer, make(map[*cfg.Block]*BlockWrapper))
+}
+
+func newBlockWrapper(block *cfg.Block, parent *BlockWrapper, outer Wrapper, cache map[*cfg.Block]*BlockWrapper) *BlockWrapper {
+	if b, ok := cache[block]; ok {
+		b.AddParent(parent)
+		return b
+	}
+
+	b := &BlockWrapper{
+		Block:   block,
+		Parents: []Wrapper{parent},
+		Succs:   make([]Wrapper, 0),
+		Outer:   outer,
+	}
+
+	for _, succ := range block.Succs {
+		var block *BlockWrapper
+		if cachedBlock, ok := cache[succ]; ok {
+			block = cachedBlock
+		} else {
+			block = newBlockWrapper(succ, b, outer, cache)
+		}
+		b.Succs = append(b.Succs, block)
+	}
+
+	return b
+}
+
+// GetCondition returns the condition node inside of the
+// contained `cfg.Block` given that it is a conditional.
+func (b *BlockWrapper) GetCondition() ast.Node {
+	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
+		return b.Block.Nodes[len(b.Block.Nodes)-1]
+	}
+	return nil
+}
 
 // // Usage assumes you have all the wrapped function blocks already:
 // // for each function fn:
@@ -127,12 +179,4 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 // 		// block to the function, and the function's successors to the
 // 		// old block successors, and modify parents accordingly.
 // 	}
-// }
-
-// func (b *BlockWrapper) getCondition() string {
-// 	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
-// 		_ = b.Block.Nodes[len(b.Block.Nodes)-1]
-// 		// ..
-// 	}
-// 	return ""
 // }
