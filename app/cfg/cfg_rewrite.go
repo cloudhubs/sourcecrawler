@@ -9,7 +9,7 @@ import (
 
 type Wrapper interface {
 	AddParent(w Wrapper)
-	GetParents(w Wrapper) []Wrapper
+	GetParents() []Wrapper
 	AddChild(w Wrapper)
 	GetChildren() []Wrapper
 	GetOuterWrapper() Wrapper
@@ -38,7 +38,7 @@ func (fn *FnWrapper) AddParent(w Wrapper) {
 	}
 }
 
-func (fn *FnWrapper) GetParents(w Wrapper) []Wrapper {
+func (fn *FnWrapper) GetParents() []Wrapper {
 	return fn.Parents
 }
 
@@ -69,7 +69,7 @@ func (b *BlockWrapper) AddParent(w Wrapper) {
 	}
 }
 
-func (b *BlockWrapper) GetParents(w Wrapper) []Wrapper {
+func (b *BlockWrapper) GetParents() []Wrapper {
 	return b.Parents
 }
 
@@ -147,7 +147,7 @@ func newBlockWrapper(block *cfg.Block, parent *BlockWrapper, outer Wrapper, cach
 		var block *BlockWrapper
 		if cachedBlock, ok := cache[succ]; ok {
 			block = cachedBlock
-		} else {
+		} else if !strings.Contains(succ.String(), "for") {
 			block = newBlockWrapper(succ, b, outer, cache)
 		}
 		b.Succs = append(b.Succs, block)
