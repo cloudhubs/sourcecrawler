@@ -38,7 +38,7 @@ type FnCfgCreator struct {
 	scopeCount     []uint              //Holds the current counts for each level of the current subscopes
 
 	//Holds all variable nodes
-	varList        map[string]db.VariableNode
+	varList        map[string]*db.VariableNode
 	executionPaths []ExecutionPath
 }
 
@@ -58,7 +58,7 @@ func NewFnCfgCreator(pkg string, base string, fset *token.FileSet) *FnCfgCreator
 		curFnLitID:     1,
 		varNameToStack: make(map[string][]string),
 		scopeCount:     make([]uint, 0),
-		varList:        make(map[string]db.VariableNode),
+		varList:        make(map[string]*db.VariableNode),
 		executionPaths: make([]ExecutionPath, 0),
 	}
 }
@@ -79,12 +79,27 @@ func (fnCfg *FnCfgCreator) getCurrentScope() string {
 }
 
 func (fnCfg *FnCfgCreator) enterScope() {
-	fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+	if len(fnCfg.scopeCount) > 0 {
+		fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
+	}
 	fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
 }
 
 func (fnCfg *FnCfgCreator) leaveScope() {
-	fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
+	if len(fnCfg.scopeCount) > 1 {
+		fnCfg.scopeCount = fnCfg.scopeCount[0 : len(fnCfg.scopeCount)-1]
+	}
+	// Remove out of scope variable declarations
+	for key, stack := range fnCfg.varNameToStack {
+		if len(stack) > 0 {
+			// Check if the latest declaration is out of scope
+			varScope := stack[len(stack)-1]
+			scope := fnCfg.getCurrentScope()
+			if len(varScope) > len(scope) {
+				fnCfg.varNameToStack[key] = stack[0 : len(stack)-1]
+			}
+		}
+	}
 }
 
 func (fnCfg *FnCfgCreator) debugScope(where string) {
@@ -371,8 +386,10 @@ func PrintCfg(node db.Node, level string) {
 		fmt.Printf("%sendIf Label: (%v)\n", level, node.Label)
 		PrintCfg(node.Child, level)
 	case *db.VariableNode:
-		fmt.Printf("%sVariable--Name: %v Value: %v Scope: %v", level, node.VarName, node.Value, node.ScopeId)
-		PrintCfg(node.Child, level)
+		fmt.Printf("%sVariable--Name: %v Value: %v Scope: %v\n", level, node.VarName, node.Value, node.ScopeId)
+		if node.Child != node {
+			PrintCfg(node.Child, level)
+		}
 	}
 }
 
@@ -468,10 +485,10 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 			if prevNode.Child != nil {
 				prevNode.Child.SetParents(prevNode)
 			}
-			//Remove last element of master stack for endIf
-			if len(fnCfg.scopeCount) > 0 {
-				fnCfg.scopeCount = fnCfg.scopeCount[:len(fnCfg.scopeCount)-1]
-			}
+			// //Remove last element of master stack for endIf
+			// if len(fnCfg.scopeCount) > 0 {
+			// 	fnCfg.scopeCount = fnCfg.scopeCount[:len(fnCfg.scopeCount)-1]
+			// }
 			//TODO: Variable node - set child and parent?
 		case *db.VariableNode:
 			//fmt.Println("curr is var node")
@@ -484,15 +501,6 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 
 		// Conditionals are the last node and expression in a block, so if it is a control-flow, handle it
 		if expr, ok := node.(ast.Expr); ok && last && conditional {
-
-			//*Increment last element of master stack for conditional nodes (then add 0)*
-			if len(fnCfg.scopeCount) > 0 {
-				fnCfg.scopeCount[len(fnCfg.scopeCount)-1]++
-				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
-			} else {
-				fnCfg.scopeCount = append(fnCfg.scopeCount, 0)
-			}
-
 			// If the current node is the conditional, use it
 			// otherwise there was some initialization and it will need to be
 			// a new conditional node as the child of the previous initialization
@@ -506,7 +514,9 @@ func (fnCfg *FnCfgCreator) constructSubCfg(block *cfg.Block) (root db.Node) {
 					Filename:   filepath.ToSlash(relPath),
 					LineNumber: fnCfg.fset.Position(expr.Pos()).Line,
 					Condition:  fnCfg.expressionString(expr),
+					VarsUsed:   fnCfg.extractUsedVars(expr),
 				}
+
 			}
 
 			// Compute the success and fail trees if they haven't been computed already
@@ -661,7 +671,6 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
 		var varName string = ""
 		initType := ""
 		initVal := ""
-		stackStr := ""
 		exprStr := ""
 
 		//Grab the variable type
@@ -694,32 +703,11 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
 		if ok {
 			fmt.Println(varName, value, " was found in the map")
 		} else {
-			for index := range fnCfg.scopeCount {
-				//Exclude last element
-				if index == len(fnCfg.scopeCount)-1 {
-					break
-				}
-
-				//Add the scope (Ex: 1.1.2)
-				stackStr += fmt.Sprint(fnCfg.scopeCount[index])
-
-				//If last element, dont add a .
-				if index == len(fnCfg.scopeCount)-2 {
-					continue
-				} else {
-					stackStr += "."
-				}
-			}
-			//If there was only 1 element in master stack, set to 0
-			if stackStr == "" {
-				stackStr = "0"
-			}
-			//Create entry
-			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], stackStr)
+			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], fnCfg.getCurrentScope())
 		}
 
 		//Create scopeID string (ex: testFunc.1.1.2)
-		scopeID = fnCfg.curFnDecl + "." + stackStr
+		scopeID = fnCfg.getCurrentScope()
 
 		//Add variable node to cfg
 		//TODO: not shown in current cfg since most vars are handled in the assignStmt
@@ -829,6 +817,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, conditional bool) (node db
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fnCfg.fset.Position(expr.Pos()).Line,
 				Condition:  fnCfg.expressionString(expr),
+				VarsUsed:   fnCfg.extractUsedVars(expr),
 			})
 			// subExpr was a function call of some kind
 			if subExpr != nil {
@@ -852,6 +841,7 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, conditional bool) (node db
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fnCfg.fset.Position(expr.Pos()).Line,
 				Condition:  fnCfg.expressionString(expr),
+				VarsUsed:   fnCfg.extractUsedVars(expr),
 			})
 			if rightSubExpr != nil && leftSubExpr != nil {
 				node = leftSubExpr
@@ -880,11 +870,12 @@ func (fnCfg *FnCfgCreator) getExprNode(expr ast.Expr, conditional bool) (node db
 	default:
 		if conditional {
 			// fmt.Println("\t\tfound a condition")
-			node = db.Node(&db.ConditionalNode{
+			node = &db.ConditionalNode{
 				Filename:   filepath.ToSlash(relPath),
 				LineNumber: fnCfg.fset.Position(expr.Pos()).Line,
 				Condition:  fnCfg.expressionString(expr),
-			})
+				VarsUsed:   fnCfg.extractUsedVars(expr),
+			}
 		} else {
 			//TODO: could be a variable?
 		}
@@ -1179,25 +1170,18 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		//Handling variable scoping at assign time
 		//var scopeID string = ""
 		//fmt.Printf("(%s %s %s)\n", varName, strExpr, assignValue)
-		stackStr := ""
-		if value, ok := fnCfg.varNameToStack[varName]; ok {
-			//Add all elements as the scope
-			for index := range value {
-				stackStr += value[index]
-				//If last element, dont add .
-				if index == len(value)-1 {
-					break
-				} else {
-					stackStr += "."
-				}
-			}
+		scopeID := ""
+		if value, ok := fnCfg.varNameToStack[varName]; ok && len(value) > 0 {
+			fmt.Printf("scope:'%s'\n", scopeID)
+			scopeID = value[len(value)-1]
 		} else {
 			//handle adding scope if variable not in map at assign time
-			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], "1")
+			fmt.Printf("record scope:'%s'\n", fnCfg.getCurrentScope())
+			fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], fnCfg.getCurrentScope())
+			scopeID = fnCfg.varNameToStack[varName][len(fnCfg.varNameToStack[varName])-1]
 		}
 
 		//Add the scope ID to the variable node
-		scopeID := fnCfg.curFnDecl + "." + stackStr
 		//fmt.Println("Scope id", scopeID, isReal)
 
 		var separator string
@@ -1229,7 +1213,7 @@ func (fnCfg *FnCfgCreator) getStatementNode(stmt ast.Node) (node db.Node) {
 		//}
 
 		//Add to list of variables
-		fnCfg.varList[scopeID] = *varNode
+		fnCfg.varList[scopeID+":"+varName] = varNode
 
 		//TODO: currently connects first variable to function, but will need to chain
 		if node != nil {
@@ -1451,6 +1435,7 @@ func copyCfgRecur(node db.Node, copied map[db.Node]db.Node) (copy db.Node) {
 			Condition:  node.Condition,
 			TrueChild:  copyChild(node.TrueChild, copied),
 			FalseChild: copyChild(node.FalseChild, copied),
+			VarsUsed:   node.VarsUsed,
 		}
 	case *db.StatementNode:
 		copy = &db.StatementNode{
@@ -1534,5 +1519,78 @@ func (fnCfg *FnCfgCreator) ConstructExecutionPaths(node db.Node, variables []*db
 		//when there are no parents, this is the root
 		fnCfg.executionPaths = append(fnCfg.executionPaths, ExecutionPath{variables, statements})
 	}
+}
 
+func (fnCfg *FnCfgCreator) extractUsedVars(expr ast.Expr) []*db.VariableNode {
+	return fnCfg.extractUsedVarsRecur(expr, []*db.VariableNode{})
+}
+
+func (fnCfg *FnCfgCreator) latestDeclarationOfVar(name string) *db.VariableNode {
+	if stack, ok := fnCfg.varNameToStack[name]; ok && len(stack) > 0 {
+		topDeclaredScope := stack[len(stack)-1]
+		if v, ok := fnCfg.varList[topDeclaredScope+":"+name]; ok {
+			return v
+		}
+	}
+	return nil
+}
+
+func (fnCfg *FnCfgCreator) extractUsedVarsRecur(expr ast.Expr, vars []*db.VariableNode) []*db.VariableNode {
+	if expr == nil {
+		return vars
+	}
+
+	//Return expression based on the type
+	switch condition := expr.(type) {
+	case *ast.Ident:
+		vars = append(vars, fnCfg.latestDeclarationOfVar(condition.Name))
+	case *ast.BinaryExpr:
+		vars = fnCfg.extractUsedVarsRecur(condition.X, vars)
+		vars = fnCfg.extractUsedVarsRecur(condition.Y, vars)
+	case *ast.UnaryExpr:
+		vars = fnCfg.extractUsedVarsRecur(condition.X, vars)
+	case *ast.SelectorExpr:
+		vars = fnCfg.extractUsedVarsRecur(condition.X, vars)
+	case *ast.ParenExpr:
+		vars = fnCfg.extractUsedVarsRecur(condition.X, vars)
+	case *ast.CallExpr:
+		for _, arg := range condition.Args {
+			vars = fnCfg.extractUsedVarsRecur(arg, vars)
+		}
+	case *ast.IndexExpr:
+		vars = fnCfg.extractUsedVarsRecur(condition.X, vars)
+		vars = fnCfg.extractUsedVarsRecur(condition.Index, vars)
+	case *ast.KeyValueExpr:
+		vars = fnCfg.extractUsedVarsRecur(condition.Key, vars)
+		vars = fnCfg.extractUsedVarsRecur(condition.Value, vars)
+	case *ast.SliceExpr: // not sure about this one
+		vars = fnCfg.extractUsedVarsRecur(condition.X, vars)
+		vars = fnCfg.extractUsedVarsRecur(condition.Low, vars)
+		vars = fnCfg.extractUsedVarsRecur(condition.High, vars)
+		if condition.Slice3 {
+			vars = fnCfg.extractUsedVarsRecur(condition.Max, vars)
+		}
+	case *ast.StarExpr:
+		vars = fnCfg.extractUsedVarsRecur(condition.X, vars)
+	case *ast.TypeAssertExpr:
+		vars = fnCfg.extractUsedVarsRecur(condition.X, vars)
+		// vars = fnCfg.extractConditionalVarsRecur(condition.Type, vars)
+	case *ast.FuncType:
+		if condition.Params == nil {
+			break
+		}
+		for _, param := range condition.Params.List {
+			for _, name := range param.Names {
+				vars = fnCfg.extractUsedVarsRecur(name, vars)
+			}
+		}
+	}
+	return vars
+}
+
+func processConditional(node *db.ConditionalNode) (string, []*db.VariableNode) {
+	if node != nil {
+		return node.Condition, node.VarsUsed
+	}
+	return "", []*db.VariableNode{}
 }
