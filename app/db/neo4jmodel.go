@@ -3,6 +3,7 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/rs/zerolog/log"
 )
 
@@ -54,6 +55,7 @@ type FunctionNode struct {
 	Filename     string
 	LineNumber   int
 	FunctionName string
+	Args         []VariableNode //
 	Child        Node
 	Parent       Node
 	Label        ExecutionLabel
@@ -69,8 +71,8 @@ type FunctionDeclNode struct {
 	LineNumber   int
 	FunctionName string
 	Receivers    map[string]string // for methods, name to type
-	Params       map[string]string // map of arg name to type
-	Returns      []Return          // not a map since you don't have to name return variables
+	Params       []VariableNode
+	Returns      []Return // not a map since you don't have to name return variables
 	Child        Node
 	Parent       Node
 	Label        ExecutionLabel
@@ -105,6 +107,7 @@ type ConditionalNode struct {
 	FalseChild Node
 	Parent     Node
 	Label      ExecutionLabel
+	VarsUsed   []*VariableNode
 }
 
 type EndConditionalNode struct {
@@ -113,16 +116,16 @@ type EndConditionalNode struct {
 	Label   ExecutionLabel
 }
 
-
 type VariableNode struct {
-	Filename   string
-	LineNumber int
-	ScopeId string
-	VarName string
-	Value string //should hold an expression
-	Parent Node
-	Child Node
-	ValueFromParent bool
+	Filename        string
+	LineNumber      int
+	ScopeId         string
+	VarName         string
+	Value           string //should hold an expression
+	Parent          Node
+	Child           Node
+	ValueFromParent bool //true = value is received from function | false = value from literal
+	IsReal          bool //true = real value (hard literal value) | false = symbolic value (variable value)
 }
 
 //VARIABLE NODES
@@ -152,8 +155,8 @@ func (n *VariableNode) SetParents(parent Node) {
 }
 
 func (n *VariableNode) GetProperties() string {
-	return fmt.Sprintf("Variable node %d %s %s %s %v",
-			n.LineNumber, n.Filename, n.Value, n.ScopeId, n.Parent)
+	return fmt.Sprintf("Variable node: {expr: %s, scope: %s, parent %v\n",
+		n.Value, n.ScopeId, n.Parent)
 }
 
 func (n *VariableNode) GetNodeType() string {

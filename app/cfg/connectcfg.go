@@ -18,6 +18,7 @@ func ConnectFnCfgs(funcs []db.Node) []db.Node {
 					if foundCalls := connectCallsToDecls(fn, otherFn); foundCalls {
 						unecessaryDecls[j+1] = struct{}{}
 					}
+
 				}
 			}
 		}
@@ -60,6 +61,52 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 		copyCfg := CopyCfg(decl)
 		child := ref.Child
 
+		//TODO: insert VariableNodes here from FunctionNode Args
+		// and FunctionDeclNode Params
+		vars := make([]*db.VariableNode, len(ref.Args))
+		if decl, ok := decl.(*db.FunctionDeclNode); ok {
+			for i, arg := range ref.Args {
+				if i <= len(decl.Params)-1 { //check index
+					vars[i] = &db.VariableNode{
+						Filename:        ref.Filename,
+						LineNumber:      ref.LineNumber,
+						ScopeId:         decl.Params[i].ScopeId, //TODO: get scope?
+						VarName:         arg.VarName,
+						Value:           decl.Params[i].VarName, //should exist, same number of args/params
+						Parent:          nil,
+						Child:           nil,
+						ValueFromParent: false,
+					}
+				}
+			}
+
+		}
+
+		//connect first var to ref
+		if len(vars) > 0 {
+			ref.Child = vars[0]
+			vars[0].Parent = ref
+		}
+
+		//chain vars together
+		for i, variable := range vars {
+			//skip last
+			if i != len(vars)-1 {
+				if vars[i+1] != nil { // Make sure vars[i+1] isn't empty
+					variable.Child = vars[i+1]
+					vars[i+1].Parent = variable
+				}
+			}
+		}
+
+		//connect last to functionBody
+		if len(vars) > 0 {
+			if vars[len(vars)-1] != nil { //Make sure last element isn't empty
+				vars[len(vars)-1].Child = copyCfg
+				copyCfg.SetParents(vars[len(vars)-1])
+			}
+		}
+
 		//need to consolidate all returns to a single node before connecting to child
 		//represents the same position as the child node, maybe not necessary
 		tmpReturn := &db.ReturnNode{
@@ -70,8 +117,6 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 			Parents:    []db.Node{},
 			Label:      0,
 		}
-
-		ref.Child = copyCfg
 
 		for _, leaf := range getLeafNodes(copyCfg) {
 			if _, ok := leaf.(*db.ConditionalNode); ok || leaf == ref {
@@ -106,7 +151,7 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 				refs = append(refs, node)
 			}
 		}
-		if node != nil {
+		if node != nil && node != parent {
 			refs = append(refs, getReferencesRecur(fn, node, refs)...)
 		}
 	}
