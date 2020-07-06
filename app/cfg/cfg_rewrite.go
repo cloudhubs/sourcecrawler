@@ -18,16 +18,10 @@ type Wrapper interface {
 type FnWrapper struct {
 	Fn         ast.Node // *ast.FuncDel or *ast.FuncLit
 	FirstBlock Wrapper
-	Parent     []Wrapper
+	Parents    []Wrapper
 	Outer      Wrapper
 	// ...?
 }
-
-// func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
-// 	return &CfgWrapper{
-// 		FirstBlock: NewBlockWrapper(first, nil),
-// 	}
-// }
 
 type BlockWrapper struct {
 	Block   *cfg.Block
@@ -37,6 +31,73 @@ type BlockWrapper struct {
 	// ...
 	// method to get condition (can return nil if not conditional)
 }
+
+// ------------------ FnWrapper ----------------------
+
+func (fn *FnWrapper) AddParent(w Wrapper) {
+	if w != nil {
+		fn.Parents = append(fn.Parents, w)
+	}
+}
+
+func (fn *FnWrapper) GetParents(w Wrapper) []Wrapper {
+	return fn.Parents
+}
+
+func (fn *FnWrapper) AddChild(w Wrapper) {
+	fn.FirstBlock = w
+}
+
+func (fn *FnWrapper) GetChildren() []Wrapper {
+	if fn.FirstBlock == nil {
+		return []Wrapper{}
+	}
+	return []Wrapper{fn.FirstBlock}
+}
+
+func (fn *FnWrapper) GetOuterWrapper() Wrapper {
+	return fn.Outer
+}
+
+func (fn *FnWrapper) SetOuterWrapper(w Wrapper) {
+	fn.Outer = w
+}
+
+// ------------------ BlockWrapper ----------------------
+
+func (b *BlockWrapper) AddParent(w Wrapper) {
+	if w != nil {
+		b.Parents = append(b.Parents, w)
+	}
+}
+
+func (b *BlockWrapper) GetParents(w Wrapper) []Wrapper {
+	return b.Parents
+}
+
+func (b *BlockWrapper) AddChild(w Wrapper) {
+	if w != nil {
+		b.Succs = append(b.Succs, w)
+	}
+}
+
+func (b *BlockWrapper) GetChildren() []Wrapper {
+	return b.Succs
+}
+
+func (b *BlockWrapper) GetOuterWrapper() Wrapper {
+	return b.Outer
+}
+
+func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
+	b.Outer = w
+}
+
+// func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
+// 	return &CfgWrapper{
+// 		FirstBlock: NewBlockWrapper(first, nil),
+// 	}
+// }
 
 // call with nil parent if it's a root block
 // func NewBlockWrapper(block *cfg.Block, parent *BlockWrapper) *BlockWrapper {
