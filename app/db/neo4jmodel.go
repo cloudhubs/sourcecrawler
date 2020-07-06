@@ -155,8 +155,8 @@ func (n *VariableNode) SetParents(parent Node) {
 }
 
 func (n *VariableNode) GetProperties() string {
-	return fmt.Sprintf("Variable node: {line: %d, file: %s, expr: %s, scope: %s, parent %v\n",
-		n.LineNumber, n.Filename, n.Value, n.ScopeId, n.Parent)
+	return fmt.Sprintf("Variable node: {expr: %s, scope: %s, parent %v\n",
+		n.Value, n.ScopeId, n.Parent)
 }
 
 func (n *VariableNode) GetNodeType() string {

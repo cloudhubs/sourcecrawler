@@ -390,6 +390,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+
 	// // find all function declarations in this project
 	// allFuncDecls := findFunctionNodes(filesToParse)
 	// funcDeclMap := make(map[string]*ast.FuncDecl)

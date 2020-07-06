@@ -66,15 +66,17 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 		vars := make([]*db.VariableNode, len(ref.Args))
 		if decl, ok := decl.(*db.FunctionDeclNode); ok {
 			for i, arg := range ref.Args {
-				vars[i] = &db.VariableNode{
-					Filename:        ref.Filename,
-					LineNumber:      ref.LineNumber,
-					ScopeId:         "", //TODO: get scope?
-					VarName:         arg.VarName,
-					Value:           decl.Params[i].VarName, //should exist, same number of args/params
-					Parent:          nil,
-					Child:           nil,
-					ValueFromParent: false,
+				if i <= len(decl.Params)-1 { //check index
+					vars[i] = &db.VariableNode{
+						Filename:        ref.Filename,
+						LineNumber:      ref.LineNumber,
+						ScopeId:         decl.Params[i].ScopeId, //TODO: get scope?
+						VarName:         arg.VarName,
+						Value:           decl.Params[i].VarName, //should exist, same number of args/params
+						Parent:          nil,
+						Child:           nil,
+						ValueFromParent: false,
+					}
 				}
 			}
 
@@ -90,15 +92,19 @@ func ConnectRefsToDecl(fn db.Node, decl db.Node) (foundRef bool) {
 		for i, variable := range vars {
 			//skip last
 			if i != len(vars)-1 {
-				variable.Child = vars[i+1]
-				vars[i+1].Parent = variable
+				if vars[i+1] != nil { // Make sure vars[i+1] isn't empty
+					variable.Child = vars[i+1]
+					vars[i+1].Parent = variable
+				}
 			}
 		}
 
 		//connect last to functionBody
 		if len(vars) > 0 {
-			vars[len(vars)-1].Child = copyCfg
-			copyCfg.SetParents(vars[len(vars)-1])
+			if vars[len(vars)-1] != nil { //Make sure last element isn't empty
+				vars[len(vars)-1].Child = copyCfg
+				copyCfg.SetParents(vars[len(vars)-1])
+			}
 		}
 
 		//need to consolidate all returns to a single node before connecting to child
