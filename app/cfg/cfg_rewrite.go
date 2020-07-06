@@ -75,3 +75,37 @@ type BlockWrapper struct {
 // 	}
 // 	return ""
 // }
+
+func (fn *FnWrapper) expandCFG() {
+	block := fn.FirstBlock
+	for block != nil {
+		switch block := block.(type) {
+		case *BlockWrapper:
+			//check if the next block is a FnWrapper
+			// this means it is already conencted
+			shouldConnect := true
+			for _, succ := range block.Succs {
+				if _, ok := succ.(*FnWrapper); ok {
+					shouldConnect = false
+					break
+				}
+			}
+
+			if shouldConnect {
+
+			}
+			//For every node in the block
+			cfgBlock := block.Block
+			for _, node := range cfgBlock.Nodes {
+				//check if the node is a callExpr
+			}
+
+
+		}
+	}
+	//
+}
+
+func (b *BlockWrapper) connectToFunctionBlock() {
+
+}
