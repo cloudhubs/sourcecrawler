@@ -1,6 +1,7 @@
 package unsafe
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/rs/zerolog/log"
@@ -14,34 +15,36 @@ type SomeStruct struct {
 	Count int
 }
 
-func Unsafe(x int) []string {
-	if x > 100 {
+func Unsafe(x int, msg string) ([]string, error) {
+	if x > 20 {
 		warning()
+		return nil, errors.New("x too big")
+	} else if x < -1 {
+		warning()
+		return nil, errors.New("x too small")
 	}
 
 	obj := getStruct(x)
 	log.Info().Msgf("We are executing with message %v", obj.GetMessage())
 
-	var array []string
-	if badIndex {
-		array = getArray(obj.GetMessage(), 6)
-	} else {
-		array = getArray(obj.GetMessage(), 3)
-	}
-	return array
+	array := getArray(obj.GetMessage(), x)
+
+	return array, nil
 }
 
 func getStruct(y int) SomeInterface {
-	if x > 75 {
+	if y > 75 {
 		return nil
 	} else {
 		return &SomeStruct{0}
 	}
 }
 
-func getArray(message string, index int) []string {
-	var strArr [5]string
-	strArr[index] = message
+func getArray(message string, size int) []string {
+	var strArr [10]string
+	for i := 0; i < size; i++ {
+		strArr[i] = message
+	}
 	return strArr[:]
 }
 
@@ -50,7 +53,7 @@ func warning() {
 }
 
 func warning2() {
-	log.Warn().Msg("Program may not fail correctly")
+	log.Warn().Msg("Program may not work correctly")
 }
 
 func (s *SomeStruct) GetMessage() string {

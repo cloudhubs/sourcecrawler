@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sourcecrawler/app/helper"
+	"sourcecrawler/app/unsafe"
 	"strings"
 
 	"go/ast"
@@ -134,8 +135,8 @@ func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := struct {
-		NilAssignment bool `json:"nilAssignment"`
-		BadIndex      bool `json:"badIndex"`
+		X   int    `json:"x"`
+		Msg string `json:"msg"`
 	}{}
 
 	decoder := json.NewDecoder(r.Body)
@@ -145,9 +146,14 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	messages := Unsafe(request.NilAssignment, request.BadIndex)
+	messages, err := unsafe.Unsafe(request.X, request.Msg)
 
-	respondJSON(w, http.StatusOK, messages)
+	if err != nil {
+		respondJSON(w, http.StatusOK, messages)
+	} else {
+		respondJSON(w, http.StatusBadRequest, nil)
+	}
+
 }
 
 //Test endpoint for propogating labels
