@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sourcecrawler/app/helper"
 	"sourcecrawler/app/unsafe"
+	"strconv"
 	"strings"
 
 	"go/ast"
@@ -396,7 +397,6 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-
 	// // find all function declarations in this project
 	// allFuncDecls := findFunctionNodes(filesToParse)
 	// funcDeclMap := make(map[string]*ast.FuncDecl)
@@ -408,34 +408,60 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//4 -- Connect the CFG nodes together
 	decls = cfg.ConnectFnCfgs(decls)
 
-	funcLabels := map[string]string{}
-	funcCalls := []neoDb.Node{}
-	mustHaves := []neoDb.Node{}
-	mayHaves := []neoDb.Node{}
-
-	for _, root := range decls {
-		newFuncs, newLabels := FindMustHaves(root, parsedStack, regexes)
-		funcLabels = cfg.MergeLabelMaps(funcLabels, newLabels)
-		funcCalls = append(funcCalls, newFuncs...)
-	}
-
-	mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
-
-	//Test print the declarations
 	for _, decl := range decls {
-		cfg.PrintCfg(decl, "")
-		fmt.Println()
+		fmt.Println(decl)
 	}
 
-	response := struct {
-		MustHaveFunctions []string `json:"mustHaveFunctions"`
-		MayHaveFunctions  []string `json:"mayHaveFunctions"`
-	}{}
+	line, _ := strconv.Atoi(parsedStack[0].lineNum[0])
 
-	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
-	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
+	node := *getExceptionNode(&decls[len(decls)-1], parsedStack[0].fileName[0], line)
 
-	respondJSON(w, http.StatusOK, response)
+	fmt.Println(node.GetFilename(), node.GetLineNumber(), node.GetParents())
+
+	c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
+
+	c.ConstructExecutionPaths(node, nil, nil, false)
+
+	var returnVal [][]string
+
+	for _, path := range c.GetExecutionPaths() {
+		var stringPath []string
+		for _, stmt := range path.Statements {
+			stringPath = append(stringPath, stmt)
+		}
+		returnVal = append(returnVal, stringPath)
+	}
+
+	respondJSON(w, http.StatusOK, returnVal)
+
+	// funcLabels := map[string]string{}
+	// funcCalls := []neoDb.Node{}
+	// mustHaves := []neoDb.Node{}
+	// mayHaves := []neoDb.Node{}
+
+	// for _, root := range decls {
+	// 	newFuncs, newLabels := FindMustHaves(root, parsedStack, regexes)
+	// 	funcLabels = cfg.MergeLabelMaps(funcLabels, newLabels)
+	// 	funcCalls = append(funcCalls, newFuncs...)
+	// }
+
+	// mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
+
+	// //Test print the declarations
+	// for _, decl := range decls {
+	// 	cfg.PrintCfg(decl, "")
+	// 	fmt.Println()
+	// }
+
+	// response := struct {
+	// 	MustHaveFunctions []string `json:"mustHaveFunctions"`
+	// 	MayHaveFunctions  []string `json:"mayHaveFunctions"`
+	// }{}
+
+	// response.MustHaveFunctions = convertNodesToStrings(mustHaves)
+	// response.MayHaveFunctions = convertNodesToStrings(mayHaves)
+
+	// respondJSON(w, http.StatusOK, response)
 }
 
 // Returns the function names of the passed-in function call nodes
@@ -455,4 +481,24 @@ func convertNodesToStrings(elements []neoDb.Node) []string {
 	}
 	// Return the new slice.
 	return result
+}
+
+func getExceptionNode(node *neoDb.Node, filename string, linenumber int) *neoDb.Node {
+	fmt.Println((*node).GetFilename(), (*node).GetLineNumber())
+
+	if strings.Contains((*node).GetFilename(), filename) && (*node).GetLineNumber() == linenumber {
+		return node
+	}
+
+	fmt.Println((*node).GetChildren())
+
+	for child, _ := range (*node).GetChildren() {
+		fmt.Println("child", child.GetFilename(), child.GetLineNumber())
+		newNode := getExceptionNode(&child, filename, linenumber)
+		if newNode != nil {
+			return newNode
+		}
+	}
+
+	return nil
 }

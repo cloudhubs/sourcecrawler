@@ -3,6 +3,7 @@ package unsafe
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 )
@@ -16,20 +17,33 @@ type SomeStruct struct {
 }
 
 func Unsafe(x int, msg string) ([]string, error) {
-	if x > 20 {
-		warning()
+
+	if x <= 15 {
+
+		y := x + 5
+
+		if y < 10 {
+			fmt.Println("y is small")
+		} else {
+			fmt.Println("y is large")
+		}
+
+		var array [10]string
+
+		if x > -1 {
+			if x <= 11 {
+				array[x-1] = parseMessage(msg)
+			}
+		}
+
+		if x < -1 {
+			fmt.Println("x is negative")
+		}
+
+		return array[:], nil
+	} else {
 		return nil, errors.New("x too big")
-	} else if x < -1 {
-		warning()
-		return nil, errors.New("x too small")
 	}
-
-	obj := getStruct(x)
-	log.Info().Msgf("We are executing with message %v", obj.GetMessage())
-
-	array := getArray(obj.GetMessage(), x)
-
-	return array, nil
 }
 
 func getStruct(y int) SomeInterface {
@@ -42,9 +56,10 @@ func getStruct(y int) SomeInterface {
 
 func getArray(message string, size int) []string {
 	var strArr [10]string
-	for i := 0; i < size; i++ {
-		strArr[i] = message
+	if size <= 11 {
+		strArr[size-1] = parseMessage(message)
 	}
+
 	return strArr[:]
 }
 
@@ -58,4 +73,8 @@ func warning2() {
 
 func (s *SomeStruct) GetMessage() string {
 	return fmt.Sprintf("The count is %v", s.Count)
+}
+
+func parseMessage(msg string) string {
+	return strings.Trim(msg, " ")
 }

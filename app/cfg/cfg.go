@@ -43,8 +43,8 @@ type FnCfgCreator struct {
 }
 
 type ExecutionPath struct {
-	vars       []*db.VariableNode
-	statements []string
+	Vars       []*db.VariableNode
+	Statements []string
 }
 
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
@@ -111,26 +111,25 @@ func (fnCfg *FnCfgCreator) currFnLiteralID() string {
 }
 
 //Process a variable node if it found
-func (fnCfg *FnCfgCreator) ProcessVariable(varNode *db.VariableNode) (string, []*db.VariableNode){
+func (fnCfg *FnCfgCreator) ProcessVariable(varNode *db.VariableNode) (string, []*db.VariableNode) {
 	varExpr := varNode.Value
 	involvedVars := []*db.VariableNode{}
-
 
 	//If it is symbolic -> get the other variable node to keep track of
 	//May need more depth if a variable is assigned from another variable that was assigned a variable
 	// (ex:  c:=10,  -> b := c, a:= b)
-	if !varNode.IsReal{
-		startNdx := strings.Index(varExpr, "=")+2
+	if !varNode.IsReal {
+		startNdx := strings.Index(varExpr, "=") + 2
 		symbol := varExpr[startNdx:] // could be a func() or a variable name
 
 		//Check if the value came from another variable ()
-		for _, node := range fnCfg.varList{
+		for _, node := range fnCfg.varList {
 			nodeFullScope := node.ScopeId + ":" + node.VarName //Full scope identifier used to get var node in map (ex: getName.1.1:name)
 			//fmt.Printf("Node full scope: (%s) MapKey: (%s)\n",nodeFullScope, key)
 			//fmt.Println(" -- Node varname", node.VarName)
 
 			//If the assigned var matches a var in the list, then add to variables to track
-			if symbol == node.VarName{
+			if symbol == node.VarName {
 				involvedVars = append(involvedVars, fnCfg.varList[nodeFullScope]) //add the other var node to keep track
 				fmt.Println("variable name is: ", node.VarName)
 				fmt.Println("Node found is", fnCfg.varList[nodeFullScope].GetProperties())
@@ -734,7 +733,6 @@ func (fnCfg *FnCfgCreator) getSpecNode(spec ast.Spec) (node db.Node) {
 		//	//Create entry
 		//	fnCfg.varNameToStack[varName] = append(fnCfg.varNameToStack[varName], fnCfg.getCurrentScope())
 		//}
-
 
 		//Create scopeID string (ex: testFunc.1.1.2)
 		//scopeID = fnCfg.curFnDecl + "." + stackStr
@@ -1517,37 +1515,46 @@ func traverse(root db.Node, visit func(db.Node)) {
 
 // adds variables used during execution and a list of conditionals
 // associated with them to a slice of slices in the fnCfg
-func (fnCfg *FnCfgCreator) ConstructExecutionPaths(node db.Node, variables []*db.VariableNode, statements []string) {
+func (fnCfg *FnCfgCreator) ConstructExecutionPaths(node db.Node, variables []*db.VariableNode, statements []string, falseConditional bool) {
 	var newStr string
 	var newVars []*db.VariableNode
 	switch n := node.(type) {
 	case *db.ConditionalNode:
 		//process conditional statements
 		//to gather new variables to track
-		newStr, newVars = processConditional(n)
+		newStr, newVars = processConditional(n, falseConditional)
 	case *db.VariableNode:
 		//find out if we care about this variable
 		careAbout := false
 		for _, v := range variables {
 			// make sure variables have the same name
 			// and scope as a variable in the list
-			if strings.EqualFold(v.ScopeId, n.ScopeId) && strings.EqualFold(v.VarName, n.VarName) {
+			if v != nil && strings.EqualFold(v.ScopeId, n.ScopeId) && strings.EqualFold(v.VarName, n.VarName) {
 				careAbout = true
 				break
 			}
 		}
 		if careAbout {
-			newStr, newVars = fnCfg.processVariable(n)
+			newStr, newVars = fnCfg.ProcessVariable(n)
 		}
 	}
 
 	variables = append(variables, newVars...)
-	statements = append(statements, newStr)
+	if len(newStr) != 0 {
+		newStr = strings.Trim(newStr, "\t")
+		statements = append(statements, newStr)
+	}
 
 	if len(node.GetParents()) != 0 {
 		//call the next node with updated values to look for
 		for _, p := range node.GetParents() {
-			fnCfg.ConstructExecutionPaths(p, variables, statements)
+			falseParent := false
+			if p, ok := p.(*db.ConditionalNode); ok {
+				if p.FalseChild == node {
+					falseParent = true
+				}
+			}
+			fnCfg.ConstructExecutionPaths(p, variables, statements, falseParent)
 		}
 	} else {
 		//when there are no parents, this is the root
@@ -1622,9 +1629,17 @@ func (fnCfg *FnCfgCreator) extractUsedVarsRecur(expr ast.Expr, vars []*db.Variab
 	return vars
 }
 
-func processConditional(node *db.ConditionalNode) (string, []*db.VariableNode) {
+func processConditional(node *db.ConditionalNode, falseConditional bool) (string, []*db.VariableNode) {
 	if node != nil {
-		return node.Condition, node.VarsUsed
+		conditional := node.Condition
+		if falseConditional {
+			conditional = "!(" + conditional + ")"
+		}
+		return conditional, node.VarsUsed
 	}
 	return "", []*db.VariableNode{}
+}
+
+func (fnCfg *FnCfgCreator) GetExecutionPaths() []ExecutionPath {
+	return fnCfg.executionPaths
 }
