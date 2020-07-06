@@ -38,7 +38,13 @@ type FnCfgCreator struct {
 	scopeCount     []uint              //Holds the current counts for each level of the current subscopes
 
 	//Holds all variable nodes
-	varList map[string]db.VariableNode
+	varList        map[string]db.VariableNode
+	executionPaths []ExecutionPath
+}
+
+type ExecutionPath struct {
+	vars       []*db.VariableNode
+	statements []string
 }
 
 // NewFnCfgCreator returns a newly initialized FnCfgCreator
@@ -52,7 +58,8 @@ func NewFnCfgCreator(pkg string, base string, fset *token.FileSet) *FnCfgCreator
 		curFnLitID:     1,
 		varNameToStack: make(map[string][]string),
 		scopeCount:     make([]uint, 0),
-		varList:		make(map[string]db.VariableNode),
+		varList:        make(map[string]db.VariableNode),
+		executionPaths: make([]ExecutionPath, 0),
 	}
 }
 
@@ -153,7 +160,7 @@ func (fnCfg *FnCfgCreator) CreateCfg(fn *ast.FuncDecl) db.Node {
 		}
 	}
 
-	for key, node := range fnCfg.varList{
+	for key, node := range fnCfg.varList {
 		fmt.Println("scope id", key)
 		fmt.Println(node.GetProperties())
 	}
@@ -1487,4 +1494,45 @@ func traverse(root db.Node, visit func(db.Node)) {
 	for child := range children {
 		traverse(child, visit)
 	}
+}
+
+// adds variables used during execution and a list of conditionals
+// associated with them to a slice of slices in the fnCfg
+func (fnCfg *FnCfgCreator) ConstructExecutionPaths(node db.Node, variables []*db.VariableNode, statements []string) {
+	var newStr string
+	var newVars []*db.VariableNode
+	switch n := node.(type) {
+	case *db.ConditionalNode:
+		//process conditional statements
+		//to gather new variables to track
+		newStr, newVars = processConditional(n)
+	case *db.VariableNode:
+		//find out if we care about this variable
+		careAbout := false
+		for _, v := range variables {
+			// make sure variables have the same name
+			// and scope as a variable in the list
+			if strings.EqualFold(v.ScopeId, n.ScopeId) && strings.EqualFold(v.VarName, n.VarName) {
+				careAbout = true
+				break
+			}
+		}
+		if careAbout {
+			newStr, newVars = fnCfg.processVariable(n)
+		}
+	}
+
+	variables = append(variables, newVars...)
+	statements = append(statements, newStr)
+
+	if len(node.GetParents()) != 0 {
+		//call the next node with updated values to look for
+		for _, p := range node.GetParents() {
+			fnCfg.ConstructExecutionPaths(p, variables, statements)
+		}
+	} else {
+		//when there are no parents, this is the root
+		fnCfg.executionPaths = append(fnCfg.executionPaths, ExecutionPath{variables, statements})
+	}
+
 }
