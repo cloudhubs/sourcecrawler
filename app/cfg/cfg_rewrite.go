@@ -95,25 +95,75 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
 
-// ------------ Helper functions -----------------
-func traverseCFG(cfg Wrapper){
+//Method to get condition, nil if not a conditional (specific to block wrapper)
+func (b *BlockWrapper) GetCondition() string{
 
-	//Return if it is the final
-	if cfg == nil {
+	var condition string = ""
+	//Return block or panic, fatal, etc
+	if len(b.Succs) == 0{
+		return ""
+	}
+	//Normal block
+	if len(b.Succs) == 1 {
+		return ""
+	}
+	//Conditional block (TODO: assuming there's only 1 if stmt per block)
+	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0{
+		for _, node := range b.Block.Nodes{
+			ast.Inspect(node, func(currNode ast.Node) bool {
+				if ifNode, ok := node.(*ast.IfStmt); ok{
+					condition = fmt.Sprint(ifNode.Cond)
+				}
+
+				if forNode, ok := node.(*ast.ForStmt); ok{
+					fmt.Println("For loop condition", forNode.Cond)
+				}
+				return true
+			})
+		}
+	}
+
+	return condition
+}
+
+// ---- Traversal function (currently a DFS -> goes from root to all children)---
+// ----- will need to handle variables later -----
+// cfg -> starting block | condStmts -> holds conditional expressions | outerRoot -> outermost wrapper
+//
+func traverseCFG(cfg Wrapper, condStmts []string, outerRoot Wrapper){
+
+	//Process and exit if there are no more children (last block)
+	if len(cfg.GetChildren()) == 0 {
 		return
 	}
 
-	//Go through each child in the tree
+	//Go through each child in the tree (list of blocks)
 	for _, child := range cfg.GetChildren(){
+		child.SetOuterWrapper(outerRoot) //Set the outer wrapper for each child
+
 		//Check if if is a FnWrapper or BlockWrapper Type
 		switch currWrapper := cfg.(type){
 		case *FnWrapper:
-			fmt.Println("curr wrapper", currWrapper)
-			traverseCFG(child)
+			fmt.Println("FnWrapper", currWrapper)
+
 		case *BlockWrapper:
-			traverseCFG(child)
+			fmt.Println("BlockWrapper", currWrapper)
+
+			//If conditional block, extract condition and process the true and false child
+			condition := currWrapper.GetCondition()
+
+			if condition != ""{
+				condStmts = append(condStmts, condition)
+
+				traverseCFG(currWrapper.Succs[0], condStmts, outerRoot) //true child
+				traverseCFG(currWrapper.Succs[1], condStmts, outerRoot) //false child
+			}
 		}
+
+		traverseCFG(child, condStmts, outerRoot)
 	}
+
+
 }
 
 //Extract logging statements from a cfg block
@@ -132,6 +182,7 @@ func extractLogRegex(block *cfg.Block) (regexes []string){
 								regexStr := logsource.CreateRegex(logNode.Value)
 								regexes = append(regexes, regexStr)
 							}
+							//Currently an runtime bug with catching Msgf ->
 						}
 					}
 				}

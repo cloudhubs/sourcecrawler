@@ -1,3 +1,6 @@
+/**
+This is just a test file for the rewrite functions
+ */
 package cfg
 
 import (
