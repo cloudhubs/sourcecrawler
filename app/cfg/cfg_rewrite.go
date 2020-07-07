@@ -9,6 +9,11 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+type Path struct {
+	Stmts []string
+	//Something to keep track of vars?
+}
+
 type Wrapper interface {
 	AddParent(w Wrapper)
 	GetParents() []Wrapper
@@ -16,6 +21,8 @@ type Wrapper interface {
 	GetChildren() []Wrapper
 	GetOuterWrapper() Wrapper
 	SetOuterWrapper(w Wrapper)
+
+
 }
 
 type FnWrapper struct {
