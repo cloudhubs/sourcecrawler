@@ -120,6 +120,7 @@ func NewFnWrapper(root ast.Node) *FnWrapper {
 
 	if c != nil && len(c.Blocks) > 0 {
 		fn.FirstBlock = NewBlockWrapper(c.Blocks[0], fn)
+
 	}
 
 	return fn
