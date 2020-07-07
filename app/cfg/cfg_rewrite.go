@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"go/ast"
+	"sourcecrawler/app/logsource"
 
 	"golang.org/x/tools/go/cfg"
 )
@@ -91,6 +92,54 @@ func (b *BlockWrapper) GetOuterWrapper() Wrapper {
 
 func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
+}
+
+// ------------ Helper functions -----------------
+func traverseCFG(cfg Wrapper){
+
+	//Return if it is the final
+	if cfg == nil {
+		return
+	}
+
+	//Go through each child in the tree
+	for _, child := range cfg.GetChildren(){
+		//Check if if is a FnWrapper or BlockWrapper Type
+		switch currWrapper := cfg.(type){
+		case *FnWrapper:
+			traverseCFG(child)
+		case *BlockWrapper:
+			traverseCFG(child)
+		}
+	}
+}
+
+//Extract logging statements from a cfg block
+func extractLogRegex(block cfg.Block){
+	for _, currNode := range block.Nodes{
+		ast.Inspect(currNode, func(node ast.Node) bool {
+			if call, ok := node.(*ast.CallExpr); ok {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+					if logsource.IsFromLog(sel) {
+						if fset.Position(n.Pos()).Line == lineNumber {
+							//get log from node
+							for _, arg := range call.Args {
+								switch v := arg.(type) {
+								case *ast.BasicLit:
+									//create regex
+									regex = CreateRegex(v.Value)
+								}
+							}
+
+							//stop
+							return false
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
 }
 
 // func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
