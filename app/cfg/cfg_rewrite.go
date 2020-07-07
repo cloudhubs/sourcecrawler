@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"fmt"
 	"go/ast"
 	"strings"
 
@@ -143,14 +144,17 @@ func newBlockWrapper(block *cfg.Block, parent *BlockWrapper, outer Wrapper, cach
 		Outer:   outer,
 	}
 
-	for _, succ := range block.Succs {
-		var block *BlockWrapper
-		if cachedBlock, ok := cache[succ]; ok {
-			block = cachedBlock
-		} else if !strings.Contains(succ.String(), "for") {
-			block = newBlockWrapper(succ, b, outer, cache)
+	if !strings.Contains(block.String(), "for.post") && !strings.Contains(block.String(), "range.body") {
+		for _, succ := range block.Succs {
+			var block *BlockWrapper
+			if cachedBlock, ok := cache[succ]; ok {
+				block = cachedBlock
+			} else {
+				block = newBlockWrapper(succ, b, outer, cache)
+				cache[succ] = block
+			}
+			b.Succs = append(b.Succs, block)
 		}
-		b.Succs = append(b.Succs, block)
 	}
 
 	return b
@@ -180,3 +184,29 @@ func (b *BlockWrapper) GetCondition() ast.Node {
 // 		// old block successors, and modify parents accordingly.
 // 	}
 // }
+
+func DebugPrint(w Wrapper, level string) {
+
+	// fmt.Printf("%schildren:%v parents:%v outer:%v", level, w.GetChildren(), w.GetParents(), w.GetOuterWrapper())
+	switch w := w.(type) {
+	case *BlockWrapper:
+		if w == nil {
+			return
+		}
+		fmt.Println(level, "meta: block:", w.Block, "succs:", w.Succs, "outer:", w.Outer, "parents:", w.Parents)
+		if w.Block == nil {
+			break
+		}
+		for _, node := range w.Block.Nodes {
+			fmt.Println(level, node)
+		}
+	case *FnWrapper:
+		if w == nil {
+			return
+		}
+		fmt.Println(level, "meta: fn:", w.Fn, "outer:", w.Outer, "parents:", w.Parents)
+	}
+	for _, s := range w.GetChildren() {
+		DebugPrint(s, level+"  ")
+	}
+}
