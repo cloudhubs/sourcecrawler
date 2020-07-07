@@ -1,14 +1,16 @@
 package cfg
 
 import (
+	"fmt"
 	"go/ast"
+	"strings"
 
 	"golang.org/x/tools/go/cfg"
 )
 
 type Wrapper interface {
 	AddParent(w Wrapper)
-	GetParents(w Wrapper) []Wrapper
+	GetParents() []Wrapper
 	AddChild(w Wrapper)
 	GetChildren() []Wrapper
 	GetOuterWrapper() Wrapper
@@ -20,7 +22,6 @@ type FnWrapper struct {
 	FirstBlock Wrapper
 	Parents    []Wrapper
 	Outer      Wrapper
-	// ...?
 }
 
 type BlockWrapper struct {
@@ -28,8 +29,6 @@ type BlockWrapper struct {
 	Parents []Wrapper
 	Succs   []Wrapper
 	Outer   Wrapper
-	// ...
-	// method to get condition (can return nil if not conditional)
 }
 
 // ------------------ FnWrapper ----------------------
@@ -40,7 +39,7 @@ func (fn *FnWrapper) AddParent(w Wrapper) {
 	}
 }
 
-func (fn *FnWrapper) GetParents(w Wrapper) []Wrapper {
+func (fn *FnWrapper) GetParents() []Wrapper {
 	return fn.Parents
 }
 
@@ -71,7 +70,7 @@ func (b *BlockWrapper) AddParent(w Wrapper) {
 	}
 }
 
-func (b *BlockWrapper) GetParents(w Wrapper) []Wrapper {
+func (b *BlockWrapper) GetParents() []Wrapper {
 	return b.Parents
 }
 
@@ -93,25 +92,96 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
 
-// func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
-// 	return &CfgWrapper{
-// 		FirstBlock: NewBlockWrapper(first, nil),
-// 	}
-// }
+// NewFnWrapper creates a wrapper around the `*cfg.CFG` for
+// a given function.
+func NewFnWrapper(root ast.Node) *FnWrapper {
+	var c *cfg.CFG
+	switch fn := root.(type) {
+	case *ast.FuncDecl:
+		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
+			if call != nil {
+				// Functions that won't potentially cause the program will return.
+				if fn.Name.Name != "Exit" && !strings.Contains(fn.Name.Name, "Fatal") && fn.Name.Name != "panic" {
+					return true
+				}
+			}
+			return false
+		})
+	case *ast.FuncLit:
+		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
+			return true
+		})
+	}
 
-// call with nil parent if it's a root block
-// func NewBlockWrapper(block *cfg.Block, parent *BlockWrapper) *BlockWrapper {
-// 	b := &BlockWrapper{
-// 		Block: block,
-// 		// Parent: parent,
-// 		Succs: make([]*BlockWrapper, 0),
-// 	}
-// 	for _, succ := range block.Succs {
-// 		b.Succs = append(b.Succs, NewBlockWrapper(succ, b)) // right now this will create duplicate wrappers, need caching
-// 	}
-// 	// need to construct block wrappers for each function literal found
-// 	return b
-// }
+	fn := &FnWrapper{
+		Fn:      root,
+		Parents: make([]Wrapper, 0),
+	}
+
+	if c != nil && len(c.Blocks) > 0 {
+		fn.FirstBlock = NewBlockWrapper(c.Blocks[0], fn, fn)
+	}
+
+	return fn
+}
+
+// NewBlockWrapper creates a wrapper around a `*cfg.Block` which points to
+// the outer `Wrapper`
+func NewBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper) *BlockWrapper {
+	return newBlockWrapper(block, parent, outer, make(map[*cfg.Block]*BlockWrapper))
+}
+
+func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[*cfg.Block]*BlockWrapper) *BlockWrapper {
+	if b, ok := cache[block]; ok {
+		b.AddParent(parent)
+		return b
+	}
+
+	b := &BlockWrapper{
+		Block: block,
+		Succs: make([]Wrapper, 0),
+		Outer: outer,
+	}
+
+	if parent != nil {
+		b.Parents = []Wrapper{parent}
+	} else {
+		b.Parents = make([]Wrapper, 0)
+	}
+
+	// Don't recurse on these otherwise this will infinitely loop
+	if !strings.Contains(block.String(), "for.post") && !strings.Contains(block.String(), "range.body") {
+		for _, succ := range block.Succs {
+			succBlock := newBlockWrapper(succ, b, outer, cache)
+			cache[succ] = succBlock
+			b.AddChild(succBlock)
+
+			// Handle loops by manually grabbing the cached for.post or range.body
+			if strings.Contains(block.String(), "range.loop") {
+				if body, ok := cache[block.Succs[0]]; ok {
+					body.AddChild(succBlock)
+					succBlock.AddParent(body)
+				}
+			} else if strings.Contains(block.String(), "for.loop") {
+				if post, ok := cache[block.Succs[0].Succs[0]]; ok {
+					post.AddChild(succBlock)
+					succBlock.AddParent(post)
+				}
+			}
+		}
+	}
+
+	return b
+}
+
+// GetCondition returns the condition node inside of the
+// contained `cfg.Block` given that it is a conditional.
+func (b *BlockWrapper) GetCondition() ast.Node {
+	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
+		return b.Block.Nodes[len(b.Block.Nodes)-1]
+	}
+	return nil
+}
 
 // // Usage assumes you have all the wrapped function blocks already:
 // // for each function fn:
@@ -129,10 +199,35 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 // 	}
 // }
 
-// func (b *BlockWrapper) getCondition() string {
-// 	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
-// 		_ = b.Block.Nodes[len(b.Block.Nodes)-1]
-// 		// ..
-// 	}
-// 	return ""
-// }
+// this will only print each block once at the moment to not infinitely recurse
+func DebugPrint(w Wrapper, level string, printed map[Wrapper]struct{}) {
+
+	// fmt.Printf("%schildren:%v parents:%v outer:%v", level, w.GetChildren(), w.GetParents(), w.GetOuterWrapper())
+	switch w := w.(type) {
+	case *BlockWrapper:
+		if w == nil {
+			return
+		}
+		fmt.Println(level, "meta: block:", w.Block, "succs:", w.Succs, "outer:", w.Outer, "parents:", w.Parents)
+		if w.Block == nil {
+			break
+		}
+		for _, node := range w.Block.Nodes {
+			fmt.Println(level, node)
+		}
+	case *FnWrapper:
+		if w == nil {
+			return
+		}
+		fmt.Println(level, "meta: fn:", w.Fn, "outer:", w.Outer, "parents:", w.Parents)
+	}
+	printed[w] = struct{}{}
+	for _, s := range w.GetChildren() {
+		if _, ok := printed[s]; !ok {
+			printed[s] = struct{}{}
+			DebugPrint(s, level+"  ", printed)
+		} else {
+			return
+		}
+	}
+}
