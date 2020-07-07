@@ -119,7 +119,7 @@ func NewFnWrapper(root ast.Node) *FnWrapper {
 	}
 
 	if c != nil && len(c.Blocks) > 0 {
-		fn.FirstBlock = NewBlockWrapper(c.Blocks[0], fn)
+		fn.FirstBlock = NewBlockWrapper(c.Blocks[0], fn, fn)
 	}
 
 	return fn
@@ -127,33 +127,47 @@ func NewFnWrapper(root ast.Node) *FnWrapper {
 
 // NewBlockWrapper creates a wrapper around a `*cfg.Block` which points to
 // the outer `Wrapper`
-func NewBlockWrapper(block *cfg.Block, outer Wrapper) *BlockWrapper {
-	return newBlockWrapper(block, nil, outer, make(map[*cfg.Block]*BlockWrapper))
+func NewBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper) *BlockWrapper {
+	return newBlockWrapper(block, parent, outer, make(map[*cfg.Block]*BlockWrapper))
 }
 
-func newBlockWrapper(block *cfg.Block, parent *BlockWrapper, outer Wrapper, cache map[*cfg.Block]*BlockWrapper) *BlockWrapper {
+func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[*cfg.Block]*BlockWrapper) *BlockWrapper {
 	if b, ok := cache[block]; ok {
 		b.AddParent(parent)
 		return b
 	}
 
 	b := &BlockWrapper{
-		Block:   block,
-		Parents: []Wrapper{parent},
-		Succs:   make([]Wrapper, 0),
-		Outer:   outer,
+		Block: block,
+		Succs: make([]Wrapper, 0),
+		Outer: outer,
 	}
 
+	if parent != nil {
+		b.Parents = []Wrapper{parent}
+	} else {
+		b.Parents = make([]Wrapper, 0)
+	}
+
+	// Don't recurse on these otherwise this will infinitely loop
 	if !strings.Contains(block.String(), "for.post") && !strings.Contains(block.String(), "range.body") {
 		for _, succ := range block.Succs {
-			var block *BlockWrapper
-			if cachedBlock, ok := cache[succ]; ok {
-				block = cachedBlock
-			} else {
-				block = newBlockWrapper(succ, b, outer, cache)
-				cache[succ] = block
+			succBlock := newBlockWrapper(succ, b, outer, cache)
+			cache[succ] = succBlock
+			b.AddChild(succBlock)
+
+			// Handle loops by manually grabbing the cached for.post or range.body
+			if strings.Contains(block.String(), "range.loop") {
+				if body, ok := cache[block.Succs[0]]; ok {
+					body.AddChild(succBlock)
+					succBlock.AddParent(body)
+				}
+			} else if strings.Contains(block.String(), "for.loop") {
+				if post, ok := cache[block.Succs[0].Succs[0]]; ok {
+					post.AddChild(succBlock)
+					succBlock.AddParent(post)
+				}
 			}
-			b.Succs = append(b.Succs, block)
 		}
 	}
 
@@ -185,7 +199,8 @@ func (b *BlockWrapper) GetCondition() ast.Node {
 // 	}
 // }
 
-func DebugPrint(w Wrapper, level string) {
+// this will only print each block once at the moment to not infinitely recurse
+func DebugPrint(w Wrapper, level string, printed map[Wrapper]struct{}) {
 
 	// fmt.Printf("%schildren:%v parents:%v outer:%v", level, w.GetChildren(), w.GetParents(), w.GetOuterWrapper())
 	switch w := w.(type) {
@@ -206,7 +221,13 @@ func DebugPrint(w Wrapper, level string) {
 		}
 		fmt.Println(level, "meta: fn:", w.Fn, "outer:", w.Outer, "parents:", w.Parents)
 	}
+	printed[w] = struct{}{}
 	for _, s := range w.GetChildren() {
-		DebugPrint(s, level+"  ")
+		if _, ok := printed[s]; !ok {
+			printed[s] = struct{}{}
+			DebugPrint(s, level+"  ", printed)
+		} else {
+			return
+		}
 	}
 }
