@@ -10,7 +10,11 @@ import (
 
 type Path struct {
 	Stmts []string
-	Variables []*ast.Node //*ast.AssignStmt or *ast.ValueSpec
+	Variables []ast.Node //*ast.AssignStmt or *ast.ValueSpec
+}
+var executionPath []Path = []Path{}
+func GetExecPath() []Path{
+	return executionPath
 }
 
 type Wrapper interface {
@@ -20,7 +24,6 @@ type Wrapper interface {
 	GetChildren() []Wrapper
 	GetOuterWrapper() Wrapper
 	SetOuterWrapper(w Wrapper)
-
 
 }
 
@@ -100,44 +103,46 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 }
 
 
-// ---- Traversal function (currently a DFS -> goes from root to all children)---
-// ----- will need to handle variables later -----
-// cfg -> starting block | condStmts -> holds conditional expressions | outerRoot -> outermost wrapper
+// ---- Traversal function ---------------
+// curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
+// vars -> holds list of variables on path
 // Identify variables being executed as function (keep track of it) -> check if it's a func Literal
-// Backtrack upwards through statements (loop thru parent statements)
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func traverseCFG(cfg Wrapper, condStmts []string, outerRoot Wrapper){
+func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper){
 
-	//Process and exit if there are no more children (last block)
-	if len(cfg.GetChildren()) == 0 {
-		return
-	}
+	//Check if if is a FnWrapper or BlockWrapper Type
+	switch currWrapper := curr.(type){
+	case *FnWrapper:
+		fmt.Println("FnWrapper", currWrapper)
+		GetFuncInfo(currWrapper.Fn) //TODO: Handles FuncDecl or FuncLit
 
-	//Go through each child in the tree (list of blocks)
-	for _, child := range cfg.GetChildren(){
-		child.SetOuterWrapper(outerRoot) //Set the outer wrapper for each child
+	case *BlockWrapper:
+		fmt.Println("BlockWrapper", currWrapper)
 
-		//Check if if is a FnWrapper or BlockWrapper Type
-		switch currWrapper := cfg.(type){
-		case *FnWrapper:
-			fmt.Println("FnWrapper", currWrapper)
-
-		case *BlockWrapper:
-			fmt.Println("BlockWrapper", currWrapper)
-
-			//If conditional block, extract condition and process the true and false child
-			condition := currWrapper.GetCondition()
-
-			if condition != ""{
-				condStmts = append(condStmts, condition)
-
-				traverseCFG(currWrapper.Succs[0], condStmts, outerRoot) //true child
-				traverseCFG(currWrapper.Succs[1], condStmts, outerRoot) //false child
-			}
+		//If conditional block, extract the condition and add to list
+		condition := currWrapper.GetCondition()
+		if condition != ""{
+			condStmts = append(condStmts, condition)
 		}
 
-		traverseCFG(child, condStmts, outerRoot)
+		//Gets a list of all variables inside the block, and add
+		// -Filter out relevant variables
+		varList := GetVariables(currWrapper.Block.Nodes)
+		if len(varList) != 0{
+			vars = append(vars, varList...)
+		}
+
 	}
+
+	if len(curr.GetParents()) != 0{
+		//Go through each parent in the wrapper
+		for _, parent := range curr.GetParents(){
+			TraverseCFG(parent, condStmts, vars, root)
+		}
+	}else{
+		executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
+	}
+
 }
 
 // func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
@@ -226,15 +231,6 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 
 	return b
 }
-
-// GetCondition returns the condition node inside of the
-// contained `cfg.Block` given that it is a conditional.
-//func (b *BlockWrapper) GetCondition() ast.Node {
-//	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
-//		return b.Block.Nodes[len(b.Block.Nodes)-1]
-//	}
-//	return nil
-//}
 
 // // Usage assumes you have all the wrapped function blocks already:
 // // for each function fn:
