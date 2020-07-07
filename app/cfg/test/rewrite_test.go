@@ -1,7 +1,7 @@
 /**
 This is just a test file for the rewrite functions
  */
-package cfg
+package test
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"golang.org/x/tools/go/cfg"
 	"os"
+	cfg2 "sourcecrawler/app/cfg"
 	"strings"
 	"testing"
 )
@@ -66,7 +67,7 @@ func TestRegexFromBlock(t *testing.T) {
 			fmt.Println(formatted)
 
 			//Test log regex
-			regexes := extractLogRegex(testCFG.Blocks[0])
+			regexes := cfg2.ExtractLogRegex(testCFG.Blocks[0])
 			for _, msg := range regexes{
 				fmt.Println("Regex:", msg)
 			}

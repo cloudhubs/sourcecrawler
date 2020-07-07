@@ -1,9 +1,10 @@
-package cfg
+package test
 
 import (
 	"fmt"
 	"go/token"
 	"os"
+	"sourcecrawler/app/cfg"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/helper"
 	"testing"
@@ -87,9 +88,9 @@ func TestAddingFuncs(t *testing.T) {
 			}
 			//run function to add in additional graphs
 			sources := helper.GatherGoFiles(wd)
-			fnCfg := NewFnCfgCreator("",wd, token.NewFileSet())
+			fnCfg := cfg.NewFnCfgCreator("",wd, token.NewFileSet())
 			fnCfg.ConnectExternalFunctions(test.Root, []*db.FunctionNode{}, sources)
-			PrintCfg(test.Root, "")
+			cfg.PrintCfg(test.Root, "")
 
 		})
 	}

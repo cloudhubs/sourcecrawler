@@ -3,7 +3,6 @@ package cfg
 import (
 	"fmt"
 	"go/ast"
-	"sourcecrawler/app/logsource"
 	"strings"
 
 	"golang.org/x/tools/go/cfg"
@@ -11,7 +10,7 @@ import (
 
 type Path struct {
 	Stmts []string
-	//Something to keep track of vars?
+	Variables []*ast.Node //*ast.AssignStmt or *ast.ValueSpec
 }
 
 type Wrapper interface {
@@ -100,40 +99,13 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
 
-//Method to get condition, nil if not a conditional (specific to block wrapper)
-func (b *BlockWrapper) GetCondition() string{
-
-	var condition string = ""
-	//Return block or panic, fatal, etc
-	if len(b.Succs) == 0{
-		return ""
-	}
-	//Normal block
-	if len(b.Succs) == 1 {
-		return ""
-	}
-	//Conditional block (TODO: assuming the last node in the block node list is the conditional node)
-	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0{
-		condNode := b.Block.Nodes[len(b.Block.Nodes)-1] //Last node in the block's list of nodes
-		ast.Inspect(condNode, func(currNode ast.Node) bool {
-			if ifNode, ok := condNode.(*ast.IfStmt); ok{
-				condition = fmt.Sprint(ifNode.Cond)
-			}
-
-			if forNode, ok := condNode.(*ast.ForStmt); ok{
-				fmt.Println("For loop condition", forNode.Cond)
-			}
-			return true
-		})
-	}
-
-	return condition
-}
 
 // ---- Traversal function (currently a DFS -> goes from root to all children)---
 // ----- will need to handle variables later -----
 // cfg -> starting block | condStmts -> holds conditional expressions | outerRoot -> outermost wrapper
-//
+// Identify variables being executed as function (keep track of it) -> check if it's a func Literal
+// Backtrack upwards through statements (loop thru parent statements)
+// Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func traverseCFG(cfg Wrapper, condStmts []string, outerRoot Wrapper){
 
 	//Process and exit if there are no more children (last block)
@@ -168,34 +140,6 @@ func traverseCFG(cfg Wrapper, condStmts []string, outerRoot Wrapper){
 	}
 }
 
-//Extract logging statements from a cfg block
-func extractLogRegex(block *cfg.Block) (regexes []string){
-
-	//For each node inside the block, check if it contains logging stmts
-	for _, currNode := range block.Nodes{
-		ast.Inspect(currNode, func(node ast.Node) bool {
-			if call, ok := node.(*ast.CallExpr); ok {
-				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-					if logsource.IsFromLog(sel) {
-						//get log regex from the node
-						for _, arg := range call.Args {
-							switch logNode := arg.(type) {
-							case *ast.BasicLit:
-								regexStr := logsource.CreateRegex(logNode.Value)
-								regexes = append(regexes, regexStr)
-							}
-							//Currently an runtime bug with catching Msgf ->
-						}
-					}
-				}
-			}
-			return true
-		})
-	}
-
-	return regexes
-}
-
 // func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
 // 	return &CfgWrapper{
 // 		FirstBlock: NewBlockWrapper(first, nil),
@@ -228,8 +172,7 @@ func NewFnWrapper(root ast.Node) *FnWrapper {
 	}
 
 	if c != nil && len(c.Blocks) > 0 {
-		fn.FirstBlock = NewBlockWrapper(c.Blocks[0], fn)
-
+		fn.FirstBlock = NewBlockWrapper(c.Blocks[0], fn, fn)
 	}
 
 	return fn
@@ -237,33 +180,47 @@ func NewFnWrapper(root ast.Node) *FnWrapper {
 
 // NewBlockWrapper creates a wrapper around a `*cfg.Block` which points to
 // the outer `Wrapper`
-func NewBlockWrapper(block *cfg.Block, outer Wrapper) *BlockWrapper {
-	return newBlockWrapper(block, nil, outer, make(map[*cfg.Block]*BlockWrapper))
+func NewBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper) *BlockWrapper {
+	return newBlockWrapper(block, parent, outer, make(map[*cfg.Block]*BlockWrapper))
 }
 
-func newBlockWrapper(block *cfg.Block, parent *BlockWrapper, outer Wrapper, cache map[*cfg.Block]*BlockWrapper) *BlockWrapper {
+func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[*cfg.Block]*BlockWrapper) *BlockWrapper {
 	if b, ok := cache[block]; ok {
 		b.AddParent(parent)
 		return b
 	}
 
 	b := &BlockWrapper{
-		Block:   block,
-		Parents: []Wrapper{parent},
-		Succs:   make([]Wrapper, 0),
-		Outer:   outer,
+		Block: block,
+		Succs: make([]Wrapper, 0),
+		Outer: outer,
 	}
 
+	if parent != nil {
+		b.Parents = []Wrapper{parent}
+	} else {
+		b.Parents = make([]Wrapper, 0)
+	}
+
+	// Don't recurse on these otherwise this will infinitely loop
 	if !strings.Contains(block.String(), "for.post") && !strings.Contains(block.String(), "range.body") {
 		for _, succ := range block.Succs {
-			var block *BlockWrapper
-			if cachedBlock, ok := cache[succ]; ok {
-				block = cachedBlock
-			} else {
-				block = newBlockWrapper(succ, b, outer, cache)
-				cache[succ] = block
+			succBlock := newBlockWrapper(succ, b, outer, cache)
+			cache[succ] = succBlock
+			b.AddChild(succBlock)
+
+			// Handle loops by manually grabbing the cached for.post or range.body
+			if strings.Contains(block.String(), "range.loop") {
+				if body, ok := cache[block.Succs[0]]; ok {
+					body.AddChild(succBlock)
+					succBlock.AddParent(body)
+				}
+			} else if strings.Contains(block.String(), "for.loop") {
+				if post, ok := cache[block.Succs[0].Succs[0]]; ok {
+					post.AddChild(succBlock)
+					succBlock.AddParent(post)
+				}
 			}
-			b.Succs = append(b.Succs, block)
 		}
 	}
 
@@ -295,7 +252,8 @@ func newBlockWrapper(block *cfg.Block, parent *BlockWrapper, outer Wrapper, cach
 // 	}
 // }
 
-func DebugPrint(w Wrapper, level string) {
+// this will only print each block once at the moment to not infinitely recurse
+func DebugPrint(w Wrapper, level string, printed map[Wrapper]struct{}) {
 
 	// fmt.Printf("%schildren:%v parents:%v outer:%v", level, w.GetChildren(), w.GetParents(), w.GetOuterWrapper())
 	switch w := w.(type) {
@@ -316,7 +274,13 @@ func DebugPrint(w Wrapper, level string) {
 		}
 		fmt.Println(level, "meta: fn:", w.Fn, "outer:", w.Outer, "parents:", w.Parents)
 	}
+	printed[w] = struct{}{}
 	for _, s := range w.GetChildren() {
-		DebugPrint(s, level+"  ")
+		if _, ok := printed[s]; !ok {
+			printed[s] = struct{}{}
+			DebugPrint(s, level+"  ", printed)
+		} else {
+			return
+		}
 	}
 }

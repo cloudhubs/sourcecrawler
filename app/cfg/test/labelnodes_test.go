@@ -1,6 +1,7 @@
-package cfg
+package test
 
 import (
+	"sourcecrawler/app/cfg"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	"testing"
@@ -344,8 +345,8 @@ func TestLabelNonCondNodes(t *testing.T) {
 	for _, testCase := range cases {
 		test := testCase()
 		t.Run(test.Name, func(t *testing.T) {
-			LabelParentNodes(test.Leaf, test.Logs)
-			traverse(test.Root, func(node db.Node) {
+			cfg.LabelParentNodes(test.Leaf, test.Logs)
+			cfg.Traverse(test.Root, func(node db.Node) {
 				if test.Labels[node] != node.GetLabel() {
 					t.Errorf(
 						"%s had label %s, but %s was expected",
