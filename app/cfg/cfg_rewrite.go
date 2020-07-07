@@ -105,7 +105,7 @@ func (b *BlockWrapper) GetCondition() string{
 	if len(b.Succs) == 1 {
 		return ""
 	}
-	//Conditional block (TODO: assuming there's only 1 if stmt per block)
+	//Conditional block (TODO: assuming the last node in the block node list is the conditional node)
 	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0{
 		condNode := b.Block.Nodes[len(b.Block.Nodes)-1] //Last node in the block's list of nodes
 		ast.Inspect(condNode, func(currNode ast.Node) bool {
@@ -159,8 +159,6 @@ func traverseCFG(cfg Wrapper, condStmts []string, outerRoot Wrapper){
 
 		traverseCFG(child, condStmts, outerRoot)
 	}
-
-
 }
 
 //Extract logging statements from a cfg block
