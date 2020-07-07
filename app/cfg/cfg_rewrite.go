@@ -138,15 +138,14 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 	}
 
 	b := &BlockWrapper{
-		Block: block,
-		Succs: make([]Wrapper, 0),
-		Outer: outer,
+		Block:   block,
+		Succs:   make([]Wrapper, 0),
+		Outer:   outer,
+		Parents: make([]Wrapper, 0),
 	}
 
 	if parent != nil {
-		b.Parents = []Wrapper{parent}
-	} else {
-		b.Parents = make([]Wrapper, 0)
+		b.AddParent(parent)
 	}
 
 	// Don't recurse on these otherwise this will infinitely loop
@@ -155,18 +154,18 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 			succBlock := newBlockWrapper(succ, b, outer, cache)
 			cache[succ] = succBlock
 			b.AddChild(succBlock)
+		}
 
-			// Handle loops by manually grabbing the cached for.post or range.body
-			if strings.Contains(block.String(), "range.loop") {
-				if body, ok := cache[block.Succs[0]]; ok {
-					body.AddChild(succBlock)
-					succBlock.AddParent(body)
-				}
-			} else if strings.Contains(block.String(), "for.loop") {
-				if post, ok := cache[block.Succs[0].Succs[0]]; ok {
-					post.AddChild(succBlock)
-					succBlock.AddParent(post)
-				}
+		// Handle loops by manually grabbing the cached for.post or range.body
+		if strings.Contains(b.Block.String(), "range.loop") {
+			if body, ok := cache[block.Succs[0]]; ok {
+				body.AddChild(b)
+				b.AddParent(body)
+			}
+		} else if strings.Contains(b.Block.String(), "for.loop") {
+			if post, ok := cache[block.Succs[0].Succs[0]]; ok {
+				post.AddChild(b)
+				b.AddParent(post)
 			}
 		}
 	}
@@ -201,14 +200,32 @@ func (b *BlockWrapper) GetCondition() ast.Node {
 
 // this will only print each block once at the moment to not infinitely recurse
 func DebugPrint(w Wrapper, level string, printed map[Wrapper]struct{}) {
-
+	printWrapperList := func(w []Wrapper) {
+		for _, p := range w {
+			switch p := p.(type) {
+			case *BlockWrapper:
+				fmt.Print(p.Block.String(), ", ")
+			case *FnWrapper:
+				switch fn := p.Fn.(type) {
+				case *ast.FuncDecl:
+					fmt.Print(fn.Name.Name, ", ")
+				case *ast.FuncLit:
+					fmt.Print(fn.Type, ", ")
+				}
+			}
+		}
+	}
 	// fmt.Printf("%schildren:%v parents:%v outer:%v", level, w.GetChildren(), w.GetParents(), w.GetOuterWrapper())
 	switch w := w.(type) {
 	case *BlockWrapper:
 		if w == nil {
 			return
 		}
-		fmt.Println(level, "meta: block:", w.Block, "succs:", w.Succs, "outer:", w.Outer, "parents:", w.Parents)
+		fmt.Print(level, "meta: block: ", w.Block, " outer: ", w.Outer, " succs: ")
+		printWrapperList(w.GetChildren())
+		fmt.Print(" parents: ")
+		printWrapperList(w.GetParents())
+		fmt.Println()
 		if w.Block == nil {
 			break
 		}
@@ -219,7 +236,9 @@ func DebugPrint(w Wrapper, level string, printed map[Wrapper]struct{}) {
 		if w == nil {
 			return
 		}
-		fmt.Println(level, "meta: fn:", w.Fn, "outer:", w.Outer, "parents:", w.Parents)
+		fmt.Print(level, "meta: fn: ", w.Fn, " outer: ", w.Outer, " parents: ")
+		printWrapperList(w.GetParents())
+		fmt.Println()
 	}
 	printed[w] = struct{}{}
 	for _, s := range w.GetChildren() {
