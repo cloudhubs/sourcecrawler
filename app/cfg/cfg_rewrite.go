@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"fmt"
 	"go/ast"
 	"sourcecrawler/app/logsource"
 
@@ -107,6 +108,7 @@ func traverseCFG(cfg Wrapper){
 		//Check if if is a FnWrapper or BlockWrapper Type
 		switch currWrapper := cfg.(type){
 		case *FnWrapper:
+			fmt.Println("curr wrapper", currWrapper)
 			traverseCFG(child)
 		case *BlockWrapper:
 			traverseCFG(child)
@@ -115,24 +117,21 @@ func traverseCFG(cfg Wrapper){
 }
 
 //Extract logging statements from a cfg block
-func extractLogRegex(block cfg.Block){
+func extractLogRegex(block *cfg.Block) (regexes []string){
+
+	//For each node inside the block, check if it contains logging stmts
 	for _, currNode := range block.Nodes{
 		ast.Inspect(currNode, func(node ast.Node) bool {
 			if call, ok := node.(*ast.CallExpr); ok {
 				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
 					if logsource.IsFromLog(sel) {
-						if fset.Position(n.Pos()).Line == lineNumber {
-							//get log from node
-							for _, arg := range call.Args {
-								switch v := arg.(type) {
-								case *ast.BasicLit:
-									//create regex
-									regex = CreateRegex(v.Value)
-								}
+						//get log regex from the node
+						for _, arg := range call.Args {
+							switch logNode := arg.(type) {
+							case *ast.BasicLit:
+								regexStr := logsource.CreateRegex(logNode.Value)
+								regexes = append(regexes, regexStr)
 							}
-
-							//stop
-							return false
 						}
 					}
 				}
@@ -140,6 +139,8 @@ func extractLogRegex(block cfg.Block){
 			return true
 		})
 	}
+
+	return regexes
 }
 
 // func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
