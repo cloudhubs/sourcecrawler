@@ -114,7 +114,8 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 	switch currWrapper := curr.(type){
 	case *FnWrapper:
 		fmt.Println("FnWrapper", currWrapper)
-		GetFuncInfo(currWrapper.Fn) //TODO: Handles FuncDecl or FuncLit
+		fnName, funcVars := GetFuncInfo(currWrapper.Fn) //Gets the function name and a list of variables
+		fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
 
 	case *BlockWrapper:
 		fmt.Println("BlockWrapper", currWrapper)

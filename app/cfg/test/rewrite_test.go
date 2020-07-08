@@ -76,9 +76,11 @@ func TestRegexFromBlock(t *testing.T) {
 				fmt.Println("Regex:", msg)
 			}
 
-			if regexes[0] != "Testing log message \\d" || regexes[1] != "\\(log msg 2\\)"{
-				t.Errorf("Expected: %s and %s  | but got %s and %s\n",
-					"Testing log message \\d", "\\(log msg 2\\)", regexes[0], regexes[1])
+			if len(regexes) >= 2 {
+				if regexes[0] != "Testing log message \\d" || regexes[1] != "\\(log msg 2\\)" {
+					t.Errorf("Expected: %s and %s  | but got %s and %s\n",
+						"Testing log message \\d", "\\(log msg 2\\)", regexes[0], regexes[1])
+				}
 			}
 
 			return addingTestCase{
@@ -291,6 +293,10 @@ func TestRegexFromBlock(t *testing.T) {
 			cfg2.TraverseCFG(exceptionWrapper, condStmts, varNodes, rootWrapper)
 			fmt.Println("Execution path after", cfg2.GetExecPath())
 
+			//for _, value := range cfg2.GetExecPath(){
+			//	fmt.Println(value.Variables)
+			//}
+
 			//Test on function wrapper
 			cfg2.TraverseCFG(funcWrapper, condStmts, varNodes, rootWrapper)
 
@@ -339,4 +345,10 @@ func TestRegexFromBlock(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testRewrite(a string, b int){
+	//testVar := ""
+	////
+	//fmt.Println(testVar)
 }

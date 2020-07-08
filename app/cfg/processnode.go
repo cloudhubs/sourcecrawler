@@ -86,12 +86,16 @@ func GetVariables(nodes []ast.Node) []ast.Node{
 	return varList
 }
 
-//Processes function node information (get variables in it, process parameters)
-func GetFuncInfo(node ast.Node){
+//Processes function node information (still needs to track variables per function)
+func GetFuncInfo(node ast.Node) (string, map[string]ast.Node){
+
+	funcName := ""
+	funcVars := make(map[string]ast.Node)
+
 	ast.Inspect(node, func(currNode ast.Node) bool {
 		switch node := node.(type){
 		case *ast.FuncDecl: //Check parameters
-			//fnName := node.Name.Name
+			funcName = node.Name.Name
 
 			if node.Type.Params != nil {
 				//Get parameters
@@ -109,10 +113,16 @@ func GetFuncInfo(node ast.Node){
 				case *ast.AssignStmt: //for variables
 					//fmt.Println("Assign stmt found", stmt)
 					//fmt.Println("Var name", GetVarName(stmt))
-					if 0 > 10{
-						fmt.Println(stmt)
+
+					//If var is already in the map, skip
+					varName := GetVarName(stmt)
+					if _, ok := funcVars[varName]; ok{
+
+					}else{
+						funcVars[varName] = stmt
 					}
-				case *ast.ReturnStmt: //for return values
+
+				case *ast.ReturnStmt: //Not sure if this is even needed
 					//fmt.Println("Return stmt", stmt)
 				default:
 					//fmt.Println("default", stmt)
@@ -125,6 +135,8 @@ func GetFuncInfo(node ast.Node){
 		}
 		return true
 	})
+
+	return funcName, funcVars
 }
 
 
