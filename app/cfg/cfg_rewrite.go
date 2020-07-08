@@ -135,6 +135,7 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 
 	}
 
+	//If there are parent blocks to check, continue | otherwise add the path
 	if len(curr.GetParents()) != 0{
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents(){
