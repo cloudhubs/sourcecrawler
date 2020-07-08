@@ -158,6 +158,7 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 	return refs
 }
 
+//TODO: not used, but left open b/c compiler errors
 func getLeafNodes(fn db.Node) []db.Node {
 	rets := []db.Node{}
 	for node := range fn.GetChildren() {
