@@ -11,6 +11,15 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+type Path struct {
+	Stmts []string
+	Variables []ast.Node //*ast.AssignStmt or *ast.ValueSpec
+}
+var executionPath []Path = []Path{}
+func GetExecPath() []Path{
+	return executionPath
+}
+
 type Wrapper interface {
 	AddParent(w Wrapper)
 	RemoveParent(w Wrapper)
@@ -167,6 +176,56 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
 
+
+// ---- Traversal function ---------------
+// curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
+// vars -> holds list of variables on path
+// Identify variables being executed as function (keep track of it) -> check if it's a func Literal
+// Assumptions: outer wrapper has already been assigned, and tree structure has been created.
+func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper){
+
+	//Check if if is a FnWrapper or BlockWrapper Type
+	switch currWrapper := curr.(type){
+	case *FnWrapper:
+		fmt.Println("FnWrapper", currWrapper)
+		fnName, funcVars := GetFuncInfo(currWrapper.Fn) //Gets the function name and a list of variables
+		fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
+
+	case *BlockWrapper:
+		fmt.Println("BlockWrapper", currWrapper)
+
+		//If conditional block, extract the condition and add to list
+		condition := currWrapper.GetCondition()
+		if condition != ""{
+			condStmts = append(condStmts, condition)
+		}
+
+		//Gets a list of all variables inside the block, and add
+		// -Filter out relevant variables
+		varList := GetVariables(currWrapper.Block.Nodes)
+		if len(varList) != 0{
+			vars = append(vars, varList...)
+		}
+
+	}
+
+	//If there are parent blocks to check, continue | otherwise add the path
+	if len(curr.GetParents()) != 0{
+		//Go through each parent in the wrapper
+		for _, parent := range curr.GetParents(){
+			TraverseCFG(parent, condStmts, vars, root)
+		}
+	}else{
+		executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
+	}
+
+}
+
+// func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
+// 	return &CfgWrapper{
+// 		FirstBlock: NewBlockWrapper(first, nil),
+// 	}
+// }
 func (b *BlockWrapper) GetFileSet() *token.FileSet {
 	if b.Outer != nil {
 		return b.Outer.GetFileSet()
@@ -295,19 +354,19 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 	return b
 }
 
-// GetCondition returns the condition node inside of the
-// contained `cfg.Block` given that it is a conditional.
-func (b *BlockWrapper) GetCondition() ast.Node {
-	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
-		return b.Block.Nodes[len(b.Block.Nodes)-1]
-	}
-	return nil
-}
-
-// func (b *BlockWrapper) getCondition() string {
-// 	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
-// 		_ = b.Block.Nodes[len(b.Block.Nodes)-1]
-// 		// ..
+// // Usage assumes you have all the wrapped function blocks already:
+// // for each function fn:
+// //   for each other function fn2:
+// //     fn.connectBlockCalls(fn2)
+// func (b *BlockWrapper) connectBlockCalls(fn *BlockWrapper) {
+// 	if b.Block == nil {
+// 		return
+// 	}
+// 	for _, _ /*node :*/ = range b.Block.Nodes {
+// 		// if node is a function call that corresponds to fn
+// 		// slice the Nodes in half and set the successor node of the current
+// 		// block to the function, and the function's successors to the
+// 		// old block successors, and modify parents accordingly.
 // 	}
 // 	return ""
 // }
@@ -457,7 +516,7 @@ func (b *BlockWrapper) connectCallTo(fn *FnWrapper) {
 }
 
 func (fn *FnWrapper) connectReturnsTo(w Wrapper) {
-	for _, leaf := range getLeafNodes(fn) {
+	for _, leaf := range GetLeafNodes(fn) {
 		leaf.AddChild(w)
 		w.AddParent(leaf)
 	}
@@ -465,11 +524,11 @@ func (fn *FnWrapper) connectReturnsTo(w Wrapper) {
 
 //should be called on FnWrapper, but recursion
 //requires interface
-func getLeafNodes(w Wrapper) []Wrapper {
+func GetLeafNodes(w Wrapper) []Wrapper {
 	var rets []Wrapper
 	for _, c := range w.GetChildren() {
 		if len(c.GetChildren()) > 0 {
-			rets = append(rets, getLeafNodes(c)...)
+			rets = append(rets, GetLeafNodes(c)...)
 		} else {
 			rets = append(rets, c)
 		}

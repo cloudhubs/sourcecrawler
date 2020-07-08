@@ -30,6 +30,7 @@ func GetLogRegexFromInfo(filename string, lineNumber int) string {
 		panic(err)
 	}
 	var regex string
+
 	ast.Inspect(tk, func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
 			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {

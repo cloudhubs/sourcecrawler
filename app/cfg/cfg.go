@@ -1501,7 +1501,7 @@ func copyChild(node db.Node, copied map[db.Node]db.Node) db.Node {
 	return copy
 }
 
-func traverse(root db.Node, visit func(db.Node)) {
+func Traverse(root db.Node, visit func(db.Node)) {
 	if root == nil {
 		return
 	}
@@ -1509,7 +1509,7 @@ func traverse(root db.Node, visit func(db.Node)) {
 
 	children := root.GetChildren()
 	for child := range children {
-		traverse(child, visit)
+		Traverse(child, visit)
 	}
 }
 

@@ -158,26 +158,27 @@ func getReferencesRecur(fn *db.FunctionDeclNode, parent db.Node, refs []*db.Func
 	return refs
 }
 
-//func getLeafNodes(fn db.Node) []db.Node {
-//	rets := []db.Node{}
-//	for node := range fn.GetChildren() {
-//		if node == nil {
-//			continue
-//		}
-//		//if a child is nil (for conditionals
-//		//either both will be nil or neither
-//		//so only one needs to be checked)
-//		//this is a return statement, otherwise,
-//		//call this function on the node only
-//		//once then break the loop
-//		if len(node.GetChildren()) > 0 {
-//			rets = append(rets, getLeafNodes(node)...)
-//		} else {
-//			rets = append(rets, node)
-//		}
-//	}
-//	return rets
-//}
+//TODO: not used, but left open b/c compiler errors
+func getLeafNodes(fn db.Node) []db.Node {
+	rets := []db.Node{}
+	for node := range fn.GetChildren() {
+		if node == nil {
+			continue
+		}
+		//if a child is nil (for conditionals
+		//either both will be nil or neither
+		//so only one needs to be checked)
+		//this is a return statement, otherwise,
+		//call this function on the node only
+		//once then break the loop
+		if len(node.GetChildren()) > 0 {
+			rets = append(rets, getLeafNodes(node)...)
+		} else {
+			rets = append(rets, node)
+		}
+	}
+	return rets
+}
 
 func ConnectStackTrace(fns []db.Node) {
 	for i, fn := range fns {
