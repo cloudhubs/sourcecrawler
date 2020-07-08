@@ -3,6 +3,9 @@ package cfg
 import (
 	"fmt"
 	"go/ast"
+	"go/parser"
+	"go/token"
+	"sourcecrawler/app/helper"
 	"strings"
 
 	"golang.org/x/tools/go/cfg"
@@ -10,11 +13,16 @@ import (
 
 type Wrapper interface {
 	AddParent(w Wrapper)
+	RemoveParent(w Wrapper)
 	GetParents() []Wrapper
 	AddChild(w Wrapper)
+	RemoveChild(w Wrapper)
 	GetChildren() []Wrapper
 	GetOuterWrapper() Wrapper
 	SetOuterWrapper(w Wrapper)
+
+	GetFileSet() *token.FileSet
+	GetASTs() []*ast.File
 }
 
 type FnWrapper struct {
@@ -22,6 +30,9 @@ type FnWrapper struct {
 	FirstBlock Wrapper
 	Parents    []Wrapper
 	Outer      Wrapper
+	// ...?
+	Fset *token.FileSet
+	ASTs []*ast.File
 }
 
 type BlockWrapper struct {
@@ -39,12 +50,28 @@ func (fn *FnWrapper) AddParent(w Wrapper) {
 	}
 }
 
+func (fn *FnWrapper) RemoveParent(w Wrapper) {
+	for i, p := range fn.Parents {
+		if p == w {
+			if i < len(fn.Parents)-1 {
+				fn.Parents = append(fn.Parents[:i], fn.Parents[i+1:]...)
+			} else {
+				fn.Parents = fn.Parents[:i]
+			}
+		}
+	}
+}
+
 func (fn *FnWrapper) GetParents() []Wrapper {
 	return fn.Parents
 }
 
 func (fn *FnWrapper) AddChild(w Wrapper) {
 	fn.FirstBlock = w
+}
+
+func (fn *FnWrapper) RemoveChild(w Wrapper) {
+	fn.FirstBlock = nil
 }
 
 func (fn *FnWrapper) GetChildren() []Wrapper {
@@ -62,6 +89,30 @@ func (fn *FnWrapper) SetOuterWrapper(w Wrapper) {
 	fn.Outer = w
 }
 
+//must always be defined by the outermost wrapper
+func (fn *FnWrapper) GetFileSet() *token.FileSet {
+	if fn.Fset != nil {
+		return fn.Fset
+	} else {
+		if fn.Outer != nil {
+			return fn.Outer.GetFileSet()
+		}
+		return nil
+	}
+}
+
+//must always be defined by the outermost wrapper
+func (fn *FnWrapper) GetASTs() []*ast.File {
+	if fn.ASTs != nil {
+		return fn.ASTs
+	} else {
+		if fn.Outer != nil {
+			return fn.Outer.GetASTs()
+		}
+		return []*ast.File{}
+	}
+}
+
 // ------------------ BlockWrapper ----------------------
 
 func (b *BlockWrapper) AddParent(w Wrapper) {
@@ -70,8 +121,32 @@ func (b *BlockWrapper) AddParent(w Wrapper) {
 	}
 }
 
+func (b *BlockWrapper) RemoveParent(w Wrapper) {
+	for i, p := range b.Parents {
+		if p == w {
+			if i < len(b.Parents)-1 {
+				b.Parents = append(b.Parents[:i], b.Parents[i+1:]...)
+			} else {
+				b.Parents = b.Parents[:i]
+			}
+		}
+	}
+}
+
 func (b *BlockWrapper) GetParents() []Wrapper {
 	return b.Parents
+}
+
+func (b *BlockWrapper) RemoveChild(w Wrapper) {
+	for i, c := range b.Succs {
+		if c == w {
+			if i < len(b.Succs)-1 {
+				b.Succs = append(b.Succs[:i], b.Succs[i+1:]...)
+			} else {
+				b.Succs = b.Succs[:i]
+			}
+		}
+	}
 }
 
 func (b *BlockWrapper) AddChild(w Wrapper) {
@@ -92,8 +167,55 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
 
+func (b *BlockWrapper) GetFileSet() *token.FileSet {
+	if b.Outer != nil {
+		return b.Outer.GetFileSet()
+	}
+	return nil
+}
+
+func (b *BlockWrapper) GetASTs() []*ast.File {
+	if b.Outer != nil {
+		return b.Outer.GetASTs()
+	}
+	return []*ast.File{}
+}
+
+// ------------------ Logical Methods ------------------
+
+//The value returned should be the topmost wrapper
+//of the CFG, the entry point of the program should
+//be wrapped in this object
+func SetupPersistentData(base string) *FnWrapper {
+	//declare persisting object
+	ret := &FnWrapper{
+		Fn:         nil,
+		FirstBlock: nil,
+		Parents:    make([]Wrapper, 0),
+		Outer:      nil,
+		Fset:       token.NewFileSet(),
+		ASTs:       make([]*ast.File, 0),
+	}
+
+	//gather files
+	filesToParse := helper.GatherGoFiles(base)
+	for _, file := range filesToParse {
+		//parse files into fileset and ast slice
+		node, err := parser.ParseFile(ret.Fset, file, nil, parser.ParseComments)
+		if err != nil {
+			panic(err)
+		}
+		ret.ASTs = append(ret.ASTs, node)
+	}
+
+	//the persistent data should be available to any of
+	//this object's GetChildren()
+	return ret
+}
+
 // NewFnWrapper creates a wrapper around the `*cfg.CFG` for
 // a given function.
+//TODO: how to identify FuncLit calls and connect them
 func NewFnWrapper(root ast.Node) *FnWrapper {
 	var c *cfg.CFG
 	switch fn := root.(type) {
@@ -182,23 +304,212 @@ func (b *BlockWrapper) GetCondition() ast.Node {
 	return nil
 }
 
-// // Usage assumes you have all the wrapped function blocks already:
-// // for each function fn:
-// //   for each other function fn2:
-// //     fn.connectBlockCalls(fn2)
-// func (b *BlockWrapper) connectBlockCalls(fn *BlockWrapper) {
-// 	if b.Block == nil {
-// 		return
+// func (b *BlockWrapper) getCondition() string {
+// 	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
+// 		_ = b.Block.Nodes[len(b.Block.Nodes)-1]
+// 		// ..
 // 	}
-// 	for _, _ /*node :*/ = range b.Block.Nodes {
-// 		// if node is a function call that corresponds to fn
-// 		// slice the Nodes in half and set the successor node of the current
-// 		// block to the function, and the function's successors to the
-// 		// old block successors, and modify parents accordingly.
-// 	}
+// 	return ""
 // }
 
-// this will only print each block once at the moment to not infinitely recurse
+//goal is to continuously build the CFG
+//by adding in function calls
+func expandCFG(w Wrapper) {
+	if w != nil {
+		switch b := w.(type) {
+		case *FnWrapper:
+			//this function has already
+			//been added, go deeper
+			expandCFG(b.FirstBlock)
+		case *BlockWrapper:
+
+			//check if the next block is a FnWrapper
+			// this means it is already connected
+			//TODO: confirm conditionals will not
+			// have FnWrapper as immediate successor
+			shouldConnect := true
+			for _, succ := range b.Succs {
+				if _, ok := succ.(*FnWrapper); ok {
+					shouldConnect = false
+					break
+				}
+			}
+
+			if shouldConnect {
+				//For every node in the block
+				for i, node := range b.Block.Nodes {
+					//check if the node is a callExpr
+					if node, ok := node.(*ast.CallExpr); ok {
+						//split the block into two pieces
+						topBlock, bottomBlock := b.splitAtNodeIndex(i)
+
+						//get new function wrapper
+						newFn := b.getFunctionWrapperFor(node)
+
+						//connect the topBlock to the function
+						topBlock.connectCallTo(newFn)
+						//replace block with topBlock
+						for _, p := range b.Parents {
+							//remove block as child?
+							p.RemoveChild(b)
+							p.AddChild(topBlock)
+							topBlock.AddParent(p)
+						}
+
+
+						if bottomBlock != nil {
+							//connect the function to the
+							//second half of the block
+							newFn.connectReturnsTo(bottomBlock)
+							//replace block with bottomBlock
+							for _, c := range b.Succs {
+								//remove block as parent?
+								c.RemoveParent(b)
+								c.AddParent(bottomBlock)
+								bottomBlock.AddChild(c)
+							}
+						} else {
+							//no bottomBlock, connect returns directly to
+							//successors
+							for _, c := range b.Succs {
+								newFn.connectReturnsTo(c)
+							}
+						}
+
+						//stop after first function, block is now
+						//obsolete, move on to sucessors of topBlock
+						//(the replacement)
+						for _, succ := range topBlock.Succs {
+							expandCFG(succ)
+						}
+						break
+					}
+				}
+			}
+			//did not find any function calls in this block,
+			//or it was already connected to one, move on to
+			//successor
+
+			//NOTE: this will still run after shouldContinue
+			// block has removed b from the graph, but
+			// it should be harmless since it has no connections
+			// and the recursion will still expand its successors
+			for _, c := range b.Succs {
+				expandCFG(c)
+			}
+		}
+	}
+}
+
+//Succs of first block are nil, and Parents of second block are nil, must be added
+//the inner cfg.Block variables are default values except Nodes, their use must
+//be avoided
+func (b *BlockWrapper) splitAtNodeIndex(ndx int) (first, second *BlockWrapper) {
+	//TODO: make sure the right slices are taken depending on where the split is;
+	// need to look into how the cfg is represented if the function is first or
+	// last node
+	if len(b.Block.Nodes) - 1 > ndx {
+		return &BlockWrapper{
+				Block: &cfg.Block{
+					Nodes: b.Block.Nodes[:ndx+1],
+					Succs: nil,
+					Index: 0,
+					Live:  false,
+				},
+				Parents: b.Parents,
+				Succs:   nil,
+				Outer:   b.Outer,
+			}, &BlockWrapper{
+				Block: &cfg.Block{
+					Nodes: b.Block.Nodes[ndx+1:],
+					Succs: nil,
+					Index: 0,
+					Live:  false,
+				},
+				Parents: nil,
+				Succs:   b.Succs,
+				Outer:   b.Outer,
+			}
+	} else {
+		if len(b.Block.Nodes) - 1 == ndx {
+			//there is no split, just copy nodes to first block
+			return &BlockWrapper{
+					Block: &cfg.Block{
+						Nodes: b.Block.Nodes,
+						Succs: nil,
+						Index: 0,
+						Live:  false,
+					},
+					Parents: b.Parents,
+					Succs:   nil,
+					Outer:   b.Outer,
+				}, nil
+		}
+		//index out-of-bounds
+		return nil, nil
+	}
+}
+
+func (b *BlockWrapper) connectCallTo(fn *FnWrapper) {
+	b.AddChild(fn)
+	fn.AddParent(b)
+
+}
+
+func (fn *FnWrapper) connectReturnsTo(w Wrapper) {
+	for _, leaf := range getLeafNodes(fn) {
+		leaf.AddChild(w)
+		w.AddParent(leaf)
+	}
+}
+
+//should be called on FnWrapper, but recursion
+//requires interface
+func getLeafNodes(w Wrapper) []Wrapper {
+	var rets []Wrapper
+	for _, c := range w.GetChildren() {
+		if len(c.GetChildren()) > 0 {
+			rets = append(rets, getLeafNodes(c)...)
+		} else {
+			rets = append(rets, c)
+		}
+	}
+	return rets
+}
+
+//must be called on a Wrapper to give access to the ASTs
+func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr) *FnWrapper {
+	var fn *ast.FuncDecl
+	//loop through
+	for _, file := range b.GetASTs() {
+		stop := false
+		ast.Inspect(file, func(n ast.Node) bool {
+			if n, ok := n.(*ast.FuncDecl); ok {
+				//TODO: double-check this is the proper conversion
+				if ident, ok := node.Fun.(*ast.Ident); ok {
+					if strings.EqualFold(ident.Name, n.Name.Name) {
+						fn = n
+						//stop when you find it
+						stop = true
+						return false
+					}
+				}
+			}
+			//if you don't find it, keep looking
+			return true
+		})
+		//if found, stop, else search next file
+		if stop {
+			break
+		}
+	}
+
+	if fn != nil {
+		return NewFnWrapper(fn)
+	}
+	return nil
+}
+
 func DebugPrint(w Wrapper, level string, printed map[Wrapper]struct{}) {
 	printWrapperList := func(w []Wrapper) {
 		for _, p := range w {
