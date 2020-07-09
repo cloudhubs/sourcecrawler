@@ -88,17 +88,18 @@ func TestInterface(t *testing.T) {
 			}
 			fmt.Println("FnWrapper for func1", fnw1.Vars)
 
-			for _, block := range cfgList[1].Blocks{
-				for _, blockNode := range block.Nodes{
-					varList :=  cfg2.SearchFuncLits(blockNode)
-					if len(varList) > 0{
-						for _, v := range varList{
-							fmt.Println("Var name/value", v.GetName(), v.GetValue())
-						}
-					}
-					//fmt.Println("Variables list:", varList)
-				}
-			}
+			//Search variables
+			//for _, block := range cfgList[1].Blocks{
+			//	for _, blockNode := range block.Nodes{
+			//		varList :=  cfg2.SearchFuncLits(blockNode)
+			//		if len(varList) > 0{
+			//			for _, v := range varList{
+			//				fmt.Println("Var name/value", v.GetName(), v.GetValue())
+			//			}
+			//		}
+			//		//fmt.Println("Variables list:", varList)
+			//	}
+			//}
 
 
 

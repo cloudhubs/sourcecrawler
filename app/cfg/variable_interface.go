@@ -49,6 +49,11 @@ type FnVariableWrapper struct {
 func SearchFuncLits(node ast.Node) []VariableWrapper{
 	variables := []VariableWrapper{}
 
+	ast.Inspect(node, func(currNode ast.Node) bool {
+
+		return true
+	})
+
 	switch fn := node.(type) {
 	case *ast.AssignStmt:
 		varName := GetVarName(fn)
@@ -63,6 +68,49 @@ func SearchFuncLits(node ast.Node) []VariableWrapper{
 		if varWrap.GetName() != ""&& varWrap.GetValue() != nil{
 			variables = append(variables, varWrap)
 		}
+
+		//TODO: parse expression for the Identifier
+		left := fn.Lhs[0]
+		right := fn.Rhs[0]
+
+		if id, ok := left.(*ast.Ident); ok {
+			fmt.Println("ident left",id)
+		}
+		if call, ok := left.(*ast.CallExpr); ok {
+			fmt.Println("callexpr left",call)
+		}
+
+		switch temp := left.(type){
+		case *ast.CallExpr:
+			fmt.Println("Expr x is callexpr", temp)
+		case *ast.Ident:
+			fmt.Println("is ident left", temp)
+		}
+
+		//right---
+		if id, ok := right.(*ast.Ident); ok {
+			fmt.Println("ident right",id)
+		}
+		if call, ok := right.(*ast.CallExpr); ok {
+			fmt.Println("ex right",call)
+		}
+
+		switch temp := right.(type){
+		case *ast.CallExpr:
+			fmt.Println("Expr x is callexpr right", temp)
+		case *ast.Ident:
+			fmt.Println("is ident right", temp)
+		}
+
+		//if expr, ok := node.(*ast.ExprStmt); ok {
+		//	fmt.Println("exprStmt",expr)
+		//	switch temp := expr.X.(type){
+		//	case *ast.CallExpr:
+		//		fmt.Println("Expr x is callexpr", temp)
+		//	case *ast.Ident:
+		//		fmt.Println("is ident", temp)
+		//	}
+		//}
 
 	case *ast.FuncLit:
 		fmt.Println("Func lit", fn.Type, fn.Body)
@@ -88,6 +136,11 @@ func GetVarWrap(node ast.Node) interface{}{
 	//Basic literal --> just the raw value (string literal, primitives, etc)
 	if basicLit, ok := node.(*ast.BasicLit); ok{
 		varValue = basicLit.Value
+		fmt.Println("basic lit", basicLit)
+	}
+
+	if id, ok := node.(*ast.Ident); ok {
+		fmt.Println("ident",id)
 	}
 
 	//TODO: handle func lits

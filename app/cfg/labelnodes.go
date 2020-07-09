@@ -305,7 +305,7 @@ func MergeLabelMaps(labelMaps ...map[string]string) map[string]string {
 	return res
 }
 
-//TODO: change branches to Must if a log appears in that branch
+//Change branches to Must if a log appears in that branch
 //Assumes starting at endIf node and tries to find topmost node
 func labelBranches(end *db.EndConditionalNode, printedLogs []model.LogType) (db.Node, error) {
 	var curr db.Node

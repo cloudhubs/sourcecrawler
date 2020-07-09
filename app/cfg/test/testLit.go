@@ -2,13 +2,29 @@ package test
 
 import "fmt"
 
+// ----- Test cases for var_interface_test.go ------------
+
 func func1(){
 	a := 1
 	func2(a)
+
+	test := two()
+	fmt.Println(test)
 }
 
 func func2(b int){
 	fmt.Println(b)
+}
+
+func one(){
+	a := two()
+	three(a)
+}
+func two() int{
+	return 2
+}
+func three(b int) {
+	fmt.Print(b)
 }
 
 /*

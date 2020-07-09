@@ -11,6 +11,7 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+// ---- Represents the execution path --------
 type Path struct {
 	Stmts []string
 	Variables []ast.Node //*ast.AssignStmt or *ast.ValueSpec
@@ -18,6 +19,19 @@ type Path struct {
 var executionPath []Path = []Path{}
 func GetExecPath() []Path{
 	return executionPath
+}
+
+//---- Branch Labels ----------
+type ExecutionLabel int
+const (
+	NoLabel ExecutionLabel = iota
+	Must
+	May
+	MustNot
+)
+
+func (s ExecutionLabel) String() string {
+	return [...]string{"NoLabel", "Must", "May", "MustNot"}[s]
 }
 
 type Wrapper interface {
@@ -29,6 +43,8 @@ type Wrapper interface {
 	GetChildren() []Wrapper
 	GetOuterWrapper() Wrapper
 	SetOuterWrapper(w Wrapper)
+	GetLabel() ExecutionLabel
+	SetLabel(label ExecutionLabel)
 
 	GetFileSet() *token.FileSet
 	GetASTs() []*ast.File
@@ -42,7 +58,10 @@ type FnWrapper struct {
 	// ...?
 	Fset *token.FileSet
 	ASTs []*ast.File
-	Vars []VariableWrapper //Store the relevant variables
+	//Vars []VariableWrapper
+	//Vars map[*ast.Ident][]*ast.Ident // map of identifiers to identifiers
+	Label	ExecutionLabel
+
 }
 
 type BlockWrapper struct {
@@ -50,6 +69,7 @@ type BlockWrapper struct {
 	Parents []Wrapper
 	Succs   []Wrapper
 	Outer   Wrapper
+	Label	ExecutionLabel
 }
 
 // ------------------ FnWrapper ----------------------
@@ -123,6 +143,14 @@ func (fn *FnWrapper) GetASTs() []*ast.File {
 	}
 }
 
+func (fn *FnWrapper) GetLabel() ExecutionLabel{
+	return fn.Label
+}
+
+func (fn *FnWrapper) SetLabel(label ExecutionLabel){
+	fn.Label = label
+}
+
 // ------------------ BlockWrapper ----------------------
 
 func (b *BlockWrapper) AddParent(w Wrapper) {
@@ -178,10 +206,33 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 }
 
 
+func (b *BlockWrapper) GetFileSet() *token.FileSet {
+	if b.Outer != nil {
+		return b.Outer.GetFileSet()
+	}
+	return nil
+}
+
+func (b *BlockWrapper) GetASTs() []*ast.File {
+	if b.Outer != nil {
+		return b.Outer.GetASTs()
+	}
+	return []*ast.File{}
+}
+
+func (b *BlockWrapper) GetLabel() ExecutionLabel{
+	return b.Label
+}
+
+func (b *BlockWrapper) SetLabel(label ExecutionLabel){
+	b.Label = label
+}
+
+// ------------------ Logical Methods ------------------
+
 // ---- Traversal function ---------------
 // curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
 // vars -> holds list of variables on path
-// Identify variables being executed as function (keep track of it) -> check if it's a func Literal
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper){
 
@@ -219,24 +270,7 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 	}else{
 		executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
 	}
-
 }
-
-func (b *BlockWrapper) GetFileSet() *token.FileSet {
-	if b.Outer != nil {
-		return b.Outer.GetFileSet()
-	}
-	return nil
-}
-
-func (b *BlockWrapper) GetASTs() []*ast.File {
-	if b.Outer != nil {
-		return b.Outer.GetASTs()
-	}
-	return []*ast.File{}
-}
-
-// ------------------ Logical Methods ------------------
 
 //The value returned should be the topmost wrapper
 //of the CFG, the entry point of the program should
@@ -250,7 +284,6 @@ func SetupPersistentData(base string) *FnWrapper {
 		Outer:      nil,
 		Fset:       token.NewFileSet(),
 		ASTs:       make([]*ast.File, 0),
-		Vars:		make([]VariableWrapper, 0),
 	}
 
 	//gather files
