@@ -221,11 +221,6 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 
 }
 
-// func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
-// 	return &CfgWrapper{
-// 		FirstBlock: NewBlockWrapper(first, nil),
-// 	}
-// }
 func (b *BlockWrapper) GetFileSet() *token.FileSet {
 	if b.Outer != nil {
 		return b.Outer.GetFileSet()
@@ -353,23 +348,6 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 
 	return b
 }
-
-// // Usage assumes you have all the wrapped function blocks already:
-// // for each function fn:
-// //   for each other function fn2:
-// //     fn.connectBlockCalls(fn2)
-// func (b *BlockWrapper) connectBlockCalls(fn *BlockWrapper) {
-// 	if b.Block == nil {
-// 		return
-// 	}
-// 	for _, _ /*node :*/ = range b.Block.Nodes {
-// 		// if node is a function call that corresponds to fn
-// 		// slice the Nodes in half and set the successor node of the current
-// 		// block to the function, and the function's successors to the
-// 		// old block successors, and modify parents accordingly.
-// 	}
-// 	return ""
-// }
 
 //goal is to continuously build the CFG
 //by adding in function calls
