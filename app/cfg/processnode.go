@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-//Method to get condition, nil if not a conditional (specific to block wrapper)
+//Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
 func (b *BlockWrapper) GetCondition() string{
 
 	var condition string = ""
@@ -39,7 +39,29 @@ func (b *BlockWrapper) GetCondition() string{
 	return condition
 }
 
-//Gets all the variables within a block -
+//Process the AST node to extract function literals (can be called in traverse or parse time)
+func GetFuncLits(node ast.Node){
+	varMap := make(map[string]string) //switch to map[variable]variable later
+	fmt.Println(varMap)
+
+	ast.Inspect(node, func(currNode ast.Node) bool {
+		if callNode, ok := node.(*ast.CallExpr); ok{
+			for _, expr := range callNode.Args{
+				switch fnLit := expr.(type){
+				case *ast.FuncLit:
+					fmt.Printf("func lit type %s, lit body %s", fnLit.Type, fnLit.Body)
+				case *ast.Ident:
+					fmt.Println("Ident", fnLit.Name, fnLit.Obj)
+				}
+			}
+		}
+
+		return true
+	})
+
+}
+
+//Gets all the variables within a block - used in traverse
 func GetVariables(nodes []ast.Node) []ast.Node{
 	filter := make(map[string]ast.Node)
 	varList := []ast.Node{}
@@ -86,7 +108,7 @@ func GetVariables(nodes []ast.Node) []ast.Node{
 	return varList
 }
 
-//Processes function node information (still needs to track variables per function)
+//Processes function node information (still needs to handle func literals)
 func GetFuncInfo(node ast.Node) (string, map[string]ast.Node){
 
 	funcName := ""
@@ -107,7 +129,7 @@ func GetFuncInfo(node ast.Node) (string, map[string]ast.Node){
 				}
 			}
 
-			//Go through body for statements
+			//Go through body for statements to get list of variables
 			for _, statement := range node.Body.List{
 				switch stmt := statement.(type){
 				case *ast.AssignStmt: //for variables
@@ -140,7 +162,7 @@ func GetFuncInfo(node ast.Node) (string, map[string]ast.Node){
 }
 
 
-//Extract logging statements from a cfg block
+//Extract logging statements from a cfg block (can be used anywhere given a block)
 func ExtractLogRegex(block *cfg.Block) (regexes []string){
 
 	//For each node inside the block, check if it contains logging stmts
@@ -168,7 +190,7 @@ func ExtractLogRegex(block *cfg.Block) (regexes []string){
 	return regexes
 }
 
-//Expression String
+//Expression String - helper function used in GetCondition to get a string representation
 func GetExprStr(expr ast.Expr) string{
 	if expr == nil {
 		return ""
@@ -272,7 +294,7 @@ func GetExprStr(expr ast.Expr) string{
 	return ""
 }
 
-//Helper function to get var name (handles both assign and declaration vars)
+//Helper function to get var name - used in GetVariableInfo
 func GetVarName(node ast.Node) string{
 	var name string = ""
 
@@ -299,6 +321,7 @@ func GetVarName(node ast.Node) string{
 	return name
 }
 
+//Not in use - can be used to get a string expression for variable assignmetn
 func GetVarExpr(assignNode *ast.AssignStmt) string{
 
 	var exprValue string

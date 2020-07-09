@@ -25,7 +25,7 @@ func getNum() int{
 	return 5
 }
 
-func TestRegexFromBlock(t *testing.T) {
+func TestRewrite(t *testing.T) {
 	cases := []func() addingTestCase{
 		func() addingTestCase {
 
@@ -155,7 +155,7 @@ func TestRegexFromBlock(t *testing.T) {
 		func() addingTestCase {
 
 			fset := token.NewFileSet()
-			file, err := parser.ParseFile(fset, "rewrite_test.go", nil, 0)
+			file, err := parser.ParseFile(fset, "../../unsafe/unsafe.go", nil, 0)
 			if err != nil{
 				fmt.Println("Error parsing file")
 			}

@@ -42,6 +42,7 @@ type FnWrapper struct {
 	// ...?
 	Fset *token.FileSet
 	ASTs []*ast.File
+	Vars []VariableWrapper //Store the relevant variables
 }
 
 type BlockWrapper struct {
@@ -249,6 +250,7 @@ func SetupPersistentData(base string) *FnWrapper {
 		Outer:      nil,
 		Fset:       token.NewFileSet(),
 		ASTs:       make([]*ast.File, 0),
+		Vars:		make([]VariableWrapper, 0),
 	}
 
 	//gather files
@@ -308,6 +310,7 @@ func NewBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper) *BlockWrap
 }
 
 func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[*cfg.Block]*BlockWrapper) *BlockWrapper {
+	//Avoid duplicate blocks
 	if b, ok := cache[block]; ok {
 		b.AddParent(parent)
 		return b
@@ -517,7 +520,7 @@ func GetLeafNodes(w Wrapper) []Wrapper {
 //must be called on a Wrapper to give access to the ASTs
 func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr) *FnWrapper {
 	var fn *ast.FuncDecl
-	//loop through
+	//loop through every AST file
 	for _, file := range b.GetASTs() {
 		stop := false
 		ast.Inspect(file, func(n ast.Node) bool {
