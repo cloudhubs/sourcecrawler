@@ -372,14 +372,25 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 // }
 
 //goal is to continuously build the CFG
-//by adding in function calls
-func expandCFG(w Wrapper) {
+//by adding in function calls, should be called
+//from the root with an empty stack
+func expandCFG(w Wrapper, stack []*FnWrapper) {
 	if w != nil {
 		switch b := w.(type) {
 		case *FnWrapper:
-			//this function has already
-			//been added, go deeper
-			expandCFG(b.FirstBlock)
+			//if function has not been seen in current
+			//branch, expand it, otherwise, skip, because
+			//it would recurse infinitely
+			found := false
+			for _, frame := range stack {
+				if frame.Fn == b.Fn{
+					found = true
+					break
+				}
+			}
+			if !found{
+				expandCFG(b.FirstBlock,append(stack, b))
+			}
 		case *BlockWrapper:
 
 			//check if the next block is a FnWrapper
@@ -437,9 +448,8 @@ func expandCFG(w Wrapper) {
 
 						//stop after first function, block is now
 						//obsolete, move on to sucessors of topBlock
-						//(the replacement)
 						for _, succ := range topBlock.Succs {
-							expandCFG(succ)
+							expandCFG(succ, stack)
 						}
 						break
 					}
@@ -454,7 +464,7 @@ func expandCFG(w Wrapper) {
 			// it should be harmless since it has no connections
 			// and the recursion will still expand its successors
 			for _, c := range b.Succs {
-				expandCFG(c)
+				expandCFG(c, stack)
 			}
 		}
 	}
