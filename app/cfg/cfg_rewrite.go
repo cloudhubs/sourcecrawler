@@ -42,6 +42,7 @@ type FnWrapper struct {
 	// ...?
 	Fset *token.FileSet
 	ASTs []*ast.File
+	ParamsToArgs map[*ast.Field]ast.Expr
 }
 
 type BlockWrapper struct {
@@ -275,8 +276,9 @@ func SetupPersistentData(base string) *FnWrapper {
 // NewFnWrapper creates a wrapper around the `*cfg.CFG` for
 // a given function.
 //TODO: how to identify FuncLit calls and connect them
-func NewFnWrapper(root ast.Node) *FnWrapper {
+func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 	var c *cfg.CFG
+	params := make([]*ast.Field, len(callingArgs))
 	switch fn := root.(type) {
 	case *ast.FuncDecl:
 		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
@@ -288,15 +290,26 @@ func NewFnWrapper(root ast.Node) *FnWrapper {
 			}
 			return false
 		})
+		//gather list of parameters
+		for _, param := range fn.Type.Params.List {
+			params = append(params, param)
+		}
 	case *ast.FuncLit:
 		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
 			return true
 		})
 	}
 
+	paramsToArgs := make(map[*ast.Field]ast.Expr, len(callingArgs))
+
+	//map every parameter to the argument in the calling function
+	for i, arg := range callingArgs {
+		paramsToArgs[params[i]] = arg
+	}
 	fn := &FnWrapper{
 		Fn:      root,
 		Parents: make([]Wrapper, 0),
+		ParamsToArgs: paramsToArgs,
 	}
 
 	if c != nil && len(c.Blocks) > 0 {
@@ -354,23 +367,6 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 	return b
 }
 
-// // Usage assumes you have all the wrapped function blocks already:
-// // for each function fn:
-// //   for each other function fn2:
-// //     fn.connectBlockCalls(fn2)
-// func (b *BlockWrapper) connectBlockCalls(fn *BlockWrapper) {
-// 	if b.Block == nil {
-// 		return
-// 	}
-// 	for _, _ /*node :*/ = range b.Block.Nodes {
-// 		// if node is a function call that corresponds to fn
-// 		// slice the Nodes in half and set the successor node of the current
-// 		// block to the function, and the function's successors to the
-// 		// old block successors, and modify parents accordingly.
-// 	}
-// 	return ""
-// }
-
 //goal is to continuously build the CFG
 //by adding in function calls, should be called
 //from the root with an empty stack
@@ -410,11 +406,12 @@ func expandCFG(w Wrapper, stack []*FnWrapper) {
 				for i, node := range b.Block.Nodes {
 					//check if the node is a callExpr
 					if node, ok := node.(*ast.CallExpr); ok {
+						//get arguments
 						//split the block into two pieces
 						topBlock, bottomBlock := b.splitAtNodeIndex(i)
 
 						//get new function wrapper
-						newFn := b.getFunctionWrapperFor(node)
+						newFn := b.getFunctionWrapperFor(node, node.Args)
 
 						//connect the topBlock to the function
 						topBlock.connectCallTo(newFn)
@@ -547,7 +544,7 @@ func GetLeafNodes(w Wrapper) []Wrapper {
 }
 
 //must be called on a Wrapper to give access to the ASTs
-func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr) *FnWrapper {
+func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr) *FnWrapper {
 	var fn *ast.FuncDecl
 	//loop through
 	for _, file := range b.GetASTs() {
@@ -574,7 +571,7 @@ func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr) *FnWrapper {
 	}
 
 	if fn != nil {
-		return NewFnWrapper(fn)
+		return NewFnWrapper(fn, args)
 	}
 	return nil
 }
