@@ -12,11 +12,13 @@ import (
 )
 
 type Path struct {
-	Stmts []string
+	Stmts     []string
 	Variables []ast.Node //*ast.AssignStmt or *ast.ValueSpec
 }
+
 var executionPath []Path = []Path{}
-func GetExecPath() []Path{
+
+func GetExecPath() []Path {
 	return executionPath
 }
 
@@ -55,7 +57,9 @@ type BlockWrapper struct {
 // ------------------ FnWrapper ----------------------
 
 func (fn *FnWrapper) AddParent(w Wrapper) {
-
+	if fn.Parents == nil {
+		fn.Parents = make([]Wrapper, 0)
+	}
 	if w != nil {
 		fn.Parents = append(fn.Parents, w)
 	}
@@ -127,6 +131,9 @@ func (fn *FnWrapper) GetASTs() []*ast.File {
 // ------------------ BlockWrapper ----------------------
 
 func (b *BlockWrapper) AddParent(w Wrapper) {
+	if b.Parents == nil {
+		b.Parents = make([]Wrapper, 0)
+	}
 	if w != nil {
 		b.Parents = append(b.Parents, w)
 	}
@@ -198,40 +205,42 @@ func (b *BlockWrapper) GetASTs() []*ast.File {
 // vars -> holds list of variables on path
 // Identify variables being executed as function (keep track of it) -> check if it's a func Literal
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper){
+func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper) {
 
 	//Check if if is a FnWrapper or BlockWrapper Type
-	switch currWrapper := curr.(type){
+	switch currWrapper := curr.(type) {
 	case *FnWrapper:
 		fmt.Println("FnWrapper", currWrapper)
-		fnName, funcVars := GetFuncInfo(currWrapper.Fn) //Gets the function name and a list of variables
+		fnName, funcVars := GetFuncInfo(currWrapper, currWrapper.Fn) //Gets the function name and a list of variables
 		fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
 
 	case *BlockWrapper:
 		fmt.Println("BlockWrapper", currWrapper)
 
-		//If conditional block, extract the condition and add to list
-		condition := currWrapper.GetCondition()
-		if condition != ""{
-			condStmts = append(condStmts, condition)
-		}
+		// get cond after getting variables, and replace them in the condition
 
 		//Gets a list of all variables inside the block, and add
 		// -Filter out relevant variables
-		varList := GetVariables(currWrapper.Block.Nodes)
-		if len(varList) != 0{
+		varList := GetVariables(currWrapper)
+		if len(varList) != 0 {
 			vars = append(vars, varList...)
+		}
+
+		//If conditional block, extract the condition and add to list
+		condition := currWrapper.GetCondition()
+		if condition != "" {
+			condStmts = append(condStmts, condition)
 		}
 
 	}
 
 	//If there are parent blocks to check, continue | otherwise add the path
-	if len(curr.GetParents()) != 0{
+	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
-		for _, parent := range curr.GetParents(){
+		for _, parent := range curr.GetParents() {
 			TraverseCFG(parent, condStmts, vars, root)
 		}
-	}else{
+	} else {
 		executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
 	}
 
@@ -316,8 +325,8 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 		paramsToArgs[params[i]] = arg
 	}
 	fn := &FnWrapper{
-		Fn:      root,
-		Parents: make([]Wrapper, 0),
+		Fn:           root,
+		Parents:      make([]Wrapper, 0),
 		ParamsToArgs: paramsToArgs,
 	}
 
@@ -379,7 +388,7 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 //goal is to continuously build the CFG
 //by adding in function calls, should be called
 //from the root with an empty stack
-func expandCFG(w Wrapper, stack []*FnWrapper) {
+func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 	if w != nil {
 		switch b := w.(type) {
 		case *FnWrapper:
@@ -388,16 +397,15 @@ func expandCFG(w Wrapper, stack []*FnWrapper) {
 			//it would recurse infinitely
 			found := false
 			for _, frame := range stack {
-				if frame.Fn == b.Fn{
+				if frame.Fn == b.Fn {
 					found = true
 					break
 				}
 			}
-			if !found{
-				expandCFG(b.FirstBlock,append(stack, b))
+			if !found {
+				ExpandCFG(b.FirstBlock, append(stack, b))
 			}
 		case *BlockWrapper:
-
 			//check if the next block is a FnWrapper
 			// this means it is already connected
 			//TODO: confirm conditionals will not
@@ -414,51 +422,61 @@ func expandCFG(w Wrapper, stack []*FnWrapper) {
 				//For every node in the block
 				for i, node := range b.Block.Nodes {
 					//check if the node is a callExpr
-					switch node.(type) {
-					case *ast.ExprStmt, *ast.CallExpr:
-						if node, ok := node.(*ast.CallExpr); ok {
-							//get arguments
-							//split the block into two pieces
-							topBlock, bottomBlock := b.splitAtNodeIndex(i)
+					var call *ast.CallExpr
+					switch node := node.(type) {
+					case *ast.CallExpr:
+						call = node
+					case *ast.ExprStmt:
+						if x, ok := node.X.(*ast.CallExpr); ok {
+							call = x
+						}
+					}
 
-							newFn := getDeclarationOfFunction(b.Outer,node,node.Args)
-							
-							//connect the topBlock to the function
-							topBlock.connectCallTo(newFn)
-							//replace block with topBlock
-							for _, p := range b.Parents {
-								//remove block as child?
-								p.RemoveChild(b)
-								p.AddChild(topBlock)
-								topBlock.AddParent(p)
+					if call != nil {
+						//get arguments
+						//split the block into two pieces
+						topBlock, bottomBlock := b.splitAtNodeIndex(i)
+
+						//TODO:
+						//for _,
+						//
+						//
+						//if fnName, ok := node.Fun.(*ast.Ident); ok {
+						//	if param, ok := b.Outer.(*FnWrapper).ParamsToArgs[]
+						//}
+
+						//get new function wrapper
+						newFn := b.getFunctionWrapperFor(call, call.Args)
+						if newFn != nil {
+							newFn.SetOuterWrapper(b.Outer)
+						}
+
+						//connect the topBlock to the function
+						topBlock.connectCallTo(newFn)
+						//replace block with topBlock
+						for _, p := range b.Parents {
+							//remove block as child?
+							p.RemoveChild(b)
+							p.AddChild(topBlock)
+							topBlock.AddParent(p)
+						}
+
+						if bottomBlock != nil {
+							//connect the function to the
+							//second half of the block
+							newFn.connectReturnsTo(bottomBlock)
+							//replace block with bottomBlock
+							for _, c := range b.Succs {
+								//remove block as parent?
+								c.RemoveParent(b)
+								c.AddParent(bottomBlock)
+								bottomBlock.AddChild(c)
 							}
 
-
-							if bottomBlock != nil {
-								//connect the function to the
-								//second half of the block
-								newFn.connectReturnsTo(bottomBlock)
-								//replace block with bottomBlock
-								for _, c := range b.Succs {
-									//remove block as parent?
-									c.RemoveParent(b)
-									c.AddParent(bottomBlock)
-									bottomBlock.AddChild(c)
-								}
-							} else {
-								//no bottomBlock, connect returns directly to
-								//successors
-								for _, c := range b.Succs {
-									newFn.connectReturnsTo(c)
-								}
-							}
-
-							//stop after first function, block is now
-							//obsolete, move on to sucessors of topBlock
-							for _, succ := range topBlock.Succs {
-								expandCFG(succ, stack)
-							}
-							break
+						//stop after first function, block is now
+						//obsolete, move on to sucessors of topBlock
+						for _, succ := range topBlock.Succs {
+							ExpandCFG(succ, stack)
 						}
 					}
 				}
@@ -472,7 +490,7 @@ func expandCFG(w Wrapper, stack []*FnWrapper) {
 			// it should be harmless since it has no connections
 			// and the recursion will still expand its successors
 			for _, c := range b.Succs {
-				expandCFG(c, stack)
+				ExpandCFG(c, stack)
 			}
 		}
 	}
@@ -510,7 +528,7 @@ func (b *BlockWrapper) splitAtNodeIndex(ndx int) (first, second *BlockWrapper) {
 	//TODO: make sure the right slices are taken depending on where the split is;
 	// need to look into how the cfg is represented if the function is first or
 	// last node
-	if len(b.Block.Nodes) - 1 > ndx {
+	if len(b.Block.Nodes)-1 > ndx {
 		return &BlockWrapper{
 				Block: &cfg.Block{
 					Nodes: b.Block.Nodes[:ndx+1],
@@ -533,19 +551,19 @@ func (b *BlockWrapper) splitAtNodeIndex(ndx int) (first, second *BlockWrapper) {
 				Outer:   b.Outer,
 			}
 	} else {
-		if len(b.Block.Nodes) - 1 == ndx {
+		if len(b.Block.Nodes)-1 == ndx {
 			//there is no split, just copy nodes to first block
 			return &BlockWrapper{
-					Block: &cfg.Block{
-						Nodes: b.Block.Nodes,
-						Succs: nil,
-						Index: 0,
-						Live:  false,
-					},
-					Parents: b.Parents,
-					Succs:   nil,
-					Outer:   b.Outer,
-				}, nil
+				Block: &cfg.Block{
+					Nodes: b.Block.Nodes,
+					Succs: nil,
+					Index: 0,
+					Live:  false,
+				},
+				Parents: b.Parents,
+				Succs:   nil,
+				Outer:   b.Outer,
+			}, nil
 		}
 		//index out-of-bounds
 		return nil, nil
