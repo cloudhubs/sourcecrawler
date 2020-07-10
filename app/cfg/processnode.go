@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"golang.org/x/tools/go/cfg"
 	"sourcecrawler/app/logsource"
 	"strings"
+
+	"golang.org/x/tools/go/cfg"
 )
 
 //Method to get condition, nil if not a conditional (specific to block wrapper)
-func (b *BlockWrapper) GetCondition() string{
+func (b *BlockWrapper) GetCondition() string {
 
 	var condition string = ""
 	//Return block or panic, fatal, etc
-	if len(b.Succs) == 0{
+	if len(b.Succs) == 0 {
 		return ""
 	}
 	//Normal block
@@ -22,13 +23,13 @@ func (b *BlockWrapper) GetCondition() string{
 		return ""
 	}
 	//Conditional block
-	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0{
+	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
 		condNode := b.Block.Nodes[len(b.Block.Nodes)-1] //conditional is last node in a block
 
 		ast.Inspect(condNode, func(currNode ast.Node) bool {
 
 			//Get the expression string for the condition
-			if exprNode, ok := condNode.(ast.Expr); ok{
+			if exprNode, ok := condNode.(ast.Expr); ok {
 				condition = GetExprStr(exprNode)
 			}
 
@@ -40,60 +41,63 @@ func (b *BlockWrapper) GetCondition() string{
 }
 
 //Gets all the variables within a block -
-func GetVariables(nodes []ast.Node) []ast.Node{
+func GetVariables(curr Wrapper) []ast.Node {
 	filter := make(map[string]ast.Node)
 	varList := []ast.Node{}
 
-	//Process all nodes in a block for possible variables
-	for _, node := range nodes {
-		ast.Inspect(node, func(currNode ast.Node) bool {
+	switch curr := curr.(type) {
+	case *FnWrapper:
+	case *BlockWrapper:
+		//Process all nodes in a block for possible variables
+		for _, node := range curr.Block.Nodes {
+			ast.Inspect(node, func(currNode ast.Node) bool {
+				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
+				switch node := node.(type) {
+				case *ast.AssignStmt:
+					//Gets variable name
+					name := GetVarName(curr, node)
 
-			//If a node is an assignStmt or ValueSpec, it should most likely be a variable
-			switch node := node.(type) {
-			case *ast.AssignStmt:
-				//Gets variable name
-				name := GetVarName(node)
+					//filter out duplicates
+					_, ok := filter[name]
+					if ok && name != "" {
+						//fmt.Println(name, " is already in the list")
+					} else {
+						filter[name] = node
+					}
+				case *ast.ValueSpec:
 
-				//filter out duplicates
-				_, ok := filter[name]
-				if ok && name != ""{
-					//fmt.Println(name, " is already in the list")
-				}else{
-					filter[name] = node
+					//Gets variable name
+					name := GetVarName(curr, node)
+
+					//filter out duplicates
+					_, ok := filter[name]
+					if ok && name != "" {
+						//fmt.Println(name, " is already in the list")
+					} else {
+						filter[name] = node
+					}
 				}
-			case *ast.ValueSpec:
+				return true
+			})
+		}
 
-				//Gets variable name
-				name := GetVarName(node)
-
-				//filter out duplicates
-				_, ok := filter[name]
-				if ok && name != ""{
-					//fmt.Println(name, " is already in the list")
-				}else{
-					filter[name] = node
-				}
-			}
-			return true
-		})
-	}
-
-	//Convert into list of variable nodes
-	for _, node := range filter{
-		varList = append(varList, node)
+		//Convert into list of variable nodes
+		for _, node := range filter {
+			varList = append(varList, node)
+		}
 	}
 
 	return varList
 }
 
 //Processes function node information (still needs to track variables per function)
-func GetFuncInfo(node ast.Node) (string, map[string]ast.Node){
+func GetFuncInfo(curr Wrapper, node ast.Node) (string, map[string]ast.Node) {
 
 	funcName := ""
 	funcVars := make(map[string]ast.Node)
 
 	ast.Inspect(node, func(currNode ast.Node) bool {
-		switch node := node.(type){
+		switch node := node.(type) {
 		case *ast.FuncDecl: //Check parameters
 			funcName = node.Name.Name
 
@@ -108,17 +112,17 @@ func GetFuncInfo(node ast.Node) (string, map[string]ast.Node){
 			}
 
 			//Go through body for statements
-			for _, statement := range node.Body.List{
-				switch stmt := statement.(type){
+			for _, statement := range node.Body.List {
+				switch stmt := statement.(type) {
 				case *ast.AssignStmt: //for variables
 					//fmt.Println("Assign stmt found", stmt)
 					//fmt.Println("Var name", GetVarName(stmt))
 
 					//If var is already in the map, skip
-					varName := GetVarName(stmt)
-					if _, ok := funcVars[varName]; ok{
+					varName := GetVarName(curr, stmt)
+					if _, ok := funcVars[varName]; ok {
 
-					}else{
+					} else {
 						funcVars[varName] = stmt
 					}
 
@@ -129,7 +133,6 @@ func GetFuncInfo(node ast.Node) (string, map[string]ast.Node){
 				}
 			}
 
-
 		case *ast.FuncLit:
 			//TOOD: handle literals
 		}
@@ -139,12 +142,11 @@ func GetFuncInfo(node ast.Node) (string, map[string]ast.Node){
 	return funcName, funcVars
 }
 
-
 //Extract logging statements from a cfg block
-func ExtractLogRegex(block *cfg.Block) (regexes []string){
+func ExtractLogRegex(block *cfg.Block) (regexes []string) {
 
 	//For each node inside the block, check if it contains logging stmts
-	for _, currNode := range block.Nodes{
+	for _, currNode := range block.Nodes {
 		ast.Inspect(currNode, func(node ast.Node) bool {
 			if call, ok := node.(*ast.CallExpr); ok {
 				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
@@ -169,7 +171,7 @@ func ExtractLogRegex(block *cfg.Block) (regexes []string){
 }
 
 //Expression String
-func GetExprStr(expr ast.Expr) string{
+func GetExprStr(expr ast.Expr) string {
 	if expr == nil {
 		return ""
 	}
@@ -248,38 +250,53 @@ func GetExprStr(expr ast.Expr) string{
 		expr := GetExprStr(condition.X)
 		typecast := GetExprStr(condition.Type)
 		return fmt.Sprintf("%s(%s)", typecast, expr)
-	//case *ast.FuncType:
-	//	params := fnCfg.getFuncParams(condition.Params, "")
-	//	rets := fnCfg.getFuncReturns(condition.Results)
-	//	b := strings.Builder{}
-	//	b.Write([]byte("func("))
-	//	i := 0
-	//	for _, param := range params {
-	//		b.Write([]byte(fmt.Sprintf("%s", param.VarName)))
-	//		if i < len(params)-1 {
-	//			b.Write([]byte(", "))
-	//		}
-	//	}
-	//	b.Write([]byte(")"))
-	//	for i, ret := range rets {
-	//		b.Write([]byte(fmt.Sprintf("%s %s", ret.Name, ret.ReturnType)))
-	//		if i < len(params)-1 {
-	//			b.Write([]byte(", "))
-	//		}
-	//	}
-	//	return b.String()
+		//case *ast.FuncType:
+		//	params := fnCfg.getFuncParams(condition.Params, "")
+		//	rets := fnCfg.getFuncReturns(condition.Results)
+		//	b := strings.Builder{}
+		//	b.Write([]byte("func("))
+		//	i := 0
+		//	for _, param := range params {
+		//		b.Write([]byte(fmt.Sprintf("%s", param.VarName)))
+		//		if i < len(params)-1 {
+		//			b.Write([]byte(", "))
+		//		}
+		//	}
+		//	b.Write([]byte(")"))
+		//	for i, ret := range rets {
+		//		b.Write([]byte(fmt.Sprintf("%s %s", ret.Name, ret.ReturnType)))
+		//		if i < len(params)-1 {
+		//			b.Write([]byte(", "))
+		//		}
+		//	}
+		//	return b.String()
 	}
 	return ""
 }
 
+func GetPointedName(curr Wrapper, node ast.Expr) string {
+	if outer, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
+		switch expr := node.(type) {
+		case *ast.StarExpr:
+			return GetPointedName(outer, expr.X)
+		case *ast.Ident:
+			if v, ok := outer.ParamsToArgs[expr]; ok {
+				return GetPointedName(outer, v)
+			}
+		}
+	}
+	return fmt.Sprint(node)
+}
+
 //Helper function to get var name (handles both assign and declaration vars)
-func GetVarName(node ast.Node) string{
+func GetVarName(curr Wrapper, node ast.Node) string {
 	var name string = ""
 
-	switch node := node.(type){
+	switch node := node.(type) {
 	case *ast.AssignStmt:
-		if len(node.Lhs) > 0{
-			name = fmt.Sprint(node.Lhs[0])
+		if len(node.Lhs) > 0 {
+			name = GetPointedName(curr, node.Lhs[0])
+			// name = fmt.Sprint(node.Lhs[0])
 		}
 		//for _, lhsExpr := range node.Lhs {
 		//	switch expr := lhsExpr.(type) {
@@ -292,18 +309,22 @@ func GetVarName(node ast.Node) string{
 	case *ast.ValueSpec:
 		//Set variable name
 		if len(node.Names) > 0 {
-			name = node.Names[0].Name
+			if _, ok := node.Type.(*ast.StarExpr); ok {
+				name = GetPointedName(curr, node.Names[0])
+			} else {
+				name = node.Names[0].Name
+			}
 		}
 	}
 
 	return name
 }
 
-func GetVarExpr(assignNode *ast.AssignStmt) string{
+func GetVarExpr(curr Wrapper, assignNode *ast.AssignStmt) string {
 
 	var exprValue string
 	exprOp := assignNode.Tok.String()
-	varName := GetVarName(assignNode)
+	varName := GetVarName(curr, assignNode)
 
 	//Checks if rhs if a variable gets a value from a function or literal
 	for _, rhsExpr := range assignNode.Rhs {
