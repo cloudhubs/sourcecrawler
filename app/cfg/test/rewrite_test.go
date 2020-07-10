@@ -1,27 +1,28 @@
 /**
 This is just a test file for the rewrite functions
- */
+*/
 package test
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"golang.org/x/tools/go/cfg"
 	"os"
 	cfg2 "sourcecrawler/app/cfg"
 	"strings"
 	"testing"
+
+	"github.com/rs/zerolog/log"
+	"golang.org/x/tools/go/cfg"
 )
 
-func test(arg1 int){
+func test(arg1 int) {
 	test := "string"
 	fmt.Println(test)
 }
 
-func getNum() int{
+func getNum() int {
 	return 5
 }
 
@@ -31,7 +32,7 @@ func TestRegexFromBlock(t *testing.T) {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "rewrite_test.go", nil, 0)
-			if err != nil{
+			if err != nil {
 				fmt.Println("Error parsing file")
 			}
 
@@ -39,9 +40,9 @@ func TestRegexFromBlock(t *testing.T) {
 			var testFunc *ast.FuncDecl
 
 			ast.Inspect(file, func(node ast.Node) bool {
-				if blockNode, ok := node.(*ast.BlockStmt); ok{
-					for _, value := range blockNode.List{
-						if strings.Contains(fmt.Sprint(value), "test"){
+				if blockNode, ok := node.(*ast.BlockStmt); ok {
+					for _, value := range blockNode.List {
+						if strings.Contains(fmt.Sprint(value), "test") {
 							testBlockStmt = blockNode
 							return true
 						}
@@ -49,8 +50,8 @@ func TestRegexFromBlock(t *testing.T) {
 					//return true //end
 				}
 
-				if funcNode, ok := node.(*ast.FuncDecl); ok{
-					if funcNode.Name.Name == "testLog"{
+				if funcNode, ok := node.(*ast.FuncDecl); ok {
+					if funcNode.Name.Name == "testLog" {
 						testFunc = funcNode
 					}
 				}
@@ -63,7 +64,7 @@ func TestRegexFromBlock(t *testing.T) {
 			//}
 
 			//create test CFG
-			testCFG := cfg.New(testBlockStmt, func(expr *ast.CallExpr) bool{
+			testCFG := cfg.New(testBlockStmt, func(expr *ast.CallExpr) bool {
 				return true
 			})
 
@@ -72,7 +73,7 @@ func TestRegexFromBlock(t *testing.T) {
 
 			//Test log regex
 			regexes := cfg2.ExtractLogRegex(testCFG.Blocks[0])
-			for _, msg := range regexes{
+			for _, msg := range regexes {
 				fmt.Println("Regex:", msg)
 			}
 
@@ -93,7 +94,7 @@ func TestRegexFromBlock(t *testing.T) {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "rewrite_test.go", nil, 0)
-			if err != nil{
+			if err != nil {
 				fmt.Println("Error parsing file")
 			}
 
@@ -101,16 +102,15 @@ func TestRegexFromBlock(t *testing.T) {
 			//var condNode *ast.IfStmt
 
 			ast.Inspect(file, func(node ast.Node) bool {
-				if blockNode, ok := node.(*ast.BlockStmt); ok{
-					for _, value := range blockNode.List{
-						if strings.Contains(fmt.Sprint(value), "test"){
+				if blockNode, ok := node.(*ast.BlockStmt); ok {
+					for _, value := range blockNode.List {
+						if strings.Contains(fmt.Sprint(value), "test") {
 							testBlockStmt = blockNode
 							return true
 						}
 					}
 					//return true //end
 				}
-
 
 				//if ifNode, ok := node.(*ast.IfStmt); ok{
 				//	condNode = ifNode
@@ -120,7 +120,7 @@ func TestRegexFromBlock(t *testing.T) {
 			})
 
 			//create test CFG
-			testCFG := cfg.New(testBlockStmt, func(expr *ast.CallExpr) bool{
+			testCFG := cfg.New(testBlockStmt, func(expr *ast.CallExpr) bool {
 				return true
 			})
 
@@ -145,7 +145,6 @@ func TestRegexFromBlock(t *testing.T) {
 				Outer:   nil,
 			}
 
-
 			fmt.Println("Condition is:", blockW.GetCondition())
 			return addingTestCase{
 				Name: "Test GetCondition",
@@ -156,7 +155,7 @@ func TestRegexFromBlock(t *testing.T) {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "rewrite_test.go", nil, 0)
-			if err != nil{
+			if err != nil {
 				fmt.Println("Error parsing file")
 			}
 
@@ -164,16 +163,15 @@ func TestRegexFromBlock(t *testing.T) {
 			//var condNode *ast.IfStmt
 
 			ast.Inspect(file, func(node ast.Node) bool {
-				if blockNode, ok := node.(*ast.BlockStmt); ok{
-					for _, value := range blockNode.List{
-						if strings.Contains(fmt.Sprint(value), "test"){
+				if blockNode, ok := node.(*ast.BlockStmt); ok {
+					for _, value := range blockNode.List {
+						if strings.Contains(fmt.Sprint(value), "test") {
 							testBlockStmt = blockNode
 							return true
 						}
 					}
 					//return true //end
 				}
-
 
 				//if ifNode, ok := node.(*ast.IfStmt); ok{
 				//	condNode = ifNode
@@ -183,28 +181,26 @@ func TestRegexFromBlock(t *testing.T) {
 			})
 
 			//create test CFG
-			testCFG := cfg.New(testBlockStmt, func(expr *ast.CallExpr) bool{
+			testCFG := cfg.New(testBlockStmt, func(expr *ast.CallExpr) bool {
 				return true
 			})
 
 			fmt.Println(testCFG.Format(fset))
 
+			for _, block := range testCFG.Blocks {
+				// varList := cfg2.GetVariables(block.Nodes)
 
-			for _, block := range testCFG.Blocks{
-				varList := cfg2.GetVariables(block.Nodes)
-
-				for _, variable := range varList{
-					switch varType := variable.(type){
-					case *ast.AssignStmt:
-						//fmt.Println("is assignment", varType.Lhs, varType.Tok.String(), varType.Rhs)
-					case *ast.ValueSpec:
-						//fmt.Println("is value spec", varType)
-					default:
-						fmt.Println(varType)
-					}
-				}
+				// for _, variable := range varList {
+				// 	switch varType := variable.(type) {
+				// 	case *ast.AssignStmt:
+				// 		//fmt.Println("is assignment", varType.Lhs, varType.Tok.String(), varType.Rhs)
+				// 	case *ast.ValueSpec:
+				// 		//fmt.Println("is value spec", varType)
+				// 	default:
+				// 		fmt.Println(varType)
+				// 	}
+				// }
 			}
-
 
 			return addingTestCase{
 				Name: "Get Variables",
@@ -215,7 +211,7 @@ func TestRegexFromBlock(t *testing.T) {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "rewrite_test.go", nil, 0)
-			if err != nil{
+			if err != nil {
 				fmt.Println("Error parsing file")
 			}
 
@@ -224,9 +220,9 @@ func TestRegexFromBlock(t *testing.T) {
 			var funcNode *ast.FuncDecl
 
 			ast.Inspect(file, func(node ast.Node) bool {
-				if blockNode, ok := node.(*ast.BlockStmt); ok{
-					for _, value := range blockNode.List{
-						if strings.Contains(fmt.Sprint(value), "test"){
+				if blockNode, ok := node.(*ast.BlockStmt); ok {
+					for _, value := range blockNode.List {
+						if strings.Contains(fmt.Sprint(value), "test") {
 							testBlockStmt = blockNode
 							return true
 						}
@@ -234,8 +230,7 @@ func TestRegexFromBlock(t *testing.T) {
 					//return true //end
 				}
 
-
-				if declNode, ok := node.(*ast.FuncDecl); ok{
+				if declNode, ok := node.(*ast.FuncDecl); ok {
 					funcNode = declNode
 				}
 
@@ -243,7 +238,7 @@ func TestRegexFromBlock(t *testing.T) {
 			})
 
 			//create test CFG
-			testCFG := cfg.New(testBlockStmt, func(expr *ast.CallExpr) bool{
+			testCFG := cfg.New(testBlockStmt, func(expr *ast.CallExpr) bool {
 				return true
 			})
 
@@ -259,7 +254,7 @@ func TestRegexFromBlock(t *testing.T) {
 				Outer:   nil,
 			}
 
-			succ1 :=  &cfg2.BlockWrapper{ //block 1
+			succ1 := &cfg2.BlockWrapper{ //block 1
 				Block:   testCFG.Blocks[1],
 				Parents: nil,
 				Succs:   nil,
@@ -320,11 +315,10 @@ func TestRegexFromBlock(t *testing.T) {
 		assignStr := "test if"
 		num := 10
 		sum := num
-		sum2 := num+num
+		sum2 := num + num
 		sum3 := getNum()
 
-
-		if 5 >= 10{
+		if 5 >= 10 {
 			fmt.Println("test if")
 			fmt.Println(assignStr)
 			fmt.Println(sum)
@@ -333,7 +327,7 @@ func TestRegexFromBlock(t *testing.T) {
 			fmt.Println(decl1)
 			fmt.Println(decl2)
 			panic("bad")
-		}else{
+		} else {
 			fmt.Println("else")
 		}
 
@@ -347,7 +341,7 @@ func TestRegexFromBlock(t *testing.T) {
 	}
 }
 
-func testRewrite(a string, b int){
+func testRewrite(a string, b int) {
 	//testVar := ""
 	////
 	//fmt.Println(testVar)
