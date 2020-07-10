@@ -42,7 +42,7 @@ type FnWrapper struct {
 	// ...?
 	Fset *token.FileSet
 	ASTs []*ast.File
-	ParamsToArgs map[*ast.Field]ast.Expr
+	ParamsToArgs map[*ast.Ident]ast.Expr
 }
 
 type BlockWrapper struct {
@@ -278,7 +278,7 @@ func SetupPersistentData(base string) *FnWrapper {
 //TODO: how to identify FuncLit calls and connect them
 func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 	var c *cfg.CFG
-	params := make([]*ast.Field, len(callingArgs))
+	params := make([]*ast.Ident, len(callingArgs))
 	switch fn := root.(type) {
 	case *ast.FuncDecl:
 		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
@@ -292,7 +292,9 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 		})
 		//gather list of parameters
 		for _, param := range fn.Type.Params.List {
-			params = append(params, param)
+			for _, name := range param.Names {
+				params = append(params,name)
+			}
 		}
 	case *ast.FuncLit:
 		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
@@ -300,7 +302,7 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 		})
 	}
 
-	paramsToArgs := make(map[*ast.Field]ast.Expr, len(callingArgs))
+	paramsToArgs := make(map[*ast.Ident]ast.Expr, len(callingArgs))
 
 	//map every parameter to the argument in the calling function
 	for i, arg := range callingArgs {
@@ -409,6 +411,14 @@ func expandCFG(w Wrapper, stack []*FnWrapper) {
 						//get arguments
 						//split the block into two pieces
 						topBlock, bottomBlock := b.splitAtNodeIndex(i)
+
+						//TODO:
+						//for _,
+						//
+						//
+						//if fnName, ok := node.Fun.(*ast.Ident); ok {
+						//	if param, ok := b.Outer.(*FnWrapper).ParamsToArgs[]
+						//}
 
 						//get new function wrapper
 						newFn := b.getFunctionWrapperFor(node, node.Args)
