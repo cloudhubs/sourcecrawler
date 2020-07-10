@@ -496,6 +496,7 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 	}
 }
 
+//TODO: test this because it's a mess and I'm pretty sure it'll break
 func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrapper{
 	//if in map, get declaration
 	switch v := fn.(type){
