@@ -57,6 +57,9 @@ type BlockWrapper struct {
 // ------------------ FnWrapper ----------------------
 
 func (fn *FnWrapper) AddParent(w Wrapper) {
+	if fn.Parents == nil {
+		fn.Parents = make([]Wrapper, 0)
+	}
 	if w != nil {
 		fn.Parents = append(fn.Parents, w)
 	}
@@ -128,6 +131,9 @@ func (fn *FnWrapper) GetASTs() []*ast.File {
 // ------------------ BlockWrapper ----------------------
 
 func (b *BlockWrapper) AddParent(w Wrapper) {
+	if b.Parents == nil {
+		b.Parents = make([]Wrapper, 0)
+	}
 	if w != nil {
 		b.Parents = append(b.Parents, w)
 	}
@@ -393,7 +399,6 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 				ExpandCFG(b.FirstBlock, append(stack, b))
 			}
 		case *BlockWrapper:
-
 			//check if the next block is a FnWrapper
 			// this means it is already connected
 			//TODO: confirm conditionals will not
@@ -410,7 +415,17 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 				//For every node in the block
 				for i, node := range b.Block.Nodes {
 					//check if the node is a callExpr
-					if node, ok := node.(*ast.CallExpr); ok {
+					var call *ast.CallExpr
+					switch node := node.(type) {
+					case *ast.CallExpr:
+						call = node
+					case *ast.ExprStmt:
+						if x, ok := node.X.(*ast.CallExpr); ok {
+							call = x
+						}
+					}
+
+					if call != nil {
 						//get arguments
 						//split the block into two pieces
 						topBlock, bottomBlock := b.splitAtNodeIndex(i)
@@ -424,7 +439,10 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 						//}
 
 						//get new function wrapper
-						newFn := b.getFunctionWrapperFor(node, node.Args)
+						newFn := b.getFunctionWrapperFor(call, call.Args)
+						if newFn != nil {
+							newFn.SetOuterWrapper(b.Outer)
+						}
 
 						//connect the topBlock to the function
 						topBlock.connectCallTo(newFn)
