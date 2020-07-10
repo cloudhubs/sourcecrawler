@@ -472,7 +472,7 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 								c.AddParent(bottomBlock)
 								bottomBlock.AddChild(c)
 							}
-
+						}
 						//stop after first function, block is now
 						//obsolete, move on to sucessors of topBlock
 						for _, succ := range topBlock.Succs {
@@ -518,7 +518,7 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 	case *ast.Ident:
 		return NewFnWrapper(v.Obj.Decl.(*ast.AssignStmt).Rhs[0].(*ast.FuncLit).Body, args)
 	}
-
+	return nil
 }
 
 //Succs of first block are nil, and Parents of second block are nil, must be added
