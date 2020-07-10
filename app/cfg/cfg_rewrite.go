@@ -13,8 +13,8 @@ import (
 
 // ---- Represents the execution path --------
 type Path struct {
-	Stmts []string
-	Variables []ast.Node //*ast.AssignStmt or *ast.ValueSpec
+	Stmts map[string]ExecutionLabel     	//List of statements along with it's label (could be duplicate statements - may use diff struct)
+	Variables map[ast.Node]ExecutionLabel	//*ast.AssignStmt or *ast.ValueSpec (Not sure if variable need to be labeled)
 }
 var executionPath []Path = []Path{}
 func GetExecPath() []Path{
@@ -58,10 +58,8 @@ type FnWrapper struct {
 	// ...?
 	Fset *token.FileSet
 	ASTs []*ast.File
-	//Vars []VariableWrapper
 	//Vars map[*ast.Ident][]*ast.Ident // map of identifiers to identifiers
 	Label	ExecutionLabel
-
 }
 
 type BlockWrapper struct {
@@ -233,30 +231,37 @@ func (b *BlockWrapper) SetLabel(label ExecutionLabel){
 // ---- Traversal function ---------------
 // curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
 // vars -> holds list of variables on path
-// Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper){
+// Assumptions: outer wrapper has already been assigned, and tree structure has been created, and blocks have been labeled
+func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars map[ast.Node]ExecutionLabel, root Wrapper){
 
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type){
 	case *FnWrapper:
-		fmt.Println("FnWrapper", currWrapper)
 		fnName, funcVars := GetFuncInfo(currWrapper.Fn) //Gets the function name and a list of variables
 		fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
 
 	case *BlockWrapper:
-		fmt.Println("BlockWrapper", currWrapper)
 
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
 		if condition != ""{
-			condStmts = append(condStmts, condition)
+			//Set statement label to the block's label
+			condStmts[condition] = currWrapper.GetLabel()
 		}
+
+		//NOTE/BUG: First block contains the actual condition expression, successor blocks contain actual variables
+		// if a statement is a much -> variables might not be labeled as must
 
 		//Gets a list of all variables inside the block, and add
 		// -Filter out relevant variables
 		varList := GetVariables(currWrapper.Block.Nodes)
 		if len(varList) != 0{
-			vars = append(vars, varList...)
+
+			//Add each variable to list of vars
+			for _, variable := range varList{
+				var label ExecutionLabel = currWrapper.GetLabel()
+				vars[variable] = label //Get current label
+			}
 		}
 
 	}
