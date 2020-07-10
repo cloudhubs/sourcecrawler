@@ -61,7 +61,18 @@ func (fn *FnWrapper) AddParent(w Wrapper) {
 		fn.Parents = make([]Wrapper, 0)
 	}
 	if w != nil {
-		fn.Parents = append(fn.Parents, w)
+		if w != nil {
+			found := false
+			for _, p := range fn.Parents {
+				if p == w {
+					found = true
+					break
+				}
+			}
+			if !found {
+				fn.Parents = append(fn.Parents, w)
+			}
+		}
 	}
 }
 
@@ -135,7 +146,16 @@ func (b *BlockWrapper) AddParent(w Wrapper) {
 		b.Parents = make([]Wrapper, 0)
 	}
 	if w != nil {
-		b.Parents = append(b.Parents, w)
+		found := false
+		for _, p := range b.Parents {
+			if p == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			b.Parents = append(b.Parents, w)
+		}
 	}
 }
 
