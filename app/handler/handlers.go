@@ -200,7 +200,7 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		// only parse this file if it appears in the stack trace
 		shouldParseFile := false
 		for _, value := range parsedStack {
-			for _, stackFileName := range value.fileName {
+			for _, stackFileName := range value.FileName {
 				if strings.Contains(goFile, stackFileName) {
 					shouldParseFile = true
 					break
@@ -229,8 +229,8 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 				// only add this function declaration if it is part of the stack trace
 				shouldAppendFunction := false
 				for _, value := range parsedStack {
-					for index, stackFuncName := range value.funcName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.fileName[index]) {
+					for index, stackFuncName := range value.FuncName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.FileName[index]) {
 							shouldAppendFunction = true
 							break
 						}
@@ -258,8 +258,8 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		//		for _, spec := range decl.Specs{
 		//			switch spec := spec.(type){
 		//			case *ast.ValueSpec:
-		//				for _, id := range spec.Names {
-		//					fmt.Printf("Var %s: %v", id.Name, id.Obj.Decl.(*ast.ValueSpec).Values[0].(*ast.BasicLit).Value)
+		//				for _, Id := range spec.Names {
+		//					fmt.Printf("Var %s: %v", Id.Name, Id.Obj.Decl.(*ast.ValueSpec).Values[0].(*ast.BasicLit).Value)
 		//				}
 		//			}
 		//		}
@@ -352,7 +352,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		// only parse this file if it appears in the stack trace
 		shouldParseFile := false
 		for _, value := range parsedStack {
-			for _, stackFileName := range value.fileName {
+			for _, stackFileName := range value.FileName {
 				if strings.Contains(goFile, stackFileName) {
 					shouldParseFile = true
 					break
@@ -381,8 +381,8 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 				// only add this function declaration if it is part of the stack trace
 				shouldAppendFunction := false
 				for _, value := range parsedStack {
-					for index, stackFuncName := range value.funcName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.fileName[index]) {
+					for index, stackFuncName := range value.FuncName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.FileName[index]) {
 							shouldAppendFunction = true
 							break
 						}
@@ -412,9 +412,9 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		fmt.Println(decl)
 	}
 
-	line, _ := strconv.Atoi(parsedStack[0].lineNum[0])
+	line, _ := strconv.Atoi(parsedStack[0].LineNum[0])
 
-	node := *getExceptionNode(&decls[len(decls)-1], parsedStack[0].fileName[0], line)
+	node := *getExceptionNode(&decls[len(decls)-1], parsedStack[0].FileName[0], line)
 
 	fmt.Println(node.GetFilename(), node.GetLineNumber(), node.GetParents())
 

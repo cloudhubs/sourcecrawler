@@ -578,13 +578,13 @@ func mapLogRegex(logInfo []model.LogType) map[int]string {
 	return regexMap
 }
 
-func FindMustHaves(root db.Node, stackTrace []stackTraceStruct, regexs []string) ([]db.Node, map[string]string) {
+func FindMustHaves(root db.Node, stackTrace []StackTraceStruct, regexs []string) ([]db.Node, map[string]string) {
 	//must-have is on stack trace or contains a regex
 	funcLabels := make(map[string]string)
 	return findMustHavesRecur(root, stackTrace, regexs, &funcLabels), funcLabels
 }
 
-func findMustHavesRecur(n db.Node, stackTrace []stackTraceStruct, regexs []string, funcLabels *map[string]string) []db.Node {
+func findMustHavesRecur(n db.Node, stackTrace []StackTraceStruct, regexs []string, funcLabels *map[string]string) []db.Node {
 	funcCalls := []db.Node{}
 
 	if n != nil {
@@ -603,10 +603,10 @@ func findMustHavesRecur(n db.Node, stackTrace []stackTraceStruct, regexs []strin
 	return funcCalls
 }
 
-func isInStack(fn db.Node, stackTrace []stackTraceStruct) bool {
+func isInStack(fn db.Node, stackTrace []StackTraceStruct) bool {
 	//traverse
 	for _, trace := range stackTrace {
-		for _, funcName := range trace.funcName {
+		for _, funcName := range trace.FuncName {
 			if fn, ok := fn.(*db.FunctionNode); ok {
 				if fn.FunctionName == funcName {
 					return true
