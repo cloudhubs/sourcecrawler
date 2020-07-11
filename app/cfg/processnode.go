@@ -272,8 +272,11 @@ func GetPointedName(curr Wrapper, node ast.Expr) string {
 			return GetPointedName(outer, expr.X)
 		case *ast.Ident:
 			fmt.Println("hello", outer, node)
-			if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
-				return GetPointedName(outer, v)
+			if expr.Obj != nil {
+				if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
+					fmt.Println("--", v)
+					return GetPointedName(outer, v)
+				}
 			}
 		}
 	}
