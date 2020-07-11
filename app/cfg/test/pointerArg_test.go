@@ -92,6 +92,26 @@ func TestPointerArgs(t *testing.T) {
 				Vars: []string{},
 			}
 		},
+		func() pointerTest{
+			src := `
+			package main
+			func main() {
+				a := func(){fmt.Println()}
+				foo(a)
+			}
+			func foo(b func()){
+				bar(b)
+			}
+			func bar(c func()){
+				c()
+			}
+			`
+			return pointerTest{
+				Name: "Nested Function Arg",
+				Src:  src,
+				Vars: []string{},
+			}
+		},
 	}
 
 	for _, testCase := range cases {

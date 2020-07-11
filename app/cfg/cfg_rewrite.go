@@ -1,9 +1,11 @@
 package cfg
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"sourcecrawler/app/helper"
 	"strings"
@@ -521,10 +523,11 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 	switch v := fn.(type) {
 	case *ast.CallExpr:
 			if fnName, ok := v.Fun.(*ast.Ident); ok {
+				//this is when it is in the map
 				if param, ok := w.(*FnWrapper).ParamsToArgs[fnName.Obj]; ok {
 					//if literal
 					if fnParam, ok := param.(*ast.FuncLit); ok {
-						return NewFnWrapper(fnParam,v.Args)
+						return NewFnWrapper(fnParam,args)
 					}else {
 						//identifier
 						return getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
@@ -533,13 +536,19 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 					//if not a parameter, find it using blind method
 					return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
 				}
-			} else {
-				//if not in the param map, find it using blind method
-				//get new function wrapper
-				return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
+			}
+	case *ast.Ident:
+		//add case for when the ientifier is nested
+		//search the params map again
+		if param, ok := w.(*FnWrapper).ParamsToArgs[v.Obj]; ok {
+			//if literal
+			if fnParam, ok := param.(*ast.FuncLit); ok {
+				return NewFnWrapper(fnParam,args)
+			}else {
+				//identifier
+				return getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
 			}
 		}
-	case *ast.Ident:
 		switch decl := v.Obj.Decl.(type) {
 		//local functions (foo := func())
 		case *ast.AssignStmt:
@@ -692,7 +701,9 @@ func DebugPrint(w Wrapper, level string, printed map[Wrapper]struct{}) {
 			break
 		}
 		for _, node := range w.Block.Nodes {
-			fmt.Println(level, node)
+			var bf bytes.Buffer
+			_ = printer.Fprint(&bf, w.GetFileSet(), node)
+			fmt.Println(level, bf.String())
 		}
 	case *FnWrapper:
 		if w == nil {
