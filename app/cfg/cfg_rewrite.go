@@ -42,8 +42,8 @@ type FnWrapper struct {
 	Parents    []Wrapper
 	Outer      Wrapper
 	// ...?
-	Fset *token.FileSet
-	ASTs []*ast.File
+	Fset         *token.FileSet
+	ASTs         []*ast.File
 	ParamsToArgs map[*ast.Object]ast.Expr
 }
 
@@ -219,7 +219,6 @@ func (b *BlockWrapper) GetASTs() []*ast.File {
 	return []*ast.File{}
 }
 
-
 // ---- Traversal function ---------------
 // curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
 // vars -> holds list of variables on path
@@ -309,7 +308,7 @@ func SetupPersistentData(base string) *FnWrapper {
 //TODO: how to identify FuncLit calls and connect them
 func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 	var c *cfg.CFG
-	params := make([]*ast.Object, len(callingArgs))
+	params := make([]*ast.Object, 0)
 	switch fn := root.(type) {
 	case *ast.FuncDecl:
 		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
@@ -322,9 +321,10 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 			return false
 		})
 		//gather list of parameters
+		fmt.Println(params)
 		for _, param := range fn.Type.Params.List {
 			for _, name := range param.Names {
-				params = append(params,name.Obj)
+				params = append(params, name.Obj)
 			}
 		}
 	case *ast.FuncLit:
@@ -333,7 +333,7 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 		})
 		for _, param := range fn.Type.Params.List {
 			for _, name := range param.Names {
-				params = append(params,name.Obj)
+				params = append(params, name.Obj)
 			}
 		}
 	}
@@ -517,25 +517,25 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 }
 
 //TODO: test this because it's a mess and I'm pretty sure it'll break
-func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrapper{
+func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrapper {
 	//if in map, get declaration
-	switch v := fn.(type){
+	switch v := fn.(type) {
 	case *ast.CallExpr:
-			if fnName, ok := v.Fun.(*ast.Ident); ok {
-				if param, ok := w.(*FnWrapper).ParamsToArgs[fnName.Obj]; ok {
-					//if literal
-					if fnParam, ok := param.(*ast.FuncLit); ok {
-						return NewFnWrapper(fnParam,v.Args)
-					}else {
-						//identifier
-						getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
-					}
+		if fnName, ok := v.Fun.(*ast.Ident); ok {
+			if param, ok := w.(*FnWrapper).ParamsToArgs[fnName.Obj]; ok {
+				//if literal
+				if fnParam, ok := param.(*ast.FuncLit); ok {
+					return NewFnWrapper(fnParam, v.Args)
 				} else {
-					//if not in the param map, find it using blind method
-					//get new function wrapper
-					return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
+					//identifier
+					getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 				}
+			} else {
+				//if not in the param map, find it using blind method
+				//get new function wrapper
+				return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
 			}
+		}
 	case *ast.Ident:
 		return NewFnWrapper(v.Obj.Decl.(*ast.AssignStmt).Rhs[0].(*ast.FuncLit).Body, args)
 	}
