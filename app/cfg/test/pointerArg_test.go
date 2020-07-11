@@ -38,6 +38,60 @@ func TestPointerArgs(t *testing.T) {
 				Vars: []string{"i"},
 			}
 		},
+		func() pointerTest{
+			src := `
+			package main
+			func main() {
+				b := func(){fmt.Println()}
+				foo(b)
+			}
+			func foo(b func()){
+				b()
+			}
+			`
+			return pointerTest{
+				Name: "Local Function Arg",
+				Src:  src,
+				Vars: []string{},
+			}
+		},
+		func() pointerTest{
+			src := `
+			package main
+			func main() {
+				b := func(){fmt.Println()}
+				foo(func(){fmt.Println()})
+			}
+			func foo(b func()){
+				b()
+			}
+			`
+			return pointerTest{
+				Name: "Function Literal Arg",
+				Src:  src,
+				Vars: []string{},
+			}
+		},
+		func() pointerTest{
+			src := `
+			package main
+			func main() {
+				b := func(){fmt.Println()}
+				foo(bar)
+			}
+			func foo(b func()){
+				b()
+			}
+			func bar(){
+				fmt.Println()
+			}
+			`
+			return pointerTest{
+				Name: "Package Function Arg",
+				Src:  src,
+				Vars: []string{},
+			}
+		},
 	}
 
 	for _, testCase := range cases {
@@ -62,17 +116,17 @@ func TestPointerArgs(t *testing.T) {
 				cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 			}
 
-			condStmts := make([]string, 0)
+			//condStmts := make([]string, 0)
 			vars := make([]ast.Node, 0)
 
-			leaves := cfg.GetLeafNodes(w)
-			if len(leaves) > 0 {
-				cfg.TraverseCFG(leaves[0], condStmts, vars, w)
-			} else {
-				t.Error("Not enough leaves")
-			}
+			//leaves := cfg.GetLeafNodes(w)
+			//if len(leaves) > 0 {
+			//	cfg.TraverseCFG(leaves[0], condStmts, vars, w)
+			//} else {
+			//	t.Error("Not enough leaves")
+			//}
 
-			// cfg.DebugPrint(w, "", make(map[cfg.Wrapper]struct{}))
+			cfg.DebugPrint(w, "", make(map[cfg.Wrapper]struct{}))
 
 			// cfg.TraverseCFG(w, condStmts, vars, w)
 

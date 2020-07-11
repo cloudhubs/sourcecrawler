@@ -309,7 +309,7 @@ func SetupPersistentData(base string) *FnWrapper {
 //TODO: how to identify FuncLit calls and connect them
 func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 	var c *cfg.CFG
-	params := make([]*ast.Object, len(callingArgs))
+	params := make([]*ast.Object, 0)
 	switch fn := root.(type) {
 	case *ast.FuncDecl:
 		c = cfg.New(fn.Body, func(call *ast.CallExpr) bool {
@@ -458,46 +458,45 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 						topBlock, bottomBlock := b.splitAtNodeIndex(i)
 
 						//TODO:
-						//for _,
-						//
-						//
-						//if fnName, ok := node.Fun.(*ast.Ident); ok {
-						//	if param, ok := b.Outer.(*FnWrapper).ParamsToArgs[]
-						//}
+						newFn := getDeclarationOfFunction(b.Outer,call,call.Args)
 
 						//get new function wrapper
-						newFn := b.getFunctionWrapperFor(call, call.Args)
+						//newFn := b.getFunctionWrapperFor(call, call.Args)
 						if newFn != nil {
 							newFn.SetOuterWrapper(b.Outer)
-						}
 
-						//connect the topBlock to the function
-						topBlock.connectCallTo(newFn)
-						//replace block with topBlock
-						for _, p := range b.Parents {
-							//remove block as child?
-							p.RemoveChild(b)
-							p.AddChild(topBlock)
-							topBlock.AddParent(p)
-						}
+							//connect the topBlock to the function
+							topBlock.connectCallTo(newFn)
+							//replace block with topBlock
+							for _, p := range b.Parents {
+								//remove block as child?
+								p.RemoveChild(b)
+								b.RemoveParent(p)
+								p.AddChild(topBlock)
+								topBlock.AddParent(p)
+							}
 
-						if bottomBlock != nil {
-							//connect the function to the
-							//second half of the block
-							newFn.connectReturnsTo(bottomBlock)
-							//replace block with bottomBlock
-							for _, c := range b.Succs {
-								//remove block as parent?
-								c.RemoveParent(b)
-								c.AddParent(bottomBlock)
-								bottomBlock.AddChild(c)
+							if bottomBlock != nil {
+								//connect the function to the
+								//second half of the block
+								newFn.connectReturnsTo(bottomBlock)
+								//replace block with bottomBlock
+								for _, c := range b.Succs {
+									//remove block as parent?
+									b.RemoveChild(c)
+									c.RemoveParent(b)
+									c.AddParent(bottomBlock)
+									bottomBlock.AddChild(c)
+								}
+							}
+							//stop after first function, block is now
+							//obsolete, move on to sucessors of topBlock
+							for _, succ := range topBlock.Succs {
+								ExpandCFG(succ, stack)
 							}
 						}
-						//stop after first function, block is now
-						//obsolete, move on to sucessors of topBlock
-						for _, succ := range topBlock.Succs {
-							ExpandCFG(succ, stack)
-						}
+
+
 					}
 				}
 			}
@@ -528,16 +527,23 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 						return NewFnWrapper(fnParam,v.Args)
 					}else {
 						//identifier
-						getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
+						return getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
 					}
 				} else {
-					//if not in the param map, find it using blind method
-					//get new function wrapper
+					//if not a parameter, find it using blind method
 					return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
 				}
 			}
 	case *ast.Ident:
-		return NewFnWrapper(v.Obj.Decl.(*ast.AssignStmt).Rhs[0].(*ast.FuncLit).Body, args)
+		switch decl := v.Obj.Decl.(type) {
+		//local functions (foo := func())
+		case *ast.AssignStmt:
+			return NewFnWrapper(decl.Rhs[0].(*ast.FuncLit), args)
+		//package functions (func foo())
+		case *ast.FuncDecl:
+			return NewFnWrapper(decl.Body, args)
+
+		}
 	}
 	return nil
 }
