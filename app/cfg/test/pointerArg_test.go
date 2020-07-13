@@ -47,6 +47,23 @@ func TestPointerArgs(t *testing.T) {
 		func() pointerTest {
 			src := `
 			package main
+			func main() {
+				a := 3
+			}
+			func foo(x int) {
+				// do something with x
+				x++
+			}
+			`
+			return pointerTest{
+				Name: "Pass by value",
+				Src:  src,
+				Vars: []string{"a", "x"},
+			}
+		},
+		func() pointerTest {
+			src := `
+			package main
 			type Foo struct {
 				Prop int
 			}
