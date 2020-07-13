@@ -17,6 +17,11 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+type addingTestCase struct{
+	Name string
+	Root interface{}
+}
+
 func test(arg1 int) {
 	test := "string"
 	fmt.Println(test)

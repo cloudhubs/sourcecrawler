@@ -6,3 +6,4 @@ sourcecrawler.exe
 ..gitignore.un~
 .gitignore~
 temp.txt
+app/cfg/test/checklines_test.go

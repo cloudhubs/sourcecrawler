@@ -11,8 +11,8 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
-//Method to get condition, nil if not a conditional (specific to block wrapper)
-func (b *BlockWrapper) GetCondition() string {
+//Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
+func (b *BlockWrapper) GetCondition() string{
 
 	var condition string = ""
 	//Return block or panic, fatal, etc
@@ -39,6 +39,28 @@ func (b *BlockWrapper) GetCondition() string {
 	}
 
 	return condition
+}
+
+//Process the AST node to extract function literals (can be called in traverse or parse time)
+func GetFuncLits(node ast.Node){
+	varMap := make(map[string]string) //switch to map[variable]variable later
+	fmt.Println(varMap)
+
+	ast.Inspect(node, func(currNode ast.Node) bool {
+		if callNode, ok := node.(*ast.CallExpr); ok{
+			for _, expr := range callNode.Args{
+				switch fnLit := expr.(type){
+				case *ast.FuncLit:
+					fmt.Printf("func lit type %s, lit body %s", fnLit.Type, fnLit.Body)
+				case *ast.Ident:
+					fmt.Println("Ident", fnLit.Name, fnLit.Obj)
+				}
+			}
+		}
+
+		return true
+	})
+
 }
 
 //Gets all the variables within a block -
@@ -265,6 +287,7 @@ func GetExprStr(expr ast.Expr) string {
 	return ""
 }
 
+//Get name pointed to by the expr node
 func GetPointedName(curr Wrapper, node ast.Expr) string {
 	if outer, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
 		switch expr := node.(type) {

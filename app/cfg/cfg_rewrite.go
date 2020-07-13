@@ -13,7 +13,10 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+// ---- Represents the execution path --------
 type Path struct {
+	//Stmts map[string]ExecutionLabel     	//List of statements along with it's label (could be duplicate statements - may use diff struct)
+	//Variables map[ast.Node]ExecutionLabel	//*ast.AssignStmt or *ast.ValueSpec (Not sure if variable need to be labeled)
 	Stmts     []string
 	Variables []ast.Node //*ast.AssignStmt or *ast.ValueSpec
 }
@@ -22,6 +25,19 @@ var executionPath []Path = []Path{}
 
 func GetExecPath() []Path {
 	return executionPath
+}
+
+//---- Branch Labels ----------
+type ExecutionLabel int
+const (
+	NoLabel ExecutionLabel = iota
+	Must
+	May
+	MustNot
+)
+
+func (s ExecutionLabel) String() string {
+	return [...]string{"NoLabel", "Must", "May", "MustNot"}[s]
 }
 
 type Wrapper interface {
@@ -33,6 +49,8 @@ type Wrapper interface {
 	GetChildren() []Wrapper
 	GetOuterWrapper() Wrapper
 	SetOuterWrapper(w Wrapper)
+	GetLabel() ExecutionLabel
+	SetLabel(label ExecutionLabel)
 
 	GetFileSet() *token.FileSet
 	GetASTs() []*ast.File
@@ -44,6 +62,8 @@ type FnWrapper struct {
 	Parents    []Wrapper
 	Outer      Wrapper
 	// ...?
+
+	Label	ExecutionLabel
 	Fset         *token.FileSet
 	ASTs         []*ast.File
 	ParamsToArgs map[*ast.Object]ast.Expr
@@ -54,6 +74,7 @@ type BlockWrapper struct {
 	Parents []Wrapper
 	Succs   []Wrapper
 	Outer   Wrapper
+	Label	ExecutionLabel
 }
 
 // ------------------ FnWrapper ----------------------
@@ -141,6 +162,14 @@ func (fn *FnWrapper) GetASTs() []*ast.File {
 	}
 }
 
+func (fn *FnWrapper) GetLabel() ExecutionLabel{
+	return fn.Label
+}
+
+func (fn *FnWrapper) SetLabel(label ExecutionLabel){
+	fn.Label = label
+}
+
 // ------------------ BlockWrapper ----------------------
 
 func (b *BlockWrapper) AddParent(w Wrapper) {
@@ -207,6 +236,7 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
 
+
 func (b *BlockWrapper) GetFileSet() *token.FileSet {
 	if b.Outer != nil {
 		return b.Outer.GetFileSet()
@@ -220,6 +250,16 @@ func (b *BlockWrapper) GetASTs() []*ast.File {
 	}
 	return []*ast.File{}
 }
+
+func (b *BlockWrapper) GetLabel() ExecutionLabel{
+	return b.Label
+}
+
+func (b *BlockWrapper) SetLabel(label ExecutionLabel){
+	b.Label = label
+}
+
+// ------------------ Logical Methods ------------------
 
 // ---- Traversal function ---------------
 // curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
@@ -236,9 +276,9 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 		fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
 
 	case *BlockWrapper:
-		fmt.Println("BlockWrapper", currWrapper)
 
 		// get cond after getting variables, and replace them in the condition
+
 
 		//Gets a list of all variables inside the block, and add
 		// -Filter out relevant variables
@@ -264,16 +304,7 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 	} else {
 		executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
 	}
-
 }
-
-// func NewCfgWrapper(first *cfg.Block) *CfgWrapper {
-// 	return &CfgWrapper{
-// 		FirstBlock: NewBlockWrapper(first, nil),
-// 	}
-// }
-
-// ------------------ Logical Methods ------------------
 
 //The value returned should be the topmost wrapper
 //of the CFG, the entry point of the program should
@@ -366,6 +397,7 @@ func NewBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper) *BlockWrap
 }
 
 func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[*cfg.Block]*BlockWrapper) *BlockWrapper {
+	//Avoid duplicate blocks
 	if b, ok := cache[block]; ok {
 		b.AddParent(parent)
 		return b
@@ -640,7 +672,7 @@ func GetLeafNodes(w Wrapper) []Wrapper {
 //must be called on a Wrapper to give access to the ASTs
 func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr) *FnWrapper {
 	var fn *ast.FuncDecl
-	//loop through
+	//loop through every AST file
 	for _, file := range b.GetASTs() {
 		stop := false
 		ast.Inspect(file, func(n ast.Node) bool {
