@@ -672,6 +672,11 @@ func GetLeafNodes(w Wrapper) []Wrapper {
 	var rets []Wrapper
 	for _, c := range w.GetChildren() {
 		if len(c.GetChildren()) > 0 {
+			// Doing this instead of append(rets, GetLeafNodes(c)...)
+			// fixes an issue with duplicate variables when traversing
+			// multiple leaf nodes (however this might be due to the global
+			// execution path at the moment. This can be changed back
+			// when that is fixed I think)
 			for _, leaf := range GetLeafNodes(c) {
 				contained := false
 				for _, r := range rets {
