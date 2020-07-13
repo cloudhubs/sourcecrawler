@@ -46,87 +46,87 @@ type FnVariableWrapper struct {
 
 //------------------ VariableWrapper helper functions -------------
 //Function to search for literals or assignment (should be run at parse-time given an AST node)
-func SearchFuncLits(node ast.Node) []VariableWrapper{
-	variables := []VariableWrapper{}
-
-	ast.Inspect(node, func(currNode ast.Node) bool {
-
-		return true
-	})
-
-	switch fn := node.(type) {
-	case *ast.AssignStmt:
-		varName := GetVarName(fn)
-
-		//Need to look at rhs expr if it's an assignment (assuming theres 1 expr in Rhs)
-		varVal := GetVarWrap(fn.Rhs[0])
-		varWrap := &FnVariableWrapper{
-			Value: varVal,
-			Name:  varName,
-		}
-		//If name and value are valid, then add to list
-		if varWrap.GetName() != ""&& varWrap.GetValue() != nil{
-			variables = append(variables, varWrap)
-		}
-
-		//TODO: parse expression for the Identifier
-		left := fn.Lhs[0]
-		right := fn.Rhs[0]
-
-		if id, ok := left.(*ast.Ident); ok {
-			fmt.Println("ident left",id)
-		}
-		if call, ok := left.(*ast.CallExpr); ok {
-			fmt.Println("callexpr left",call)
-		}
-
-		switch temp := left.(type){
-		case *ast.CallExpr:
-			fmt.Println("Expr x is callexpr", temp)
-		case *ast.Ident:
-			fmt.Println("is ident left", temp)
-		}
-
-		//right---
-		if id, ok := right.(*ast.Ident); ok {
-			fmt.Println("ident right",id)
-		}
-		if call, ok := right.(*ast.CallExpr); ok {
-			fmt.Println("ex right",call)
-		}
-
-		switch temp := right.(type){
-		case *ast.CallExpr:
-			fmt.Println("Expr x is callexpr right", temp)
-		case *ast.Ident:
-			fmt.Println("is ident right", temp)
-		}
-
-		//if expr, ok := node.(*ast.ExprStmt); ok {
-		//	fmt.Println("exprStmt",expr)
-		//	switch temp := expr.X.(type){
-		//	case *ast.CallExpr:
-		//		fmt.Println("Expr x is callexpr", temp)
-		//	case *ast.Ident:
-		//		fmt.Println("is ident", temp)
-		//	}
-		//}
-
-	case *ast.FuncLit:
-		fmt.Println("Func lit", fn.Type, fn.Body)
-		if expr, ok := node.(*ast.CallExpr); ok{
-			fmt.Println("Is also expression", expr)
-		}
-		//varVal := &FnVariableWrapper{
-		//	Value: Get,
-		//	Name:  "",
-		//}
-	//case *ast.Ident:
-	//	fmt.Println("Ident name", fn.Name)
-	}
-
-	return variables
-}
+//func SearchFuncLits(node ast.Node) []VariableWrapper{
+//	variables := []VariableWrapper{}
+//
+//	ast.Inspect(node, func(currNode ast.Node) bool {
+//
+//		return true
+//	})
+//
+//	switch fn := node.(type) {
+//	case *ast.AssignStmt:
+//		varName := GetVarName(fn)
+//
+//		//Need to look at rhs expr if it's an assignment (assuming theres 1 expr in Rhs)
+//		varVal := GetVarWrap(fn.Rhs[0])
+//		varWrap := &FnVariableWrapper{
+//			Value: varVal,
+//			Name:  varName,
+//		}
+//		//If name and value are valid, then add to list
+//		if varWrap.GetName() != ""&& varWrap.GetValue() != nil{
+//			variables = append(variables, varWrap)
+//		}
+//
+//		//TODO: parse expression for the Identifier
+//		left := fn.Lhs[0]
+//		right := fn.Rhs[0]
+//
+//		if id, ok := left.(*ast.Ident); ok {
+//			fmt.Println("ident left",id)
+//		}
+//		if call, ok := left.(*ast.CallExpr); ok {
+//			fmt.Println("callexpr left",call)
+//		}
+//
+//		switch temp := left.(type){
+//		case *ast.CallExpr:
+//			fmt.Println("Expr x is callexpr", temp)
+//		case *ast.Ident:
+//			fmt.Println("is ident left", temp)
+//		}
+//
+//		//right---
+//		if id, ok := right.(*ast.Ident); ok {
+//			fmt.Println("ident right",id)
+//		}
+//		if call, ok := right.(*ast.CallExpr); ok {
+//			fmt.Println("ex right",call)
+//		}
+//
+//		switch temp := right.(type){
+//		case *ast.CallExpr:
+//			fmt.Println("Expr x is callexpr right", temp)
+//		case *ast.Ident:
+//			fmt.Println("is ident right", temp)
+//		}
+//
+//		//if expr, ok := node.(*ast.ExprStmt); ok {
+//		//	fmt.Println("exprStmt",expr)
+//		//	switch temp := expr.X.(type){
+//		//	case *ast.CallExpr:
+//		//		fmt.Println("Expr x is callexpr", temp)
+//		//	case *ast.Ident:
+//		//		fmt.Println("is ident", temp)
+//		//	}
+//		//}
+//
+//	case *ast.FuncLit:
+//		fmt.Println("Func lit", fn.Type, fn.Body)
+//		if expr, ok := node.(*ast.CallExpr); ok{
+//			fmt.Println("Is also expression", expr)
+//		}
+//		//varVal := &FnVariableWrapper{
+//		//	Value: Get,
+//		//	Name:  "",
+//		//}
+//	//case *ast.Ident:
+//	//	fmt.Println("Ident name", fn.Name)
+//	}
+//
+//	return variables
+//}
 
 //Helper function for extracting actual variable value -- used in
 func GetVarWrap(node ast.Node) interface{}{
