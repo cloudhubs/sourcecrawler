@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"reflect"
 	"sourcecrawler/app/logsource"
 	"strings"
 
@@ -50,22 +51,12 @@ func GetVariables(curr Wrapper) []ast.Node {
 	case *BlockWrapper:
 		//Process all nodes in a block for possible variables
 		for _, node := range curr.Block.Nodes {
+			fmt.Println("hm", reflect.TypeOf(node))
 			ast.Inspect(node, func(currNode ast.Node) bool {
+				fmt.Println("hm2", reflect.TypeOf(node))
 				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
 				switch node := node.(type) {
-				case *ast.AssignStmt:
-					//Gets variable name
-					name := GetVarName(curr, node)
-
-					//filter out duplicates
-					_, ok := filter[name]
-					if ok && name != "" {
-						//fmt.Println(name, " is already in the list")
-					} else {
-						filter[name] = node
-					}
-				case *ast.ValueSpec:
-
+				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.ExprStmt, *ast.Ident:
 					//Gets variable name
 					name := GetVarName(curr, node)
 
@@ -280,8 +271,12 @@ func GetPointedName(curr Wrapper, node ast.Expr) string {
 		case *ast.StarExpr:
 			return GetPointedName(outer, expr.X)
 		case *ast.Ident:
-			if v, ok := outer.ParamsToArgs[expr]; ok {
-				return GetPointedName(outer, v)
+			fmt.Println("hello", outer, node)
+			if expr.Obj != nil {
+				if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
+					fmt.Println("--", v)
+					return GetPointedName(outer, v)
+				}
 			}
 		}
 	}
@@ -291,6 +286,8 @@ func GetPointedName(curr Wrapper, node ast.Expr) string {
 //Helper function to get var name (handles both assign and declaration vars)
 func GetVarName(curr Wrapper, node ast.Node) string {
 	var name string = ""
+
+	fmt.Println("var", node, reflect.TypeOf(node))
 
 	switch node := node.(type) {
 	case *ast.AssignStmt:
@@ -315,6 +312,12 @@ func GetVarName(curr Wrapper, node ast.Node) string {
 				name = node.Names[0].Name
 			}
 		}
+	case *ast.IncDecStmt:
+		name = GetPointedName(curr, node.X)
+		fmt.Println(name)
+	case *ast.ExprStmt:
+		name = GetPointedName(curr, node.X)
+		fmt.Println(name)
 	}
 
 	return name
