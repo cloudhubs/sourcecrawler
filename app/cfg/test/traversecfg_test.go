@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-type rewriteTestCase struct{
+type testCase struct{
 	Name string
 }
 
@@ -54,7 +54,7 @@ func printPath(paths []cfg2.Path){
 }
 
 func TestRewrite2(t *testing.T) {
-	cases := []func() rewriteTestCase{
+	cases := []func() testCase{
 		//func() addingTestCase {
 		//
 		//	fset := token.NewFileSet()
@@ -333,7 +333,7 @@ func TestRewrite2(t *testing.T) {
 		//		Root: nil,
 		//	}
 		//},
-		func() rewriteTestCase {
+		func() testCase {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
@@ -380,19 +380,19 @@ func TestRewrite2(t *testing.T) {
 			end.AddParent(fchild)
 			end.SetOuterWrapper(root)
 
-			testPrint(root)
+			//testPrint(root)
 			cfg2.LabelCFG(end, nil, root)
 
-			fmt.Printf("\nAfter label function: ============\n")
-			testPrint(root)
+			//fmt.Printf("\nAfter label function: ============\n")
+			//testPrint(root)
 
 
 
-			return rewriteTestCase{
+			return testCase{
 				Name: "TestRewriteLabel",
 			}
 		},
-		func() rewriteTestCase {
+		func() testCase {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
@@ -419,7 +419,9 @@ func TestRewrite2(t *testing.T) {
 			//}
 
 			//Create a sample tree
-			root := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[0]}
+			root := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[0],
+				PathList: cfg2.PathList{Paths: make([]cfg2.Path, 0)},
+			}
 			tchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[1]}
 			fchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[3]}
 			end := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[2]}
@@ -449,14 +451,16 @@ func TestRewrite2(t *testing.T) {
 
 
 			//Start at end node
+			//var pathList cfg2.PathList
 			cfg2.TraverseCFG(end, stmts, vars, root)
 
-			printPath(cfg2.GetExecPath())
+			//Print created execution path
+			fmt.Println("\n========================")
 
 
 
-			return rewriteTestCase{
-				Name: "Test label execution paths",
+			return testCase{
+				Name: "Test Execution Paths",
 			}
 		},
 	}
