@@ -49,6 +49,7 @@ func TestPointerArgs(t *testing.T) {
 			package main
 			func main() {
 				a := 3
+				foo(a)
 			}
 			func foo(x int) {
 				// do something with x
@@ -58,7 +59,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Pass by value",
 				Src:  src,
-				Vars: []string{"a", "x"},
+				Vars: []string{"x", "a"},
 			}
 		},
 		func() pointerTest {

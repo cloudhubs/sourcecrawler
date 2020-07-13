@@ -298,12 +298,17 @@ func GetPointedName(curr Wrapper, node ast.Expr) (string, ast.Node) {
 		case *ast.StarExpr:
 			return GetPointedName(outer, expr.X)
 		case *ast.Ident:
-			// fmt.Println("hello", outer, node)
 			if expr.Obj != nil {
-				if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
-					// fmt.Println("--", v)
-					return GetPointedName(outer, v)
+				if field, ok := expr.Obj.Decl.(*ast.Field); ok {
+					// Check if the variable should return the name it points to
+					switch field.Type.(type) {
+					case *ast.StarExpr, *ast.FuncType, *ast.StructType:
+						if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
+							return GetPointedName(outer, v)
+						}
+					}
 				}
+
 			}
 		}
 	}
