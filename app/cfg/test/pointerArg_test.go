@@ -47,6 +47,27 @@ func TestPointerArgs(t *testing.T) {
 		func() pointerTest {
 			src := `
 			package main
+			type Foo struct {
+				Prop int
+			}
+			func main() {
+				a := Foo{3}
+				// a.Prop = 10
+				f.GetProp()
+			}
+			func (f *Foo) GetProp() {
+				return f.Prop
+			}
+			`
+			return pointerTest{
+				Name: "Struct Attribute",
+				Src:  src,
+				Vars: []string{"a.Prop"},
+			}
+		},
+		func() pointerTest {
+			src := `
+			package main
 			func main() {
 				a := func(){fmt.Println()}
 				foo(a)
@@ -163,6 +184,9 @@ func TestPointerArgs(t *testing.T) {
 			path := cfg.GetExecPath()
 			t.Log(path)
 			for _, p := range path {
+				for _, v := range p.Variables {
+					fmt.Println(v)
+				}
 				if len(p.Variables) != len(test.Vars) {
 					t.Error("expected # of vars", len(test.Vars), "found", len(p.Variables))
 				} else {
