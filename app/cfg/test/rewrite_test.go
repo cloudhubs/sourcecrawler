@@ -187,7 +187,7 @@ func TestRegexFromBlock(t *testing.T) {
 
 			fmt.Println(testCFG.Format(fset))
 
-			for _, block := range testCFG.Blocks {
+			//for _, block := range testCFG.Blocks {
 				// varList := cfg2.GetVariables(block.Nodes)
 
 				// for _, variable := range varList {
@@ -200,7 +200,7 @@ func TestRegexFromBlock(t *testing.T) {
 				// 		fmt.Println(varType)
 				// 	}
 				// }
-			}
+			//}
 
 			return addingTestCase{
 				Name: "Get Variables",
