@@ -5,46 +5,46 @@ package test
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"golang.org/x/tools/go/cfg"
 	"os"
 	cfg2 "sourcecrawler/app/cfg"
 	"testing"
+
+	"github.com/rs/zerolog/log"
+	"golang.org/x/tools/go/cfg"
 )
 
-type rewriteTestCase struct{
+type rewriteTestCase struct {
 	Name string
 }
 
-func testPrint(curr cfg2.Wrapper){
+func testPrint(curr cfg2.Wrapper) {
 
 	//if len(curr.GetChildren()) == 0 {
 	//	fmt.Println("At bottommost child", curr, curr.GetLabel())
 	//}
 
-	if len(curr.GetChildren()) > 0{
-		for _, child := range curr.GetChildren(){
+	if len(curr.GetChildren()) > 0 {
+		for _, child := range curr.GetChildren() {
 			testPrint(child)
 		}
 	}
 
-
 	fmt.Println(curr, curr.GetLabel())
 }
 
-func printPath(paths []cfg2.Path){
+func printPath(paths []cfg2.Path) {
 
-	for _, path := range paths{
+	for _, path := range paths {
 
 		//fmt.Println("Path is", path)
 
 		//Print statements
-		for _, value := range path.Stmts{
+		for _, value := range path.Stmts {
 			fmt.Printf("Stmt: %s ", value)
-			for _, vars := range path.Variables{
+			for _, vars := range path.Variables {
 				fmt.Printf("| Vars: (%v)", vars)
 			}
 			fmt.Println()
@@ -337,16 +337,15 @@ func TestRewrite2(t *testing.T) {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
-			if err != nil{
+			if err != nil {
 				fmt.Println("Error parsing file")
 			}
 
 			var cfgList []*cfg.CFG
 
-
 			//Get the cfg for testLit.go
 			ast.Inspect(file, func(node ast.Node) bool {
-				if blockNode, ok := node.(*ast.BlockStmt); ok{
+				if blockNode, ok := node.(*ast.BlockStmt); ok {
 					if len(cfgList) < 2 {
 						cfgList = append(cfgList, cfg.New(blockNode, func(expr *ast.CallExpr) bool { return true }))
 					}
@@ -386,8 +385,6 @@ func TestRewrite2(t *testing.T) {
 			fmt.Printf("\nAfter label function: ============\n")
 			testPrint(root)
 
-
-
 			return rewriteTestCase{
 				Name: "TestRewriteLabel",
 			}
@@ -396,16 +393,15 @@ func TestRewrite2(t *testing.T) {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
-			if err != nil{
+			if err != nil {
 				fmt.Println("Error parsing file")
 			}
 
 			var cfgList []*cfg.CFG
 
-
 			//Get the cfg for testLit.go
 			ast.Inspect(file, func(node ast.Node) bool {
-				if blockNode, ok := node.(*ast.BlockStmt); ok{
+				if blockNode, ok := node.(*ast.BlockStmt); ok {
 					if len(cfgList) < 2 {
 						cfgList = append(cfgList, cfg.New(blockNode, func(expr *ast.CallExpr) bool { return true }))
 					}
@@ -447,13 +443,10 @@ func TestRewrite2(t *testing.T) {
 			stmts := []string{}
 			vars := []ast.Node{}
 
-
 			//Start at end node
-			cfg2.TraverseCFG(end, stmts, vars, root)
+			cfg2.TraverseCFG(end, stmts, vars, root, make(map[string]ast.Node))
 
 			printPath(cfg2.GetExecPath())
-
-
 
 			return rewriteTestCase{
 				Name: "Test label execution paths",
@@ -474,11 +467,10 @@ func TestRewrite2(t *testing.T) {
 		assignStr := "test if"
 		num := 10
 		sum := num
-		sum2 := num+num
+		sum2 := num + num
 		sum3 := two()
 
-
-		if 5 >= 10{
+		if 5 >= 10 {
 			fmt.Println("test if")
 			fmt.Println(assignStr)
 			fmt.Println(sum)
@@ -487,10 +479,9 @@ func TestRewrite2(t *testing.T) {
 			fmt.Println(decl1)
 			fmt.Println(decl2)
 			panic("bad")
-		}else{
+		} else {
 			fmt.Println("else")
 		}
-
 
 		test := testCase()
 		t.Run(test.Name, func(t *testing.T) {
@@ -501,4 +492,3 @@ func TestRewrite2(t *testing.T) {
 		})
 	}
 }
-

@@ -64,7 +64,6 @@ func GetFuncLits(node ast.Node) {
 
 //Gets all the variables within a block -
 func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
-	// filter := make(map[string]ast.Node)
 	varList := []ast.Node{}
 
 	switch curr := curr.(type) {
@@ -80,18 +79,18 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.Ident: //*ast.ExprStmt,
 					//Gets variable name
 					name, node := GetVar(curr, node)
-					if name != "" {
-						fmt.Println(name)
+					if name != "" && node != nil {
+						// fmt.Println("filter", filter)
+						//filter out duplicates
+						_, ok := filter[name]
+						if ok && name != "" {
+							// fmt.Println(name, " is already in the list")
+						} else {
+							filter[name] = node
+							// fmt.Println("map", name, "to", node, reflect.TypeOf(node))
+						}
 					}
 
-					//filter out duplicates
-					_, ok := filter[name]
-					if ok && name != "" {
-						// fmt.Println(name, " is already in the list")
-					} else {
-						filter[name] = node
-						// fmt.Println("map", name, "to", node, reflect.TypeOf(node))
-					}
 				}
 				return true
 			})
@@ -99,7 +98,6 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 
 		//Convert into list of variable nodes
 		for _, node := range filter {
-			// fmt.Println("node", node, reflect.TypeOf(node))
 			varList = append(varList, node)
 		}
 	}

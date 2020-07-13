@@ -31,6 +31,10 @@ func TestPointerArgs(t *testing.T) {
 			}
 			func bar(b *int) {
 				b++
+				three(b)
+			}
+			func three(c *int) {
+				c++	
 			}
 			`
 			return pointerTest{
@@ -141,11 +145,14 @@ func TestPointerArgs(t *testing.T) {
 			vars := make([]ast.Node, 0)
 
 			leaves := cfg.GetLeafNodes(w)
-			if len(leaves) > 0 {
-				cfg.TraverseCFG(leaves[0], condStmts, vars, w)
-			} else {
-				t.Error("Not enough leaves")
+			for _, leaf := range leaves {
+				cfg.TraverseCFG(leaf, condStmts, vars, w, make(map[string]ast.Node))
 			}
+			// if len(leaves) > 0 {
+			// 	cfg.TraverseCFG(leaves[0], condStmts, vars, w, make(map[string]ast.Node))
+			// } else {
+			// 	t.Error("Not enough leaves")
+			// }
 
 			// cfg.DebugPrint(w, "", make(map[cfg.Wrapper]struct{}))
 
