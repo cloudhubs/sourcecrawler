@@ -188,18 +188,18 @@ func TestRegexFromBlock(t *testing.T) {
 			fmt.Println(testCFG.Format(fset))
 
 			//for _, block := range testCFG.Blocks {
-				// varList := cfg2.GetVariables(block.Nodes)
-
-				// for _, variable := range varList {
-				// 	switch varType := variable.(type) {
-				// 	case *ast.AssignStmt:
-				// 		//fmt.Println("is assignment", varType.Lhs, varType.Tok.String(), varType.Rhs)
-				// 	case *ast.ValueSpec:
-				// 		//fmt.Println("is value spec", varType)
-				// 	default:
-				// 		fmt.Println(varType)
-				// 	}
-				// }
+			//	varList := cfg2.GetVariables(block.Nodes)
+			//
+			//	for _, variable := range varList {
+			//		switch varType := variable.(type) {
+			//		case *ast.AssignStmt:
+			//			//fmt.Println("is assignment", varType.Lhs, varType.Tok.String(), varType.Rhs)
+			//		case *ast.ValueSpec:
+			//			//fmt.Println("is value spec", varType)
+			//		default:
+			//			fmt.Println(varType)
+			//		}
+			//	}
 			//}
 
 			return addingTestCase{
