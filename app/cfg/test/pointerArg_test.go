@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"reflect"
 	"sourcecrawler/app/cfg"
 	"testing"
 )
@@ -38,7 +39,7 @@ func TestPointerArgs(t *testing.T) {
 				Vars: []string{"i"},
 			}
 		},
-		func() pointerTest{
+		func() pointerTest {
 			src := `
 			package main
 			func main() {
@@ -55,7 +56,7 @@ func TestPointerArgs(t *testing.T) {
 				Vars: []string{},
 			}
 		},
-		func() pointerTest{
+		func() pointerTest {
 			src := `
 			package main
 			func main() {
@@ -72,7 +73,7 @@ func TestPointerArgs(t *testing.T) {
 				Vars: []string{},
 			}
 		},
-		func() pointerTest{
+		func() pointerTest {
 			src := `
 			package main
 			func main() {
@@ -92,7 +93,7 @@ func TestPointerArgs(t *testing.T) {
 				Vars: []string{},
 			}
 		},
-		func() pointerTest{
+		func() pointerTest {
 			src := `
 			package main
 			func main() {
@@ -136,23 +137,31 @@ func TestPointerArgs(t *testing.T) {
 				cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 			}
 
-			//condStmts := make([]string, 0)
+			condStmts := make([]string, 0)
 			vars := make([]ast.Node, 0)
 
-			//leaves := cfg.GetLeafNodes(w)
-			//if len(leaves) > 0 {
-			//	cfg.TraverseCFG(leaves[0], condStmts, vars, w)
-			//} else {
-			//	t.Error("Not enough leaves")
-			//}
+			leaves := cfg.GetLeafNodes(w)
+			if len(leaves) > 0 {
+				cfg.TraverseCFG(leaves[0], condStmts, vars, w)
+			} else {
+				t.Error("Not enough leaves")
+			}
 
-			cfg.DebugPrint(w, "", make(map[cfg.Wrapper]struct{}))
+			// cfg.DebugPrint(w, "", make(map[cfg.Wrapper]struct{}))
 
 			// cfg.TraverseCFG(w, condStmts, vars, w)
 
 			// traverse(w)
-
-			t.Log(vars)
+			path := cfg.GetExecPath()
+			t.Log(path)
+			for _, p := range path {
+				for _, x := range p.Variables {
+					t.Log(x, reflect.TypeOf(x))
+					if x, ok := x.(*ast.ExprStmt); ok {
+						t.Log("   ", x.X, reflect.TypeOf(x.X))
+					}
+				}
+			}
 		})
 	}
 }
