@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -47,8 +48,8 @@ func TestPointerArgs(t *testing.T) {
 			src := `
 			package main
 			func main() {
-				b := func(){fmt.Println()}
-				foo(b)
+				a := func(){fmt.Println()}
+				foo(a)
 			}
 			func foo(b func()){
 				b()
@@ -57,14 +58,14 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Local Function Arg",
 				Src:  src,
-				Vars: []string{},
+				Vars: []string{"a"},
 			}
 		},
 		func() pointerTest {
 			src := `
 			package main
 			func main() {
-				b := func(){fmt.Println()}
+				a := func(){fmt.Println()}
 				foo(func(){fmt.Println()})
 			}
 			func foo(b func()){
@@ -74,7 +75,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Function Literal Arg",
 				Src:  src,
-				Vars: []string{},
+				Vars: []string{"b"},
 			}
 		},
 		func() pointerTest {
@@ -114,7 +115,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Nested Function Arg",
 				Src:  src,
-				Vars: []string{},
+				Vars: []string{"a"},
 			}
 		},
 	}
@@ -162,10 +163,17 @@ func TestPointerArgs(t *testing.T) {
 			path := cfg.GetExecPath()
 			t.Log(path)
 			for _, p := range path {
-				for _, x := range p.Variables {
-					t.Log(x, reflect.TypeOf(x))
-					if x, ok := x.(*ast.ExprStmt); ok {
-						t.Log("   ", x.X, reflect.TypeOf(x.X))
+				if len(p.Variables) != len(test.Vars) {
+					t.Error("expected # of vars", len(test.Vars), "found", len(p.Variables))
+				} else {
+					for i, x := range p.Variables {
+						t.Log(x, reflect.TypeOf(x))
+						// if x, ok := x.(*ast.ExprStmt); ok {
+						// 	t.Log("   ", x.X, reflect.TypeOf(x.X))
+						// }
+						if fmt.Sprint(x) != test.Vars[i] {
+							t.Error("expected var", test.Vars[i], "found", fmt.Sprint(x))
+						}
 					}
 				}
 			}
