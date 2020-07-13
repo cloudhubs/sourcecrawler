@@ -341,10 +341,8 @@ func GetVar(curr Wrapper, node ast.Node) (string, ast.Node) {
 		}
 	case *ast.IncDecStmt:
 		name, node = GetPointedName(curr, n.X)
-		// fmt.Println(name)
-		// case *ast.ExprStmt:
-		// 	name = GetPointedName(curr, node.X)
-		// 	fmt.Println(name)
+	case *ast.ExprStmt:
+		name, node = GetVar(curr, n.X)
 	}
 
 	return name, node
