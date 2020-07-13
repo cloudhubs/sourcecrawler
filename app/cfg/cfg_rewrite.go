@@ -19,7 +19,7 @@ import (
 // curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
 // vars -> holds list of variables on path
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper) {
+func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars []ast.Node, root Wrapper) {
 
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
@@ -43,7 +43,14 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
 		if condition != "" {
-			condStmts = append(condStmts, condition)
+			//condStmts = append(condStmts, condition)
+
+			//Add label to each statement
+			if _, ok := condStmts[condition]; ok{
+
+			}else {
+				condStmts[condition] = currWrapper.Label //Set label to current block's label
+			}
 		}
 
 	}
@@ -56,11 +63,11 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 		}
 	} else {
 		//Create a new list of paths if it doesn't exist
-		if pathInstance == nil{
-			pathInstance = CreateNewPath()
+		if PathInstance == nil{
+			PathInstance = CreateNewPath()
 		}
 
-		pathInstance.AddNewPath(Path{Stmts: condStmts, Variables: vars})
+		PathInstance.AddNewPath(Path{Stmts: condStmts, Variables: vars})
 	}
 }
 
@@ -76,7 +83,6 @@ func SetupPersistentData(base string) *FnWrapper {
 		Outer:      nil,
 		Fset:       token.NewFileSet(),
 		ASTs:       make([]*ast.File, 0),
-		PathList:   CreatePathList(),
 	}
 
 	//gather files

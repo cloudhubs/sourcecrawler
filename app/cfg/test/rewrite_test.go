@@ -249,7 +249,9 @@ func TestRegexFromBlock(t *testing.T) {
 
 			fmt.Println(testCFG.Format(fset))
 
-			condStmts := []string{}
+			//condStmts := []string{}
+			condStmts := make(map[string]cfg2.ExecutionLabel)
+			//varNodes := make(map[ast.Node]string)
 			varNodes := []ast.Node{}
 
 			rootWrapper := &cfg2.BlockWrapper{ //block 0
@@ -290,7 +292,6 @@ func TestRegexFromBlock(t *testing.T) {
 			}
 
 			//Test on simple case
-			//var pathList cfg2.PathList
 			cfg2.TraverseCFG(exceptionWrapper, condStmts, varNodes, rootWrapper)
 			//fmt.Println("Execution path after", cfg2.GetExecPath())
 

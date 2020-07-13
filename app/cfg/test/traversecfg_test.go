@@ -420,7 +420,7 @@ func TestRewrite2(t *testing.T) {
 
 			//Create a sample tree
 			root := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[0],
-				PathList: cfg2.PathList{Paths: make([]cfg2.Path, 0)},
+				//PathList: cfg2.PathList{Paths: make([]cfg2.Path, 0)},
 			}
 			tchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[1]}
 			fchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[3]}
@@ -446,7 +446,8 @@ func TestRewrite2(t *testing.T) {
 
 			//stmts := make(map[string]cfg2.ExecutionLabel)
 			//vars := make(map[ast.Node]cfg2.ExecutionLabel)
-			stmts := []string{}
+			stmts := make(map[string]cfg2.ExecutionLabel)
+			//vars := make(map[ast.Node]string)
 			vars := []ast.Node{}
 
 
@@ -455,9 +456,11 @@ func TestRewrite2(t *testing.T) {
 			cfg2.TraverseCFG(end, stmts, vars, root)
 
 			//Print created execution path
+			//filter := make(map[string]string)
 			fmt.Println("\n========================")
 
 
+			cfg2.PathInstance.PrintExecPath()
 
 			return testCase{
 				Name: "Test Execution Paths",

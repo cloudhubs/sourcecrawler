@@ -7,16 +7,19 @@ import (
 
 // ---- Represents a possible execution path --------
 type Path struct {
-	Stmts     []string
-	Variables []ast.Node //*ast.AssignStmt or *ast.ValueSpec
-
+	Stmts     map[string]ExecutionLabel
+	//Variables map[ast.Node]string //*ast.AssignStmt or *ast.ValueSpec
+	//Stmts []string
+	Variables []ast.Node
 }
 
 //List of paths
 type PathList struct {
 	Paths []Path
 }
-var pathInstance *PathList = nil
+
+//Singleton instance
+var PathInstance *PathList = nil
 
 //Adds a path to the list
 func (p *PathList) AddNewPath(path Path){
@@ -26,10 +29,10 @@ func (p *PathList) AddNewPath(path Path){
 
 //Instantiates a new instance of a path list
 func CreateNewPath() *PathList {
-	if pathInstance == nil{
-		pathInstance = new(PathList)
+	if PathInstance == nil{
+		PathInstance = new(PathList)
 	}
-	return pathInstance
+	return PathInstance
 }
 
 //Resets and clears out paths in the list
@@ -37,6 +40,7 @@ func (p *PathList) ClearPath(){
 	p.Paths = make([]Path, 0)
 }
 
+//Gets the list of paths inside the pathlist
 func (p *PathList) GetExecPath() []Path {
 	return p.Paths
 }
@@ -52,10 +56,10 @@ func (p *PathList) PrintExecPath(){
 	for _, path := range p.Paths{
 		//fmt.Println("Path is", path)
 		//Print statements
-		for _, value := range path.Stmts{
-			fmt.Printf("Stmt: %s ", value)
-			for _, vars := range path.Variables{
-				fmt.Printf("| Vars: (%v)", vars)
+		for key, value := range path.Stmts{
+			fmt.Printf("Stmt: %v - %s ", key, value)
+			for _, varNode := range path.Variables{
+				fmt.Printf("| Vars: (%v)", varNode)
 			}
 			fmt.Println()
 		}
