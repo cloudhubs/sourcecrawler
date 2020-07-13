@@ -448,7 +448,7 @@ func TestRewrite(t *testing.T) {
 			//Start at end node
 			cfg2.TraverseCFG(end, stmts, vars, root)
 
-			//printPath(cfg2.GetExecPath())
+			printPath(cfg2.GetExecPath())
 
 
 
