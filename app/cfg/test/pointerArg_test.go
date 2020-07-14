@@ -70,17 +70,17 @@ func TestPointerArgs(t *testing.T) {
 			}
 			func main() {
 				a := Foo{3}
-				// a.Prop = 10
-				f.GetProp()
+				a.Prop = 10 // included
+				a.bar()     // call not included
 			}
-			func (f *Foo) GetProp() {
-				return f.Prop
+			func (f *Foo) bar() {
+				fmt.Println(f.Prop)
 			}
 			`
 			return pointerTest{
 				Name: "Struct Attribute",
 				Src:  src,
-				Vars: []string{"a.Prop"},
+				Vars: []string{"a.Prop", "a"},
 			}
 		},
 		func() pointerTest {
@@ -213,8 +213,14 @@ func TestPointerArgs(t *testing.T) {
 						// if x, ok := x.(*ast.ExprStmt); ok {
 						// 	t.Log("   ", x.X, reflect.TypeOf(x.X))
 						// }
+						name := ""
+						if v, ok := x.(*ast.SelectorExpr); ok {
+							name = fmt.Sprintf("%v.%v", v.X, v.Sel)
+						} else {
+							name = fmt.Sprint(x)
+						}
 						if fmt.Sprint(x) != test.Vars[i] {
-							t.Error("expected var", test.Vars[i], "found", fmt.Sprint(x))
+							t.Error("expected var", test.Vars[i], "found", name)
 						}
 					}
 				}

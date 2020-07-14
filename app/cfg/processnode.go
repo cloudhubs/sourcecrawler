@@ -295,12 +295,17 @@ func GetExprStr(expr ast.Expr) string {
 func GetPointedName(curr Wrapper, node ast.Expr) (string, ast.Node) {
 	if outer, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
 		switch expr := node.(type) {
+		case *ast.SelectorExpr:
+			lhs, _ := GetPointedName(outer, expr.X)
+			rhs, _ := GetPointedName(outer, expr.Sel)
+			return fmt.Sprintf("%v.%v", lhs, rhs), node
 		case *ast.StarExpr:
 			return GetPointedName(outer, expr.X)
 		case *ast.Ident:
 			if expr.Obj != nil {
 				if field, ok := expr.Obj.Decl.(*ast.Field); ok {
-					// Check if the variable should return the name it points to
+					// Check if the variable should return the name it points to or
+					// otherwise, return the current node's string
 					switch field.Type.(type) {
 					case *ast.StarExpr, *ast.FuncType, *ast.StructType:
 						if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
