@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"reflect"
 	"sourcecrawler/app/logsource"
 	"strings"
 
@@ -29,9 +28,22 @@ func (b *BlockWrapper) GetCondition() string{
 
 		ast.Inspect(condNode, func(currNode ast.Node) bool {
 
-			//Get the expression string for the condition
+			//Get the expression string for the condition TODO: note -> extract actual expression node to be used in SMT solver
 			if exprNode, ok := condNode.(ast.Expr); ok {
 				condition = GetExprStr(exprNode)
+				//fmt.Println("Expression node to be used in SMT solver", exprNode)
+
+				//Init pathInstance if not initialized
+				if PathInstance == nil{
+					CreateNewPath()
+				}
+
+				//Add exprNode to list of expressions if not already in
+				if _, ok := PathInstance.Expressions[exprNode]; ok{
+					//fmt.Println(exprNode, " exists already")
+				}else {
+					PathInstance.Expressions[exprNode] = "exists"
+				}
 			}
 
 			return true
@@ -73,9 +85,9 @@ func GetVariables(curr Wrapper) []ast.Node {
 	case *BlockWrapper:
 		//Process all nodes in a block for possible variables
 		for _, node := range curr.Block.Nodes {
-			fmt.Println("hm", reflect.TypeOf(node))
+			//fmt.Println("hm", reflect.TypeOf(node))
 			ast.Inspect(node, func(currNode ast.Node) bool {
-				fmt.Println("hm2", reflect.TypeOf(node))
+				//fmt.Println("hm2", reflect.TypeOf(node))
 				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
 				switch node := node.(type) {
 				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.ExprStmt, *ast.Ident:
@@ -310,7 +322,7 @@ func GetPointedName(curr Wrapper, node ast.Expr) string {
 func GetVarName(curr Wrapper, node ast.Node) string {
 	var name string = ""
 
-	fmt.Println("var", node, reflect.TypeOf(node))
+	//fmt.Println("var", node, reflect.TypeOf(node))
 
 	switch node := node.(type) {
 	case *ast.AssignStmt:
@@ -337,10 +349,10 @@ func GetVarName(curr Wrapper, node ast.Node) string {
 		}
 	case *ast.IncDecStmt:
 		name = GetPointedName(curr, node.X)
-		fmt.Println(name)
+		//fmt.Println(name)
 	case *ast.ExprStmt:
 		name = GetPointedName(curr, node.X)
-		fmt.Println(name)
+		//fmt.Println(name)
 	}
 
 	return name

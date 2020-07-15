@@ -355,7 +355,7 @@ func TestRewrite2(t *testing.T) {
 			})
 
 			if len(cfgList) >= 2 {
-				fmt.Println(cfgList[0].Format(fset))
+				//fmt.Println(cfgList[0].Format(fset))
 				//fmt.Println(cfgList[1].Format(fset))
 			}
 
@@ -458,9 +458,8 @@ func TestRewrite2(t *testing.T) {
 			//Print created execution path
 			//filter := make(map[string]string)
 			fmt.Println("\n========================")
-
-
 			cfg2.PathInstance.PrintExecPath()
+			fmt.Println("PathList Expressions:", cfg2.PathInstance.Expressions)
 
 			return testCase{
 				Name: "Test Execution Paths",

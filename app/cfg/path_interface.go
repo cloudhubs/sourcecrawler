@@ -16,6 +16,7 @@ type Path struct {
 //List of paths
 type PathList struct {
 	Paths []Path
+	Expressions map[ast.Expr]string //Temporary, may be subject to change
 }
 
 //Singleton instance
@@ -31,6 +32,8 @@ func (p *PathList) AddNewPath(path Path){
 func CreateNewPath() *PathList {
 	if PathInstance == nil{
 		PathInstance = new(PathList)
+		PathInstance.Expressions = make(map[ast.Expr]string)
+		PathInstance.Paths = make([]Path, 0)
 	}
 	return PathInstance
 }
