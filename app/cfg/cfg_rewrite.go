@@ -29,6 +29,7 @@ func GetExecPath() []Path {
 
 //---- Branch Labels ----------
 type ExecutionLabel int
+
 const (
 	NoLabel ExecutionLabel = iota
 	Must
@@ -63,7 +64,7 @@ type FnWrapper struct {
 	Outer      Wrapper
 	// ...?
 
-	Label	ExecutionLabel
+	Label        ExecutionLabel
 	Fset         *token.FileSet
 	ASTs         []*ast.File
 	ParamsToArgs map[*ast.Object]ast.Expr
@@ -74,7 +75,7 @@ type BlockWrapper struct {
 	Parents []Wrapper
 	Succs   []Wrapper
 	Outer   Wrapper
-	Label	ExecutionLabel
+	Label   ExecutionLabel
 }
 
 // ------------------ FnWrapper ----------------------
@@ -162,11 +163,11 @@ func (fn *FnWrapper) GetASTs() []*ast.File {
 	}
 }
 
-func (fn *FnWrapper) GetLabel() ExecutionLabel{
+func (fn *FnWrapper) GetLabel() ExecutionLabel {
 	return fn.Label
 }
 
-func (fn *FnWrapper) SetLabel(label ExecutionLabel){
+func (fn *FnWrapper) SetLabel(label ExecutionLabel) {
 	fn.Label = label
 }
 
@@ -236,7 +237,6 @@ func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
 
-
 func (b *BlockWrapper) GetFileSet() *token.FileSet {
 	if b.Outer != nil {
 		return b.Outer.GetFileSet()
@@ -251,11 +251,11 @@ func (b *BlockWrapper) GetASTs() []*ast.File {
 	return []*ast.File{}
 }
 
-func (b *BlockWrapper) GetLabel() ExecutionLabel{
+func (b *BlockWrapper) GetLabel() ExecutionLabel {
 	return b.Label
 }
 
-func (b *BlockWrapper) SetLabel(label ExecutionLabel){
+func (b *BlockWrapper) SetLabel(label ExecutionLabel) {
 	b.Label = label
 }
 
@@ -266,8 +266,7 @@ func (b *BlockWrapper) SetLabel(label ExecutionLabel){
 // vars -> holds list of variables on path
 // Identify variables being executed as function (keep track of it) -> check if it's a func Literal
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper) {
-
+func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -279,12 +278,23 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 
 		// get cond after getting variables, and replace them in the condition
 
-
 		//Gets a list of all variables inside the block, and add
 		// -Filter out relevant variables
-		varList := GetVariables(currWrapper)
-		if len(varList) != 0 {
-			vars = append(vars, varList...)
+
+		varList := GetVariables(currWrapper, varFilter)
+
+		// Filter out variables already in the array again
+		for _, v := range varList {
+			contained := false
+			for _, existingVar := range vars {
+				if v == existingVar {
+					contained = true
+					break
+				}
+			}
+			if !contained {
+				vars = append(vars, v)
+			}
 		}
 
 		//If conditional block, extract the condition and add to list
@@ -299,9 +309,11 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			TraverseCFG(parent, condStmts, vars, root)
+			TraverseCFG(parent, condStmts, vars, root, varFilter)
 		}
 	} else {
+		// the filter seems to be working but somehow vars
+		// gets 3 of the same thing (since there's 3 functions I guess)
 		executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
 	}
 }
@@ -354,7 +366,7 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 			return false
 		})
 		//gather list of parameters
-		fmt.Println(params)
+		// fmt.Println(params)
 		for _, param := range fn.Type.Params.List {
 			for _, name := range param.Names {
 				params = append(params, name.Obj)
@@ -492,7 +504,7 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 						topBlock, bottomBlock := b.splitAtNodeIndex(i)
 
 						//TODO:
-						newFn := getDeclarationOfFunction(b.Outer,call,call.Args)
+						newFn := getDeclarationOfFunction(b.Outer, call, call.Args)
 
 						//get new function wrapper
 						//newFn := b.getFunctionWrapperFor(call, call.Args)
@@ -530,7 +542,6 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 							}
 						}
 
-
 					}
 				}
 			}
@@ -554,31 +565,31 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 	//if in map, get declaration
 	switch v := fn.(type) {
 	case *ast.CallExpr:
-			if fnName, ok := v.Fun.(*ast.Ident); ok {
-				//this is when it is in the map
-				if param, ok := w.(*FnWrapper).ParamsToArgs[fnName.Obj]; ok {
-					//if literal
-					if fnParam, ok := param.(*ast.FuncLit); ok {
-						return NewFnWrapper(fnParam,args)
-					}else {
-						//identifier
-						return getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
-					}
+		if fnName, ok := v.Fun.(*ast.Ident); ok {
+			//this is when it is in the map
+			if param, ok := w.(*FnWrapper).ParamsToArgs[fnName.Obj]; ok {
+				//if literal
+				if fnParam, ok := param.(*ast.FuncLit); ok {
+					return NewFnWrapper(fnParam, args)
 				} else {
-					//if not a parameter, find it using blind method
-					return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
+					//identifier
+					return getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 				}
+			} else {
+				//if not a parameter, find it using blind method
+				return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
 			}
+		}
 	case *ast.Ident:
 		//add case for when the ientifier is nested
 		//search the params map again
 		if param, ok := w.(*FnWrapper).ParamsToArgs[v.Obj]; ok {
 			//if literal
 			if fnParam, ok := param.(*ast.FuncLit); ok {
-				return NewFnWrapper(fnParam,args)
-			}else {
+				return NewFnWrapper(fnParam, args)
+			} else {
 				//identifier
-				return getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
+				return getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 			}
 		}
 		switch decl := v.Obj.Decl.(type) {
@@ -661,7 +672,23 @@ func GetLeafNodes(w Wrapper) []Wrapper {
 	var rets []Wrapper
 	for _, c := range w.GetChildren() {
 		if len(c.GetChildren()) > 0 {
-			rets = append(rets, GetLeafNodes(c)...)
+			// Doing this instead of append(rets, GetLeafNodes(c)...)
+			// fixes an issue with duplicate variables when traversing
+			// multiple leaf nodes (however this might be due to the global
+			// execution path at the moment. This can be changed back
+			// when that is fixed I think)
+			for _, leaf := range GetLeafNodes(c) {
+				contained := false
+				for _, r := range rets {
+					if leaf == r {
+						contained = true
+						break
+					}
+				}
+				if !contained {
+					rets = append(rets, leaf)
+				}
+			}
 		} else {
 			rets = append(rets, c)
 		}
