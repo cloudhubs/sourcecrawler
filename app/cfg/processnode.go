@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"sourcecrawler/app/logsource"
+	"strconv"
 	"strings"
 
 	"github.com/mitchellh/go-z3"
@@ -12,7 +13,19 @@ import (
 )
 
 func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
+	if ctx == nil || expr == nil {
+		return nil
+	}
 	switch expr := expr.(type) {
+	case *ast.BasicLit:
+		switch expr.Kind {
+		case token.INT:
+			v, err := strconv.Atoi(expr.Value)
+			if err == nil {
+				return ctx.Int(v, ctx.IntSort())
+			}
+		}
+		return nil
 	case *ast.Ident:
 		if expr.Obj != nil {
 			if field, ok := expr.Obj.Decl.(*ast.Field); ok {
@@ -44,6 +57,9 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 	case *ast.BinaryExpr:
 		left := ConvertExprToZ3(ctx, expr.X)
 		right := ConvertExprToZ3(ctx, expr.Y)
+		if left == nil || right == nil {
+			return nil
+		}
 		switch expr.Op {
 		case token.ADD:
 			return left.Add(right)
