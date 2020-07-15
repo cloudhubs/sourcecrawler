@@ -28,7 +28,7 @@ func (b *BlockWrapper) GetCondition() string{
 
 		ast.Inspect(condNode, func(currNode ast.Node) bool {
 
-			//Get the expression string for the condition TODO: note -> extract actual expression node to be used in SMT solver
+			//Get the expression string for the condition
 			if exprNode, ok := condNode.(ast.Expr); ok {
 				condition = GetExprStr(exprNode)
 				//fmt.Println("Expression node to be used in SMT solver", exprNode)
