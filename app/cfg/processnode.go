@@ -7,8 +7,83 @@ import (
 	"sourcecrawler/app/logsource"
 	"strings"
 
+	"github.com/mitchellh/go-z3"
 	"golang.org/x/tools/go/cfg"
 )
+
+func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
+	switch expr := expr.(type) {
+	case *ast.Ident:
+		if expr.Obj != nil {
+			if field, ok := expr.Obj.Decl.(*ast.Field); ok {
+				switch t := field.Type.(type) {
+				case *ast.Ident:
+					var sort *z3.Sort
+					if strings.Contains(t.Name, "int") {
+						sort = ctx.IntSort()
+					} else if t.Name == "bool" {
+						sort = ctx.BoolSort()
+					}
+					//exprStr(expr)
+					return ctx.Const(ctx.Symbol(fmt.Sprint(expr)), sort)
+					//case *ast.StarExpr:
+					//case *ast.SelectorExpr:
+				}
+			}
+		}
+		return nil
+	case *ast.UnaryExpr:
+		inner := ConvertExprToZ3(ctx, expr.X)
+		switch expr.Op {
+		case token.NOT:
+			return inner.Not()
+		case token.ILLEGAL:
+			return inner
+		}
+		return inner
+	case *ast.BinaryExpr:
+		left := ConvertExprToZ3(ctx, expr.X)
+		right := ConvertExprToZ3(ctx, expr.Y)
+		switch expr.Op {
+		case token.ADD:
+			return left.Add(right)
+		case token.SUB:
+			return left.Sub(right)
+		case token.MUL:
+			return left.Mul(right)
+		case token.LAND:
+			return left.And(right)
+		case token.LOR:
+			return left.Or(right)
+		case token.EQL:
+			return left.Eq(right)
+		case token.NEQ:
+			return left.Eq(right).Not()
+		case token.LSS:
+			return left.Lt(right)
+		case token.GTR:
+			return left.Gt(right)
+		case token.LEQ:
+			return left.Le(right)
+		case token.GEQ:
+			return left.Ge(right)
+		case token.XOR:
+			return left.Xor(right)
+		}
+	case *ast.ParenExpr:
+		return ConvertExprToZ3(ctx, expr.X)
+	case *ast.SelectorExpr:
+		oldName := expr.Sel.Name
+		//exprStr(expr.X)
+		expr.Sel.Name = fmt.Sprintf("%v.%v", fmt.Sprint(expr.X), oldName)
+		ident := ConvertExprToZ3(ctx, expr.Sel)
+		expr.Sel.Name = oldName
+		return ident
+	case *ast.StarExpr:
+		return ConvertExprToZ3(ctx, expr.X)
+	}
+	return nil
+}
 
 //Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
 func (b *BlockWrapper) GetCondition() string {
