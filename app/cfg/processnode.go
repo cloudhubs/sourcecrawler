@@ -14,13 +14,16 @@ import (
 
 func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 	if ctx == nil || expr == nil {
+		// fmt.Println("returning nil")
 		return nil
 	}
+	// fmt.Println("checking", expr, reflect.TypeOf(expr))
 	switch expr := expr.(type) {
 	case *ast.BasicLit:
 		switch expr.Kind {
 		case token.INT:
 			v, err := strconv.Atoi(expr.Value)
+			// fmt.Println("literal value", v)
 			if err == nil {
 				return ctx.Int(v, ctx.IntSort())
 			}
@@ -28,15 +31,19 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 		return nil
 	case *ast.Ident:
 		if expr.Obj != nil {
+			// fmt.Println("nonnil obj")
 			if field, ok := expr.Obj.Decl.(*ast.Field); ok {
+				// fmt.Println("good field")
 				switch t := field.Type.(type) {
 				case *ast.Ident:
+					// fmt.Println("is ident")
 					var sort *z3.Sort
 					if strings.Contains(t.Name, "int") {
 						sort = ctx.IntSort()
 					} else if t.Name == "bool" {
 						sort = ctx.BoolSort()
 					}
+					// fmt.Println("sort?", sort)
 					//exprStr(expr)
 					return ctx.Const(ctx.Symbol(fmt.Sprint(expr)), sort)
 					//case *ast.StarExpr:
@@ -58,8 +65,10 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 		left := ConvertExprToZ3(ctx, expr.X)
 		right := ConvertExprToZ3(ctx, expr.Y)
 		if left == nil || right == nil {
+			// fmt.Println("can't combine", left, right)
 			return nil
 		}
+		// fmt.Println("combining", left, right)
 		switch expr.Op {
 		case token.ADD:
 			return left.Add(right)
