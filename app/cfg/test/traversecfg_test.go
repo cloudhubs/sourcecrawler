@@ -50,7 +50,7 @@ func printPath(paths []cfg2.Path) {
 }
 
 func TestRewrite2(t *testing.T) {
-	cases := []func() testCase{
+	cases := []func() rewriteTestCase{
 		//func() addingTestCase {
 		//
 		//	fset := token.NewFileSet()
@@ -329,7 +329,7 @@ func TestRewrite2(t *testing.T) {
 		//		Root: nil,
 		//	}
 		//},
-		func() testCase {
+		func() rewriteTestCase {
 
 			// 	fset := token.NewFileSet()
 			// 	file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
@@ -452,7 +452,7 @@ func TestRewrite2(t *testing.T) {
 			// 	cfg2.PathInstance.PrintExecPath()
 			// 	fmt.Println("PathList Expressions:", cfg2.PathInstance.Expressions)
 
-			return testCase{
+			return rewriteTestCase{
 				Name: "Test Execution Paths",
 			}
 		},

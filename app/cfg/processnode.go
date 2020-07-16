@@ -225,29 +225,28 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 			// fmt.Println("hm", reflect.TypeOf(node))
 			ast.Inspect(node, func(currNode ast.Node) bool {
 				// fmt.Println("hm2", reflect.TypeOf(node))
+
+				//Handle getting expression separately (may be used in SMT solver)
+				if assignNode, ok := node.(*ast.AssignStmt); ok{
+					//Create path if not existent
+					if PathInstance == nil {
+						CreateNewPath()
+					}
+					//Filter duplicate
+					if _, ok := PathInstance.Expressions[assignNode]; ok {
+						// fmt.Println(varExpr, " is already in the list")
+					} else {
+						varExpr := GetVarExpr(curr, assignNode)
+						fmt.Println("Variable is:", varExpr)
+						PathInstance.Expressions[assignNode] = varExpr
+					}
+				}
+
 				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
 				switch node := node.(type) {
 				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.Ident: //*ast.ExprStmt,
 					//Gets variable name
-					name := GetVarName(curr, node)
-
-					//Add variable node to list of statements
-					if assignNode, ok := node.(*ast.AssignStmt); ok {
-						varExpr := GetVarExpr(curr, assignNode)
-
-						//Create path if not existent
-						if PathInstance == nil {
-							CreateNewPath()
-						}
-
-						//Filter duplicate
-						if _, ok := PathInstance.Expressions[assignNode]; ok {
-							// fmt.Println(varExpr, " is already in the list")
-						} else {
-							fmt.Println("Variable is:", varExpr)
-							PathInstance.Expressions[assignNode] = varExpr
-						}
-					}
+					name, node := GetVar(curr, node)
 
 					//filter out duplicates
 					_, ok := filter[name]

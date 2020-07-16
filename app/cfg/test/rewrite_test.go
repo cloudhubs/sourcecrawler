@@ -293,7 +293,7 @@ func TestRegexFromBlock(t *testing.T) {
 
 			//Test on simple case
 			cfg2.TraverseCFG(exceptionWrapper, condStmts, varNodes, rootWrapper, make(map[string]ast.Node))
-			fmt.Println("Execution path after", cfg2.GetExecPath())
+			fmt.Println("Execution path after", cfg2.PathInstance.GetExecPath())
 
 			//for _, value := range cfg2.GetExecPath(){
 			//	fmt.Println(value.Variables)

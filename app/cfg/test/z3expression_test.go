@@ -16,8 +16,8 @@ import (
 )
 
 func TestExpressions(t *testing.T) {
-	cases := []func() testCase{
-		func() testCase {
+	cases := []func() rewriteTestCase{
+		func() rewriteTestCase {
 
 			fset := token.NewFileSet()
 			file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
@@ -89,7 +89,7 @@ func TestExpressions(t *testing.T) {
 
 			//Start at end node
 			//var pathList cfg2.PathList
-			cfg2.TraverseCFG(end, stmts, vars, root)
+			cfg2.TraverseCFG(end, stmts, vars, root, make(map[string]ast.Node))
 
 			//Print created execution path
 			//filter := make(map[string]string)
@@ -97,7 +97,7 @@ func TestExpressions(t *testing.T) {
 			cfg2.PathInstance.PrintExecPath()
 			cfg2.PathInstance.PrintExpressions()
 
-			return testCase{
+			return rewriteTestCase{
 				Name: "Test Expression to Z3",
 			}
 		},
