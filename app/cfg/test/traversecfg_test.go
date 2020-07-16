@@ -5,14 +5,24 @@ package test
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	cfg2 "sourcecrawler/app/cfg"
 	"testing"
 
 	"github.com/rs/zerolog/log"
+<<<<<<< HEAD:app/cfg/test/traversecfg_test.go
 )
 
 type testCase struct {
+=======
+	"golang.org/x/tools/go/cfg"
+)
+
+type rewriteTestCase struct {
+>>>>>>> smt-conditions:app/cfg/test/rewrite_test2.go
 	Name string
 }
 

@@ -1,8 +1,10 @@
 package cfg
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/printer"
 	"go/token"
 	"sourcecrawler/app/logsource"
 	"strconv"
@@ -12,7 +14,7 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
-func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
+func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AST {
 	if ctx == nil || expr == nil {
 		// fmt.Println("returning nil")
 		return nil
@@ -32,9 +34,10 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 	case *ast.Ident:
 		if expr.Obj != nil {
 			// fmt.Println("nonnil obj")
-			if field, ok := expr.Obj.Decl.(*ast.Field); ok {
+			switch decl := expr.Obj.Decl.(type) {
+			case *ast.Field:
 				// fmt.Println("good field")
-				switch t := field.Type.(type) {
+				switch t := decl.Type.(type) {
 				case *ast.Ident:
 					// fmt.Println("is ident")
 					var sort *z3.Sort
@@ -45,25 +48,54 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 					}
 					// fmt.Println("sort?", sort)
 					//exprStr(expr)
-					return ctx.Const(ctx.Symbol(fmt.Sprint(expr)), sort)
+					var bf bytes.Buffer
+					printer.Fprint(&bf, fset, expr)
+					//fmt.Println(bf.String())
+					return ctx.Const(ctx.Symbol(bf.String()), sort)
 					//case *ast.StarExpr:
 					//case *ast.SelectorExpr:
+				}
+			case *ast.AssignStmt:
+				for i, id := range decl.Lhs {
+					if id.(*ast.Ident).Obj == expr.Obj {
+						rhs := decl.Rhs[i]
+						switch rhs := rhs.(type) {
+						case *ast.UnaryExpr:
+							if rhs, ok := rhs.X.(*ast.BasicLit); ok {
+								switch rhs.Kind {
+								case token.INT:
+									var bf bytes.Buffer
+									printer.Fprint(&bf, fset, id)
+									return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
+								}
+							}
+						case *ast.BasicLit:
+							switch rhs.Kind {
+							case token.INT:
+								var bf bytes.Buffer
+								printer.Fprint(&bf, fset, id)
+								return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
+							}
+						}
+					}
 				}
 			}
 		}
 		return nil
 	case *ast.UnaryExpr:
-		inner := ConvertExprToZ3(ctx, expr.X)
+		inner := ConvertExprToZ3(ctx, expr.X, fset)
 		switch expr.Op {
 		case token.NOT:
 			return inner.Not()
 		case token.ILLEGAL:
 			return inner
+		case token.SUB:
+			return ctx.Int(0, ctx.IntSort()).Sub(inner)
 		}
 		return inner
 	case *ast.BinaryExpr:
-		left := ConvertExprToZ3(ctx, expr.X)
-		right := ConvertExprToZ3(ctx, expr.Y)
+		left := ConvertExprToZ3(ctx, expr.X, fset)
+		right := ConvertExprToZ3(ctx, expr.Y, fset)
 		if left == nil || right == nil {
 			// fmt.Println("can't combine", left, right)
 			return nil
@@ -83,7 +115,12 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 		case token.EQL:
 			return left.Eq(right)
 		case token.NEQ:
-			return left.Eq(right).Not()
+			//if int, Eq().Not()
+			if _, err := strconv.Atoi(right.String()); err == nil {
+				return left.Eq(right).Not()
+			}
+			//if variable, Distinct()
+			return left.Distinct(right)
 		case token.LSS:
 			return left.Lt(right)
 		case token.GTR:
@@ -96,16 +133,16 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 			return left.Xor(right)
 		}
 	case *ast.ParenExpr:
-		return ConvertExprToZ3(ctx, expr.X)
+		return ConvertExprToZ3(ctx, expr.X, fset)
 	case *ast.SelectorExpr:
 		oldName := expr.Sel.Name
 		//exprStr(expr.X)
 		expr.Sel.Name = fmt.Sprintf("%v.%v", fmt.Sprint(expr.X), oldName)
-		ident := ConvertExprToZ3(ctx, expr.Sel)
+		ident := ConvertExprToZ3(ctx, expr.Sel, fset)
 		expr.Sel.Name = oldName
 		return ident
 	case *ast.StarExpr:
-		return ConvertExprToZ3(ctx, expr.X)
+		return ConvertExprToZ3(ctx, expr.X, fset)
 	}
 	return nil
 }
@@ -177,8 +214,7 @@ func GetFuncLits(node ast.Node) {
 }
 
 //Gets all the variables within a block -
-func GetVariables(curr Wrapper) []ast.Node {
-	filter := make(map[string]ast.Node)
+func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 	varList := []ast.Node{}
 
 	switch curr := curr.(type) {
@@ -186,12 +222,12 @@ func GetVariables(curr Wrapper) []ast.Node {
 	case *BlockWrapper:
 		//Process all nodes in a block for possible variables
 		for _, node := range curr.Block.Nodes {
-			//fmt.Println("hm", reflect.TypeOf(node))
+			// fmt.Println("hm", reflect.TypeOf(node))
 			ast.Inspect(node, func(currNode ast.Node) bool {
-				//fmt.Println("hm2", reflect.TypeOf(node))
+				// fmt.Println("hm2", reflect.TypeOf(node))
 				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
 				switch node := node.(type) {
-				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.ExprStmt, *ast.Ident:
+				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.Ident: //*ast.ExprStmt,
 					//Gets variable name
 					name := GetVarName(curr, node)
 
@@ -220,6 +256,7 @@ func GetVariables(curr Wrapper) []ast.Node {
 					} else {
 						filter[name] = node
 					}
+
 				}
 				return true
 			})
@@ -230,6 +267,8 @@ func GetVariables(curr Wrapper) []ast.Node {
 			varList = append(varList, node)
 		}
 	}
+
+	// fmt.Println("vars", varList)
 
 	return varList
 }
@@ -263,7 +302,7 @@ func GetFuncInfo(curr Wrapper, node ast.Node) (string, map[string]ast.Node) {
 					//fmt.Println("Var name", GetVarName(stmt))
 
 					//If var is already in the map, skip
-					varName := GetVarName(curr, stmt)
+					varName, _ := GetVar(curr, stmt)
 					if _, ok := funcVars[varName]; ok {
 
 					} else {
@@ -419,34 +458,44 @@ func GetExprStr(expr ast.Expr) string {
 }
 
 //Get name pointed to by the expr node
-func GetPointedName(curr Wrapper, node ast.Expr) string {
+func GetPointedName(curr Wrapper, node ast.Expr) (string, ast.Node) {
 	if outer, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
 		switch expr := node.(type) {
+		case *ast.SelectorExpr:
+			lhs, _ := GetPointedName(outer, expr.X)
+			rhs, _ := GetPointedName(outer, expr.Sel)
+			return fmt.Sprintf("%v.%v", lhs, rhs), node
 		case *ast.StarExpr:
 			return GetPointedName(outer, expr.X)
 		case *ast.Ident:
-			fmt.Println("hello", outer, node)
 			if expr.Obj != nil {
-				if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
-					fmt.Println("--", v)
-					return GetPointedName(outer, v)
+				if field, ok := expr.Obj.Decl.(*ast.Field); ok {
+					// Check if the variable should return the name it points to or
+					// otherwise, return the current node's string
+					switch field.Type.(type) {
+					case *ast.StarExpr, *ast.FuncType, *ast.StructType:
+						if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
+							return GetPointedName(outer, v)
+						}
+					}
 				}
+
 			}
 		}
 	}
-	return fmt.Sprint(node)
+	return fmt.Sprint(node), node
 }
 
 //Helper function to get var name (handles both assign and declaration vars)
-func GetVarName(curr Wrapper, node ast.Node) string {
+func GetVar(curr Wrapper, node ast.Node) (string, ast.Node) {
 	var name string = ""
 
-	//fmt.Println("var", node, reflect.TypeOf(node))
+	// fmt.Println("var", node, reflect.TypeOf(node))
 
-	switch node := node.(type) {
+	switch n := node.(type) {
 	case *ast.AssignStmt:
-		if len(node.Lhs) > 0 {
-			name = GetPointedName(curr, node.Lhs[0])
+		if len(n.Lhs) > 0 {
+			name, node = GetPointedName(curr, n.Lhs[0])
 			// name = fmt.Sprint(node.Lhs[0])
 		}
 		//for _, lhsExpr := range node.Lhs {
@@ -459,29 +508,27 @@ func GetVarName(curr Wrapper, node ast.Node) string {
 		//}
 	case *ast.ValueSpec:
 		//Set variable name
-		if len(node.Names) > 0 {
-			if _, ok := node.Type.(*ast.StarExpr); ok {
-				name = GetPointedName(curr, node.Names[0])
+		if len(n.Names) > 0 {
+			if _, ok := n.Type.(*ast.StarExpr); ok {
+				name, node = GetPointedName(curr, n.Names[0])
 			} else {
-				name = node.Names[0].Name
+				name = n.Names[0].Name
 			}
 		}
 	case *ast.IncDecStmt:
-		name = GetPointedName(curr, node.X)
-		//fmt.Println(name)
+		name, node = GetPointedName(curr, n.X)
 	case *ast.ExprStmt:
-		name = GetPointedName(curr, node.X)
-		//fmt.Println(name)
+		name, node = GetVar(curr, n.X)
 	}
 
-	return name
+	return name, node
 }
 
 func GetVarExpr(curr Wrapper, assignNode *ast.AssignStmt) string {
 
 	var exprValue string
 	exprOp := assignNode.Tok.String()
-	varName := GetVarName(curr, assignNode)
+	varName, _ := GetVar(curr, assignNode)
 
 	//Checks if rhs if a variable gets a value from a function or literal
 	for _, rhsExpr := range assignNode.Rhs {

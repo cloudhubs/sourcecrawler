@@ -1,9 +1,11 @@
 package test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"reflect"
 	"sourcecrawler/app/cfg"
 	"testing"
 )
@@ -30,6 +32,10 @@ func TestPointerArgs(t *testing.T) {
 			}
 			func bar(b *int) {
 				b++
+				three(b)
+			}
+			func three(c *int) {
+				c++	
 			}
 			`
 			return pointerTest{
@@ -38,12 +44,51 @@ func TestPointerArgs(t *testing.T) {
 				Vars: []string{"i"},
 			}
 		},
-		func() pointerTest{
+		func() pointerTest {
 			src := `
 			package main
 			func main() {
-				b := func(){fmt.Println()}
-				foo(b)
+				a := 3
+				foo(a)
+			}
+			func foo(x int) {
+				// do something with x
+				x++
+			}
+			`
+			return pointerTest{
+				Name: "Pass by value",
+				Src:  src,
+				Vars: []string{"x", "a"},
+			}
+		},
+		func() pointerTest {
+			src := `
+			package main
+			type Foo struct {
+				Prop int
+			}
+			func main() {
+				a := Foo{3}
+				a.Prop = 10 // included
+				a.bar()     // call not included
+			}
+			func (f *Foo) bar() {
+				fmt.Println(f.Prop)
+			}
+			`
+			return pointerTest{
+				Name: "Struct Attribute",
+				Src:  src,
+				Vars: []string{"a.Prop", "a"},
+			}
+		},
+		func() pointerTest {
+			src := `
+			package main
+			func main() {
+				a := func(){fmt.Println()}
+				foo(a)
 			}
 			func foo(b func()){
 				b()
@@ -52,14 +97,14 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Local Function Arg",
 				Src:  src,
-				Vars: []string{},
+				Vars: []string{"a"},
 			}
 		},
-		func() pointerTest{
+		func() pointerTest {
 			src := `
 			package main
 			func main() {
-				b := func(){fmt.Println()}
+				a := func(){fmt.Println()}
 				foo(func(){fmt.Println()})
 			}
 			func foo(b func()){
@@ -69,10 +114,10 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Function Literal Arg",
 				Src:  src,
-				Vars: []string{},
+				Vars: []string{"b"},
 			}
 		},
-		func() pointerTest{
+		func() pointerTest {
 			src := `
 			package main
 			func main() {
@@ -92,7 +137,7 @@ func TestPointerArgs(t *testing.T) {
 				Vars: []string{},
 			}
 		},
-		func() pointerTest{
+		func() pointerTest {
 			src := `
 			package main
 			func main() {
@@ -109,7 +154,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Nested Function Arg",
 				Src:  src,
-				Vars: []string{},
+				Vars: []string{"a"},
 			}
 		},
 	}
@@ -136,23 +181,50 @@ func TestPointerArgs(t *testing.T) {
 				cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 			}
 
-			//condStmts := make([]string, 0)
+			condStmts := make([]string, 0)
 			vars := make([]ast.Node, 0)
 
-			//leaves := cfg.GetLeafNodes(w)
-			//if len(leaves) > 0 {
-			//	cfg.TraverseCFG(leaves[0], condStmts, vars, w)
-			//} else {
-			//	t.Error("Not enough leaves")
-			//}
+			leaves := cfg.GetLeafNodes(w)
+			for _, leaf := range leaves {
+				cfg.TraverseCFG(leaf, condStmts, vars, w, make(map[string]ast.Node))
+			}
+			// if len(leaves) > 0 {
+			// 	cfg.TraverseCFG(leaves[0], condStmts, vars, w, make(map[string]ast.Node))
+			// } else {
+			// 	t.Error("Not enough leaves")
+			// }
 
-			cfg.DebugPrint(w, "", make(map[cfg.Wrapper]struct{}))
+			// cfg.DebugPrint(w, "", make(map[cfg.Wrapper]struct{}))
 
 			// cfg.TraverseCFG(w, condStmts, vars, w)
 
 			// traverse(w)
-
-			t.Log(vars)
+			path := cfg.GetExecPath()
+			t.Log(path)
+			for _, p := range path {
+				for _, v := range p.Variables {
+					fmt.Println(v)
+				}
+				if len(p.Variables) != len(test.Vars) {
+					t.Error("expected # of vars", len(test.Vars), "found", len(p.Variables))
+				} else {
+					for i, x := range p.Variables {
+						t.Log(x, reflect.TypeOf(x))
+						// if x, ok := x.(*ast.ExprStmt); ok {
+						// 	t.Log("   ", x.X, reflect.TypeOf(x.X))
+						// }
+						name := ""
+						if v, ok := x.(*ast.SelectorExpr); ok {
+							name = fmt.Sprintf("%v.%v", v.X, v.Sel)
+						} else {
+							name = fmt.Sprint(x)
+						}
+						if fmt.Sprint(x) != test.Vars[i] {
+							t.Error("expected var", test.Vars[i], "found", name)
+						}
+					}
+				}
+			}
 		})
 	}
 }

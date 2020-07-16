@@ -19,8 +19,7 @@ import (
 // curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
 // vars -> holds list of variables on path
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars []ast.Node, root Wrapper) {
-
+func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -34,9 +33,21 @@ func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars []ast.N
 
 		//Gets a list of all variables inside the block, and add
 		// -Filter out relevant variables
-		varList := GetVariables(currWrapper)
-		if len(varList) != 0 {
-			vars = append(vars, varList...)
+
+		varList := GetVariables(currWrapper, varFilter)
+
+		// Filter out variables already in the array again
+		for _, v := range varList {
+			contained := false
+			for _, existingVar := range vars {
+				if v == existingVar {
+					contained = true
+					break
+				}
+			}
+			if !contained {
+				vars = append(vars, v)
+			}
 		}
 
 		//If conditional block, extract the condition and add to list
@@ -59,7 +70,7 @@ func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars []ast.N
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			TraverseCFG(parent, condStmts, vars, root)
+			TraverseCFG(parent, condStmts, vars, root, varFilter)
 		}
 	} else {
 		//Create a new list of paths if it doesn't exist
@@ -67,7 +78,10 @@ func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars []ast.N
 			PathInstance = CreateNewPath()
 		}
 
+		// the filter seems to be working but somehow vars
+		// gets 3 of the same thing (since there's 3 functions I guess)
 		PathInstance.AddNewPath(Path{Stmts: condStmts, Variables: vars})
+		// executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
 	}
 }
 
@@ -119,7 +133,7 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 			return false
 		})
 		//gather list of parameters
-		fmt.Println(params)
+		// fmt.Println(params)
 		for _, param := range fn.Type.Params.List {
 			for _, name := range param.Names {
 				params = append(params, name.Obj)
@@ -425,7 +439,23 @@ func GetLeafNodes(w Wrapper) []Wrapper {
 	var rets []Wrapper
 	for _, c := range w.GetChildren() {
 		if len(c.GetChildren()) > 0 {
-			rets = append(rets, GetLeafNodes(c)...)
+			// Doing this instead of append(rets, GetLeafNodes(c)...)
+			// fixes an issue with duplicate variables when traversing
+			// multiple leaf nodes (however this might be due to the global
+			// execution path at the moment. This can be changed back
+			// when that is fixed I think)
+			for _, leaf := range GetLeafNodes(c) {
+				contained := false
+				for _, r := range rets {
+					if leaf == r {
+						contained = true
+						break
+					}
+				}
+				if !contained {
+					rets = append(rets, leaf)
+				}
+			}
 		} else {
 			rets = append(rets, c)
 		}

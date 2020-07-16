@@ -17,7 +17,7 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
-type addingTestCase struct{
+type addingTestCase struct {
 	Name string
 	Root interface{}
 }
@@ -292,15 +292,15 @@ func TestRegexFromBlock(t *testing.T) {
 			}
 
 			//Test on simple case
-			cfg2.TraverseCFG(exceptionWrapper, condStmts, varNodes, rootWrapper)
-			//fmt.Println("Execution path after", cfg2.GetExecPath())
+			cfg2.TraverseCFG(exceptionWrapper, condStmts, varNodes, rootWrapper, make(map[string]ast.Node))
+			fmt.Println("Execution path after", cfg2.GetExecPath())
 
 			//for _, value := range cfg2.GetExecPath(){
 			//	fmt.Println(value.Variables)
 			//}
 
 			//Test on function wrapper
-			cfg2.TraverseCFG(funcWrapper, condStmts, varNodes, rootWrapper)
+			cfg2.TraverseCFG(funcWrapper, condStmts, varNodes, rootWrapper, make(map[string]ast.Node))
 
 			return addingTestCase{
 				Name: "TraverseCFG",

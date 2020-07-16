@@ -7,10 +7,10 @@ import (
 
 // ---- Represents a possible execution path --------
 type Path struct {
-	Stmts map[string]ExecutionLabel
+	Stmts     map[string]ExecutionLabel
+	Variables []ast.Node
 	//Variables map[ast.Node]string //*ast.AssignStmt or *ast.ValueSpec
 	//Stmts []string
-	Variables []ast.Node
 }
 
 //List of paths
