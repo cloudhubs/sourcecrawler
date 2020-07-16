@@ -34,9 +34,10 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AS
 	case *ast.Ident:
 		if expr.Obj != nil {
 			// fmt.Println("nonnil obj")
-			if field, ok := expr.Obj.Decl.(*ast.Field); ok {
+			switch decl := expr.Obj.Decl.(type) {
+			case *ast.Field:
 				// fmt.Println("good field")
-				switch t := field.Type.(type) {
+				switch t := decl.Type.(type) {
 				case *ast.Ident:
 					// fmt.Println("is ident")
 					var sort *z3.Sort
@@ -53,6 +54,18 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AS
 					return ctx.Const(ctx.Symbol(bf.String()), sort)
 					//case *ast.StarExpr:
 					//case *ast.SelectorExpr:
+				}
+			case *ast.AssignStmt:
+				for i, id := range decl.Lhs {
+					if id.(*ast.Ident).Obj == expr.Obj {
+						rhs := decl.Rhs[i]
+						if rhs, ok := rhs.(*ast.BasicLit); ok {
+							switch rhs.Kind {
+							case token.INT:
+								return ctx.Const(ctx.Symbol(fmt.Sprint(expr)), ctx.IntSort())
+							}
+						}
+					}
 				}
 			}
 		}
