@@ -32,7 +32,6 @@ func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars []ast.N
 
 		// get cond after getting variables, and replace them in the condition
 
-
 		//Gets a list of all variables inside the block, and add
 		// -Filter out relevant variables
 		varList := GetVariables(currWrapper)
@@ -44,11 +43,12 @@ func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars []ast.N
 		condition := currWrapper.GetCondition()
 		if condition != "" {
 			//condStmts = append(condStmts, condition)
+			// fmt.Println("Condition is", condition)
 
 			//Add label to each statement
-			if _, ok := condStmts[condition]; ok{
+			if _, ok := condStmts[condition]; ok {
 
-			}else {
+			} else {
 				condStmts[condition] = currWrapper.Label //Set label to current block's label
 			}
 		}
@@ -63,7 +63,7 @@ func TraverseCFG(curr Wrapper, condStmts map[string]ExecutionLabel, vars []ast.N
 		}
 	} else {
 		//Create a new list of paths if it doesn't exist
-		if PathInstance == nil{
+		if PathInstance == nil {
 			PathInstance = CreateNewPath()
 		}
 
@@ -257,7 +257,7 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 						topBlock, bottomBlock := b.splitAtNodeIndex(i)
 
 						//TODO:
-						newFn := getDeclarationOfFunction(b.Outer,call,call.Args)
+						newFn := getDeclarationOfFunction(b.Outer, call, call.Args)
 
 						//get new function wrapper
 						//newFn := b.getFunctionWrapperFor(call, call.Args)
@@ -295,7 +295,6 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 							}
 						}
 
-
 					}
 				}
 			}
@@ -319,31 +318,31 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 	//if in map, get declaration
 	switch v := fn.(type) {
 	case *ast.CallExpr:
-			if fnName, ok := v.Fun.(*ast.Ident); ok {
-				//this is when it is in the map
-				if param, ok := w.(*FnWrapper).ParamsToArgs[fnName.Obj]; ok {
-					//if literal
-					if fnParam, ok := param.(*ast.FuncLit); ok {
-						return NewFnWrapper(fnParam,args)
-					}else {
-						//identifier
-						return getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
-					}
+		if fnName, ok := v.Fun.(*ast.Ident); ok {
+			//this is when it is in the map
+			if param, ok := w.(*FnWrapper).ParamsToArgs[fnName.Obj]; ok {
+				//if literal
+				if fnParam, ok := param.(*ast.FuncLit); ok {
+					return NewFnWrapper(fnParam, args)
 				} else {
-					//if not a parameter, find it using blind method
-					return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
+					//identifier
+					return getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 				}
+			} else {
+				//if not a parameter, find it using blind method
+				return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
 			}
+		}
 	case *ast.Ident:
 		//add case for when the ientifier is nested
 		//search the params map again
 		if param, ok := w.(*FnWrapper).ParamsToArgs[v.Obj]; ok {
 			//if literal
 			if fnParam, ok := param.(*ast.FuncLit); ok {
-				return NewFnWrapper(fnParam,args)
-			}else {
+				return NewFnWrapper(fnParam, args)
+			} else {
 				//identifier
-				return getDeclarationOfFunction(w.GetOuterWrapper(),param,args)
+				return getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 			}
 		}
 		switch decl := v.Obj.Decl.(type) {

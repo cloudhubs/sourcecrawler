@@ -2,25 +2,59 @@ package test
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
 )
 
 // ----- Test cases for var_interface_test.go ------------
 
-func testCond(x int){
+func testCond(x int) {
+	if x <= 15 {
 
-	if x > 10{
-		fmt.Println(x)
-		var num1 int = 10
-		num2 := x
-		fmt.Println(num1, num2)
-		log.Log().Msg("Logging mezssage")
-	}else{
-		elseVar := 15
-		fmt.Println("else", elseVar)
+		y := 25
+
+		if y < 10 {
+			fmt.Println("y is small")
+		} else {
+			fmt.Println("y is large")
+		}
+
+		var array [10]string
+
+		if x > -1 {
+			if x <= 11 {
+				// array[x-1] = parseMessage(msg)
+				array[0] = "hello"
+			}
+		}
+
+		if x < -1 {
+			fmt.Println("x is negative")
+		}
+	} else {
+		fmt.Println("outer Else")
 	}
 
 }
+
+// func testCond(x int) {
+
+// 	y := 6
+
+// 	if x+y > 10 {
+// 		fmt.Println(x, y)
+// 		var num1 int = 10
+// 		num2 := x
+// 		fmt.Println(num1, num2)
+// 		log.Log().Msg("Logging mezssage")
+// 	} else {
+
+// 		if x < 8 {
+// 			fmt.Println("test else if")
+// 		}
+// 		elseVar := 15
+// 		fmt.Println("else", elseVar)
+// 	}
+
+// }
 
 //func testCond(x int){
 //
@@ -36,7 +70,7 @@ func testCond(x int){
 //
 //}
 
-func func1(){
+func func1() {
 	a := 1
 	func2(a)
 
@@ -44,21 +78,20 @@ func func1(){
 	fmt.Println(test)
 }
 
-func func2(b int){
+func func2(b int) {
 	fmt.Println(b)
 }
 
-func one(){
+func one() {
 	a := two()
 	three(a)
 }
-func two() int{
+func two() int {
 	return 2
 }
 func three(b int) {
 	fmt.Print(b)
 }
-
 
 /*
 (FnWrapper for func1){

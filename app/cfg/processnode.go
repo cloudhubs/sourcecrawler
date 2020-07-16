@@ -5,13 +5,113 @@ import (
 	"go/ast"
 	"go/token"
 	"sourcecrawler/app/logsource"
+	"strconv"
 	"strings"
 
+	"github.com/mitchellh/go-z3"
 	"golang.org/x/tools/go/cfg"
 )
 
+func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
+	if ctx == nil || expr == nil {
+		// fmt.Println("returning nil")
+		return nil
+	}
+	// fmt.Println("checking", expr, reflect.TypeOf(expr))
+	switch expr := expr.(type) {
+	case *ast.BasicLit:
+		switch expr.Kind {
+		case token.INT:
+			v, err := strconv.Atoi(expr.Value)
+			// fmt.Println("literal value", v)
+			if err == nil {
+				return ctx.Int(v, ctx.IntSort())
+			}
+		}
+		return nil
+	case *ast.Ident:
+		if expr.Obj != nil {
+			// fmt.Println("nonnil obj")
+			if field, ok := expr.Obj.Decl.(*ast.Field); ok {
+				// fmt.Println("good field")
+				switch t := field.Type.(type) {
+				case *ast.Ident:
+					// fmt.Println("is ident")
+					var sort *z3.Sort
+					if strings.Contains(t.Name, "int") {
+						sort = ctx.IntSort()
+					} else if t.Name == "bool" {
+						sort = ctx.BoolSort()
+					}
+					// fmt.Println("sort?", sort)
+					//exprStr(expr)
+					return ctx.Const(ctx.Symbol(fmt.Sprint(expr)), sort)
+					//case *ast.StarExpr:
+					//case *ast.SelectorExpr:
+				}
+			}
+		}
+		return nil
+	case *ast.UnaryExpr:
+		inner := ConvertExprToZ3(ctx, expr.X)
+		switch expr.Op {
+		case token.NOT:
+			return inner.Not()
+		case token.ILLEGAL:
+			return inner
+		}
+		return inner
+	case *ast.BinaryExpr:
+		left := ConvertExprToZ3(ctx, expr.X)
+		right := ConvertExprToZ3(ctx, expr.Y)
+		if left == nil || right == nil {
+			// fmt.Println("can't combine", left, right)
+			return nil
+		}
+		// fmt.Println("combining", left, right)
+		switch expr.Op {
+		case token.ADD:
+			return left.Add(right)
+		case token.SUB:
+			return left.Sub(right)
+		case token.MUL:
+			return left.Mul(right)
+		case token.LAND:
+			return left.And(right)
+		case token.LOR:
+			return left.Or(right)
+		case token.EQL:
+			return left.Eq(right)
+		case token.NEQ:
+			return left.Eq(right).Not()
+		case token.LSS:
+			return left.Lt(right)
+		case token.GTR:
+			return left.Gt(right)
+		case token.LEQ:
+			return left.Le(right)
+		case token.GEQ:
+			return left.Ge(right)
+		case token.XOR:
+			return left.Xor(right)
+		}
+	case *ast.ParenExpr:
+		return ConvertExprToZ3(ctx, expr.X)
+	case *ast.SelectorExpr:
+		oldName := expr.Sel.Name
+		//exprStr(expr.X)
+		expr.Sel.Name = fmt.Sprintf("%v.%v", fmt.Sprint(expr.X), oldName)
+		ident := ConvertExprToZ3(ctx, expr.Sel)
+		expr.Sel.Name = oldName
+		return ident
+	case *ast.StarExpr:
+		return ConvertExprToZ3(ctx, expr.X)
+	}
+	return nil
+}
+
 //Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
-func (b *BlockWrapper) GetCondition() string{
+func (b *BlockWrapper) GetCondition() string {
 
 	var condition string = ""
 	//Return block or panic, fatal, etc
@@ -34,15 +134,16 @@ func (b *BlockWrapper) GetCondition() string{
 				//fmt.Println("Expression node to be used in SMT solver", exprNode)
 
 				//Init pathInstance if not initialized
-				if PathInstance == nil{
+				if PathInstance == nil {
 					CreateNewPath()
 				}
 
 				//Add exprNode to list of expressions if not already in
-				if _, ok := PathInstance.Expressions[exprNode]; ok{
+				if _, ok := PathInstance.Expressions[exprNode]; ok {
 					//fmt.Println(exprNode, " exists already")
-				}else {
-					PathInstance.Expressions[exprNode] = "exists"
+				} else {
+					fmt.Println("Condition is:", condition)
+					PathInstance.Expressions[exprNode] = condition
 				}
 			}
 
@@ -54,14 +155,14 @@ func (b *BlockWrapper) GetCondition() string{
 }
 
 //Process the AST node to extract function literals (can be called in traverse or parse time)
-func GetFuncLits(node ast.Node){
+func GetFuncLits(node ast.Node) {
 	varMap := make(map[string]string) //switch to map[variable]variable later
 	fmt.Println(varMap)
 
 	ast.Inspect(node, func(currNode ast.Node) bool {
-		if callNode, ok := node.(*ast.CallExpr); ok{
-			for _, expr := range callNode.Args{
-				switch fnLit := expr.(type){
+		if callNode, ok := node.(*ast.CallExpr); ok {
+			for _, expr := range callNode.Args {
+				switch fnLit := expr.(type) {
 				case *ast.FuncLit:
 					fmt.Printf("func lit type %s, lit body %s", fnLit.Type, fnLit.Body)
 				case *ast.Ident:
@@ -93,6 +194,24 @@ func GetVariables(curr Wrapper) []ast.Node {
 				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.ExprStmt, *ast.Ident:
 					//Gets variable name
 					name := GetVarName(curr, node)
+
+					//Add variable node to list of statements
+					if assignNode, ok := node.(*ast.AssignStmt); ok {
+						varExpr := GetVarExpr(curr, assignNode)
+
+						//Create path if not existent
+						if PathInstance == nil {
+							CreateNewPath()
+						}
+
+						//Filter duplicate
+						if _, ok := PathInstance.Expressions[assignNode]; ok {
+							// fmt.Println(varExpr, " is already in the list")
+						} else {
+							fmt.Println("Variable is:", varExpr)
+							PathInstance.Expressions[assignNode] = varExpr
+						}
+					}
 
 					//filter out duplicates
 					_, ok := filter[name]
