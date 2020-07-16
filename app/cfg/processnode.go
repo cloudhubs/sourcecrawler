@@ -77,6 +77,8 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AS
 			return inner.Not()
 		case token.ILLEGAL:
 			return inner
+		case token.SUB:
+			return ctx.Int(0, ctx.IntSort()).Sub(inner)
 		}
 		return inner
 	case *ast.BinaryExpr:
