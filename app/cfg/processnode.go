@@ -59,10 +59,22 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AS
 				for i, id := range decl.Lhs {
 					if id.(*ast.Ident).Obj == expr.Obj {
 						rhs := decl.Rhs[i]
-						if rhs, ok := rhs.(*ast.BasicLit); ok {
+						switch rhs := rhs.(type) {
+						case *ast.UnaryExpr:
+							if rhs, ok := rhs.X.(*ast.BasicLit); ok {
+								switch rhs.Kind {
+								case token.INT:
+									var bf bytes.Buffer
+									printer.Fprint(&bf, fset, id)
+									return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
+								}
+							}
+						case *ast.BasicLit:
 							switch rhs.Kind {
 							case token.INT:
-								return ctx.Const(ctx.Symbol(fmt.Sprint(expr)), ctx.IntSort())
+								var bf bytes.Buffer
+								printer.Fprint(&bf, fset, id)
+								return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
 							}
 						}
 					}

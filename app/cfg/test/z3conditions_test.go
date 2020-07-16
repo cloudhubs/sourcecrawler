@@ -28,7 +28,7 @@ func TestZ3Conditions(t *testing.T) {
 				Src: `
 				package main
 				func main() {
-					x, y, z := 0, 1, 2
+					x, y, z := -1, -2, 8
 					x + y + z > 4
 					x + y < 2
 					z > 0
