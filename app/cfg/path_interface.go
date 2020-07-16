@@ -69,3 +69,17 @@ func (p *PathList) PrintExecPath() {
 
 	}
 }
+
+//Debug print expressions
+func (p *PathList) PrintExpressions() {
+	if len(p.Expressions) == 0 {
+		fmt.Println("Empty list of expressions")
+		return
+	}
+
+	fmt.Print("PathList Expressions: ")
+	for _, val := range p.Expressions {
+		fmt.Print(val, " | ")
+	}
+	fmt.Println()
+}

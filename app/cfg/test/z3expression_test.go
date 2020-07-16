@@ -95,10 +95,7 @@ func TestExpressions(t *testing.T) {
 			//filter := make(map[string]string)
 			fmt.Println("\n========================")
 			cfg2.PathInstance.PrintExecPath()
-			fmt.Print("PathList Expressions: ")
-			for key, val := range cfg2.PathInstance.Expressions {
-				fmt.Println(key)
-			}
+			cfg2.PathInstance.PrintExpressions()
 
 			return testCase{
 				Name: "Test Expression to Z3",
