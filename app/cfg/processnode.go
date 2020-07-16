@@ -1,8 +1,10 @@
 package cfg
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/printer"
 	"go/token"
 	"sourcecrawler/app/logsource"
 	"strconv"
@@ -12,7 +14,7 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
-func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
+func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AST {
 	if ctx == nil || expr == nil {
 		// fmt.Println("returning nil")
 		return nil
@@ -45,7 +47,10 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 					}
 					// fmt.Println("sort?", sort)
 					//exprStr(expr)
-					return ctx.Const(ctx.Symbol(fmt.Sprint(expr)), sort)
+					var bf bytes.Buffer
+					printer.Fprint(&bf, fset, expr)
+					//fmt.Println(bf.String())
+					return ctx.Const(ctx.Symbol(bf.String()), sort)
 					//case *ast.StarExpr:
 					//case *ast.SelectorExpr:
 				}
@@ -53,7 +58,7 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 		}
 		return nil
 	case *ast.UnaryExpr:
-		inner := ConvertExprToZ3(ctx, expr.X)
+		inner := ConvertExprToZ3(ctx, expr.X, fset)
 		switch expr.Op {
 		case token.NOT:
 			return inner.Not()
@@ -62,8 +67,8 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 		}
 		return inner
 	case *ast.BinaryExpr:
-		left := ConvertExprToZ3(ctx, expr.X)
-		right := ConvertExprToZ3(ctx, expr.Y)
+		left := ConvertExprToZ3(ctx, expr.X, fset)
+		right := ConvertExprToZ3(ctx, expr.Y, fset)
 		if left == nil || right == nil {
 			// fmt.Println("can't combine", left, right)
 			return nil
@@ -83,7 +88,12 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 		case token.EQL:
 			return left.Eq(right)
 		case token.NEQ:
-			return left.Eq(right).Not()
+			//if int, Eq().Not()
+			if _, err := strconv.Atoi(right.String()); err == nil {
+				return left.Eq(right).Not()
+			}
+			//if variable, Distinct()
+			return left.Distinct(right)
 		case token.LSS:
 			return left.Lt(right)
 		case token.GTR:
@@ -96,16 +106,16 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr) *z3.AST {
 			return left.Xor(right)
 		}
 	case *ast.ParenExpr:
-		return ConvertExprToZ3(ctx, expr.X)
+		return ConvertExprToZ3(ctx, expr.X, fset)
 	case *ast.SelectorExpr:
 		oldName := expr.Sel.Name
 		//exprStr(expr.X)
 		expr.Sel.Name = fmt.Sprintf("%v.%v", fmt.Sprint(expr.X), oldName)
-		ident := ConvertExprToZ3(ctx, expr.Sel)
+		ident := ConvertExprToZ3(ctx, expr.Sel, fset)
 		expr.Sel.Name = oldName
 		return ident
 	case *ast.StarExpr:
-		return ConvertExprToZ3(ctx, expr.X)
+		return ConvertExprToZ3(ctx, expr.X, fset)
 	}
 	return nil
 }

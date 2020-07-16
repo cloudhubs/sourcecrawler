@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
+	"os"
 	"sourcecrawler/app/cfg"
 	"testing"
 
@@ -72,6 +74,8 @@ func TestZ3Conditions(t *testing.T) {
 								if _, ok := expr.X.(*ast.CallExpr); ok {
 									continue
 								}
+								printer.Fprint(os.Stdout, fset, expr.X)
+								fmt.Println()
 								exprs = append(exprs, expr.X)
 							}
 						}
@@ -89,8 +93,9 @@ func TestZ3Conditions(t *testing.T) {
 					t.Error("expr was nil")
 					continue
 				}
-				condition := cfg.ConvertExprToZ3(ctx, expr)
+				condition := cfg.ConvertExprToZ3(ctx, expr, fset)
 				if condition != nil {
+					fmt.Println(condition.String())
 					s.Assert(condition)
 				} else {
 					t.Errorf("condition %v (%T) was nil", expr, expr)
@@ -101,14 +106,14 @@ func TestZ3Conditions(t *testing.T) {
 				t.Error("Unsolvable")
 				return
 			}
-
+			t.Log("it passed!")
 			m := s.Model()
-			defer m.Close()
 			assignments := m.Assignments()
 			for name, val := range assignments {
 				t.Logf("%s = %s\n", name, val)
 				fmt.Printf("%s = %s\n", name, val)
 			}
+			defer m.Close()
 
 		})
 	}
