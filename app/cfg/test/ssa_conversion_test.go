@@ -35,14 +35,14 @@ func TestExFile(t *testing.T) {
 		cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 	}
 
-	condStmts := make(map[ast.Node]cfg.ExecutionLabel)
-	vars := make([]ast.Node, 0)
+	// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
+	// vars := make([]ast.Node, 0)
 	exprs := make([]ast.Node, 0)
 
 	paths := cfg.CreateNewPath()
 	leaves := cfg.GetLeafNodes(w)
 	for _, leaf := range leaves {
-		paths.TraverseCFG(leaf, condStmts, vars, exprs, w, make(map[string]ast.Node))
+		paths.TraverseCFG(leaf, exprs, w, make(map[string]ast.Node))
 	}
 
 	for _, path := range paths.Paths {

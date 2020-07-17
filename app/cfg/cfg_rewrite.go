@@ -19,7 +19,7 @@ import (
 // curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
 // vars -> holds list of variables on path
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
+func (paths *PathList) TraverseCFG(curr Wrapper /* condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, */, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -35,6 +35,29 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 
 		//SSA -> map of variable names to count
 		ssaInts := make(map[string]int)
+
+		if len(currWrapper.Succs) == 2 {
+			ast.Inspect(currWrapper.Block.Nodes[len(currWrapper.Block.Nodes)-1], func(node ast.Node) bool {
+				switch node := node.(type) {
+				case *ast.Ident:
+					//Grab function name and identifier name
+					if fn, ok := currWrapper.GetOuterWrapper().(*FnWrapper); ok {
+						var fnName string
+						switch fn := fn.Fn.(type) {
+						case *ast.FuncDecl:
+							fnName = fn.Name.Name
+						case *ast.FuncLit:
+							//TODO: wat do??
+							fnName = "lit"
+						}
+						if !strings.Contains(node.Name, fnName+".") {
+							node.Name = fmt.Sprint(fnName, ".", node.Name)
+						}
+					}
+				}
+				return true
+			})
+		}
 
 		for _, node := range currWrapper.Block.Nodes {
 			if node, ok := node.(*ast.AssignStmt); ok {
@@ -59,7 +82,6 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 					return true
 				})
 			}
-
 		}
 
 		for _, node := range currWrapper.Block.Nodes {
@@ -84,34 +106,44 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 
 		varList := GetVariables(currWrapper, varFilter)
 
+		vars := []ast.Node{}
 		// Filter out variables already in the array again
 		for _, v := range varList {
 			contained := false
-			for _, existingVar := range vars {
+			for _, existingVar := range stmts {
 				if v == existingVar {
 					contained = true
 					break
 				}
 			}
 			if !contained {
-				stmts = append(stmts, v)
-				vars = append(vars, v)
+				vars = append([]ast.Node{v}, vars...)
 			}
 		}
+		stmts = append(stmts, vars...)
 
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
 		if condition != nil {
+			ast.Inspect(condition, func(node ast.Node) bool {
+				if node, ok := node.(*ast.Ident); ok {
+					if _, ok := ssaInts[node.Name]; ok {
+						node.Name = fmt.Sprint(ssaInts[node.Name], node.Name)
+					}
+				}
+				return true
+			})
 			// condStmts = append(condStmts, condition)
 			// fmt.Println("Condition is", condition)
-
-			// Add label to each statement
-			if _, ok := condStmts[condition]; ok {
-
-			} else {
+			contained := false
+			for _, existingCondition := range stmts {
+				if condition == existingCondition {
+					contained = true
+					break
+				}
+			}
+			if !contained {
 				stmts = append(stmts, condition)
-				condStmts[condition] = currWrapper.Label //Set label to current block's label
-				// paths.Expressions = append(paths.Expressions, condition) //add to big list of ast.nodes
 			}
 		}
 
@@ -121,13 +153,13 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			paths.TraverseCFG(parent, condStmts, vars, stmts, root, varFilter)
+			paths.TraverseCFG(parent, stmts, root, varFilter)
 		}
 	} else {
 
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
-		paths.AddNewPath(Path{Stmts: condStmts, Variables: vars, Expressions: stmts})
+		paths.AddNewPath(Path{Expressions: stmts})
 		// executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
 	}
 }

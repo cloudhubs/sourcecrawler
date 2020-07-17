@@ -171,26 +171,26 @@ func (b *BlockWrapper) GetCondition() ast.Node {
 }
 
 //Process the AST node to extract function literals (can be called in traverse or parse time)
-func GetFuncLits(node ast.Node) {
-	varMap := make(map[string]string) //switch to map[variable]variable later
-	fmt.Println(varMap)
+// func GetFuncLits(node ast.Node) {
+// 	varMap := make(map[string]string) //switch to map[variable]variable later
+// 	fmt.Println(varMap)
 
-	ast.Inspect(node, func(currNode ast.Node) bool {
-		if callNode, ok := node.(*ast.CallExpr); ok {
-			for _, expr := range callNode.Args {
-				switch fnLit := expr.(type) {
-				case *ast.FuncLit:
-					fmt.Printf("func lit type %s, lit body %s", fnLit.Type, fnLit.Body)
-				case *ast.Ident:
-					fmt.Println("Ident", fnLit.Name, fnLit.Obj)
-				}
-			}
-		}
+// 	ast.Inspect(node, func(currNode ast.Node) bool {
+// 		if callNode, ok := node.(*ast.CallExpr); ok {
+// 			for _, expr := range callNode.Args {
+// 				switch fnLit := expr.(type) {
+// 				case *ast.FuncLit:
+// 					fmt.Printf("func lit type %s, lit body %s", fnLit.Type, fnLit.Body)
+// 				case *ast.Ident:
+// 					fmt.Println("Ident", fnLit.Name, fnLit.Obj)
+// 				}
+// 			}
+// 		}
 
-		return true
-	})
+// 		return true
+// 	})
 
-}
+// }
 
 //Gets all the variables within a block -
 func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
@@ -201,27 +201,17 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 	case *BlockWrapper:
 		//Process all nodes in a block for possible variables
 		for _, node := range curr.Block.Nodes {
-			// fmt.Println("hm", reflect.TypeOf(node))
-			ast.Inspect(node, func(currNode ast.Node) bool {
-				// fmt.Println("hm2", reflect.TypeOf(node))
+			//If a node is an assignStmt or ValueSpec, it should most likely be a variable
+			//Gets variable name
+			name, node := GetVar(curr, node)
 
-				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
-				switch node := node.(type) {
-				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.Ident: //*ast.ExprStmt,
-					//Gets variable name
-					name, node := GetVar(curr, node)
-
-					//filter out duplicates
-					_, ok := filter[name]
-					if ok && name != "" {
-						//fmt.Println(name, " is already in the list")
-					} else {
-						filter[name] = node
-					}
-
-				}
-				return true
-			})
+			//filter out duplicates
+			_, ok := filter[name]
+			if ok && name != "" {
+				// name is already in the list
+			} else {
+				filter[name] = node
+			}
 		}
 
 		//Convert into list of variable nodes
@@ -480,8 +470,10 @@ func GetVar(curr Wrapper, node ast.Node) (string, ast.Node) {
 		}
 	case *ast.IncDecStmt:
 		name, node = GetPointedName(curr, n.X)
-	case *ast.ExprStmt:
-		name, node = GetVar(curr, n.X)
+	// case *ast.ExprStmt:
+	// name, node = GetVar(curr, n.X)
+	case *ast.Ident:
+		name, node = GetPointedName(curr, n)
 	}
 
 	return name, node
