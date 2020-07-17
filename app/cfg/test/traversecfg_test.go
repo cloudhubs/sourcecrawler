@@ -5,15 +5,11 @@ package test
 
 import (
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	cfg2 "sourcecrawler/app/cfg"
 	"testing"
 
 	"github.com/rs/zerolog/log"
-	"golang.org/x/tools/go/cfg"
 )
 
 type rewriteTestCase struct {
@@ -335,121 +331,129 @@ func TestRewrite2(t *testing.T) {
 		//},
 		func() rewriteTestCase {
 
-			fset := token.NewFileSet()
-			file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
-			if err != nil {
-				fmt.Println("Error parsing file")
-			}
+			// 	fset := token.NewFileSet()
+			// 	file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
+			// 	if err != nil{
+			// 		fmt.Println("Error parsing file")
+			// 	}
 
-			var cfgList []*cfg.CFG
+			// 	var cfgList []*cfg.CFG
 
-			//Get the cfg for testLit.go
-			ast.Inspect(file, func(node ast.Node) bool {
-				if blockNode, ok := node.(*ast.BlockStmt); ok {
-					if len(cfgList) < 2 {
-						cfgList = append(cfgList, cfg.New(blockNode, func(expr *ast.CallExpr) bool { return true }))
-					}
-				}
-				return true
-			})
+			// 	//Get the cfg for testLit.go
+			// 	ast.Inspect(file, func(node ast.Node) bool {
+			// 		if blockNode, ok := node.(*ast.BlockStmt); ok{
+			// 			if len(cfgList) < 2 {
+			// 				cfgList = append(cfgList, cfg.New(blockNode, func(expr *ast.CallExpr) bool { return true }))
+			// 			}
+			// 		}
+			// 		return true
+			// 	})
 
-			if len(cfgList) >= 2 {
-				fmt.Println(cfgList[0].Format(fset))
-				//fmt.Println(cfgList[1].Format(fset))
-			}
+			// 	if len(cfgList) >= 2 {
+			// 		//fmt.Println(cfgList[0].Format(fset))
+			// 		//fmt.Println(cfgList[1].Format(fset))
+			// 	}
 
-			//Create a sample tree
-			root := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[0]}
-			tchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[1]}
-			fchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[3]}
-			end := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[2]}
+			// 	//Create a sample tree
+			// 	root := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[0]}
+			// 	tchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[1]}
+			// 	fchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[3]}
+			// 	end := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[2]}
 
-			root.AddChild(tchild)
-			root.AddChild(fchild)
-			root.SetOuterWrapper(root)
+			// 	root.AddChild(tchild)
+			// 	root.AddChild(fchild)
+			// 	root.SetOuterWrapper(root)
 
-			tchild.AddParent(root)
-			tchild.AddChild(end)
-			tchild.SetOuterWrapper(root)
-			fchild.AddParent(root)
-			fchild.AddChild(end)
-			fchild.SetOuterWrapper(root)
+			// 	tchild.AddParent(root)
+			// 	tchild.AddChild(end)
+			// 	tchild.SetOuterWrapper(root)
+			// 	fchild.AddParent(root)
+			// 	fchild.AddChild(end)
+			// 	fchild.SetOuterWrapper(root)
 
-			end.AddParent(tchild)
-			end.AddParent(fchild)
-			end.SetOuterWrapper(root)
+			// 	end.AddParent(tchild)
+			// 	end.AddParent(fchild)
+			// 	end.SetOuterWrapper(root)
 
-			testPrint(root)
-			cfg2.LabelCFG(end, nil, root)
+			// 	//testPrint(root)
+			// 	cfg2.LabelCFG(end, nil, root)
 
-			fmt.Printf("\nAfter label function: ============\n")
-			testPrint(root)
+			// 	//fmt.Printf("\nAfter label function: ============\n")
+			// 	//testPrint(root)
+
+			// 	return testCase{
+			// 		Name: "TestRewriteLabel",
+			// 	}
+			// },
+			// func() testCase {
+
+			// 	fset := token.NewFileSet()
+			// 	file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
+			// 	if err != nil{
+			// 		fmt.Println("Error parsing file")
+			// 	}
+
+			// 	var cfgList []*cfg.CFG
+
+			// 	//Get the cfg for testLit.go
+			// 	ast.Inspect(file, func(node ast.Node) bool {
+			// 		if blockNode, ok := node.(*ast.BlockStmt); ok{
+			// 			if len(cfgList) < 2 {
+			// 				cfgList = append(cfgList, cfg.New(blockNode, func(expr *ast.CallExpr) bool { return true }))
+			// 			}
+			// 		}
+			// 		return true
+			// 	})
+
+			// 	//if len(cfgList) >= 2 {
+			// 	//	fmt.Println(cfgList[0].Format(fset))
+			// 	//	fmt.Println(cfgList[1].Format(fset))
+			// 	//}
+
+			// 	//Create a sample tree
+			// 	root := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[0],
+			// 		//PathList: cfg2.PathList{Paths: make([]cfg2.Path, 0)},
+			// 	}
+			// 	tchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[1]}
+			// 	fchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[3]}
+			// 	end := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[2]}
+
+			// 	root.AddChild(tchild)
+			// 	root.AddChild(fchild)
+			// 	root.SetOuterWrapper(root)
+
+			// 	tchild.AddParent(root)
+			// 	tchild.AddChild(end)
+			// 	tchild.SetOuterWrapper(root)
+			// 	fchild.AddParent(root)
+			// 	fchild.AddChild(end)
+			// 	fchild.SetOuterWrapper(root)
+
+			// 	end.AddParent(tchild)
+			// 	end.AddParent(fchild)
+			// 	end.SetOuterWrapper(root)
+
+			// 	//Start at end node and label
+			// 	cfg2.LabelCFG(end, nil, root)
+
+			// 	//stmts := make(map[string]cfg2.ExecutionLabel)
+			// 	//vars := make(map[ast.Node]cfg2.ExecutionLabel)
+			// 	stmts := make(map[string]cfg2.ExecutionLabel)
+			// 	//vars := make(map[ast.Node]string)
+			// 	vars := []ast.Node{}
+
+			// 	//Start at end node
+			// 	//var pathList cfg2.PathList
+			// 	cfg2.TraverseCFG(end, stmts, vars, root)
+
+			// 	//Print created execution path
+			// 	//filter := make(map[string]string)
+			// 	fmt.Println("\n========================")
+			// 	cfg2.PathInstance.PrintExecPath()
+			// 	fmt.Println("PathList Expressions:", cfg2.PathInstance.Expressions)
 
 			return rewriteTestCase{
-				Name: "TestRewriteLabel",
-			}
-		},
-		func() rewriteTestCase {
-
-			fset := token.NewFileSet()
-			file, err := parser.ParseFile(fset, "testLit.go", nil, 0)
-			if err != nil {
-				fmt.Println("Error parsing file")
-			}
-
-			var cfgList []*cfg.CFG
-
-			//Get the cfg for testLit.go
-			ast.Inspect(file, func(node ast.Node) bool {
-				if blockNode, ok := node.(*ast.BlockStmt); ok {
-					if len(cfgList) < 2 {
-						cfgList = append(cfgList, cfg.New(blockNode, func(expr *ast.CallExpr) bool { return true }))
-					}
-				}
-				return true
-			})
-
-			//if len(cfgList) >= 2 {
-			//	fmt.Println(cfgList[0].Format(fset))
-			//	fmt.Println(cfgList[1].Format(fset))
-			//}
-
-			//Create a sample tree
-			root := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[0]}
-			tchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[1]}
-			fchild := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[3]}
-			end := &cfg2.BlockWrapper{Block: cfgList[0].Blocks[2]}
-
-			root.AddChild(tchild)
-			root.AddChild(fchild)
-			root.SetOuterWrapper(root)
-
-			tchild.AddParent(root)
-			tchild.AddChild(end)
-			tchild.SetOuterWrapper(root)
-			fchild.AddParent(root)
-			fchild.AddChild(end)
-			fchild.SetOuterWrapper(root)
-
-			end.AddParent(tchild)
-			end.AddParent(fchild)
-			end.SetOuterWrapper(root)
-
-			//Start at end node and label
-			cfg2.LabelCFG(end, nil, root)
-
-			//stmts := make(map[string]cfg2.ExecutionLabel)
-			//vars := make(map[ast.Node]cfg2.ExecutionLabel)
-			stmts := []string{}
-			vars := []ast.Node{}
-
-			//Start at end node
-			cfg2.TraverseCFG(end, stmts, vars, root, make(map[string]ast.Node))
-
-			printPath(cfg2.GetExecPath())
-
-			return rewriteTestCase{
-				Name: "Test label execution paths",
+				Name: "Test Execution Paths",
 			}
 		},
 	}

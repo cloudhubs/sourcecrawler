@@ -147,6 +147,18 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AS
 	return nil
 }
 
+func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
+	ast.Inspect(expr, func(node ast.Node) bool {
+		switch node := node.(type) {
+		case *ast.Ident:
+			if i, ok := ssaInts[node.Name]; ok {
+				node.Name = fmt.Sprint(i, node.Name)
+			}
+		}
+		return true
+	})
+}
+
 //Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
 func (b *BlockWrapper) GetCondition() ast.Node {
 	//Conditional block
@@ -192,21 +204,19 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 			// fmt.Println("hm", reflect.TypeOf(node))
 			ast.Inspect(node, func(currNode ast.Node) bool {
 				// fmt.Println("hm2", reflect.TypeOf(node))
+
 				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
 				switch node := node.(type) {
 				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.Ident: //*ast.ExprStmt,
 					//Gets variable name
 					name, node := GetVar(curr, node)
-					if name != "" && node != nil {
-						// fmt.Println("filter", filter)
-						//filter out duplicates
-						_, ok := filter[name]
-						if ok && name != "" {
-							// fmt.Println(name, " is already in the list")
-						} else {
-							filter[name] = node
-							// fmt.Println("map", name, "to", node, reflect.TypeOf(node))
-						}
+
+					//filter out duplicates
+					_, ok := filter[name]
+					if ok && name != "" {
+						//fmt.Println(name, " is already in the list")
+					} else {
+						filter[name] = node
 					}
 
 				}
@@ -411,6 +421,7 @@ func GetExprStr(expr ast.Expr) string {
 
 //Get name pointed to by the expr node
 func GetPointedName(curr Wrapper, node ast.Expr) (string, ast.Node) {
+
 	if outer, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
 		switch expr := node.(type) {
 		case *ast.SelectorExpr:

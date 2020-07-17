@@ -218,9 +218,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			log.Error().Err(err).Msg("unable to parse file")
 		}
 
-		// get map of linenumber -> regex for thsi file
-		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
-		//regexes := mapLogRegex(logInfo)
 
 		// extract CFGs for all relevant functions from this file
 		c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
@@ -243,28 +240,6 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			}
 			return true
 		})
-
-		//TODO: test
-		//Test if variable are retrieved
-		ast.Inspect(f, func(node ast.Node) bool {
-
-			return true
-		})
-		//for _, dec := range f.Decls{
-		//	switch decl := dec.(type) {
-		//	case *ast.FuncDecl:
-		//		fmt.Println("func",decl.Name.Name)
-		//	case *ast.GenDecl:
-		//		for _, spec := range decl.Specs{
-		//			switch spec := spec.(type){
-		//			case *ast.ValueSpec:
-		//				for _, Id := range spec.Names {
-		//					fmt.Printf("Var %s: %v", Id.Name, Id.Obj.Decl.(*ast.ValueSpec).Values[0].(*ast.BasicLit).Value)
-		//				}
-		//			}
-		//		}
-		//	}
-		//}
 	}
 
 	//4 -- Connect the CFG nodes together
