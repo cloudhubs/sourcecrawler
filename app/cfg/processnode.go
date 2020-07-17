@@ -152,7 +152,7 @@ func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
 		switch node := node.(type) {
 		case *ast.Ident:
 			if i, ok := ssaInts[node.Name]; ok {
-				node.Name = fmt.Sprint(i, node.Name)
+				node.Name = fmt.Sprint(i, node.Name)			
 			}
 		}
 		return true

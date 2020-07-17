@@ -18,7 +18,7 @@ type PathList struct {
 	Paths       []Path
 	Expressions []ast.Node
 	// Expressions map[ast.Node]string //Temporary, may be subject to change
-	SsaInts map[*ast.Object]int
+	SsaInts		map[*ast.Object]int
 }
 
 //Singleton instance

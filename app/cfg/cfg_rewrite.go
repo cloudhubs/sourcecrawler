@@ -23,9 +23,9 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
-		fmt.Println("FnWrapper", currWrapper)
-		fnName, funcVars := GetFuncInfo(currWrapper, currWrapper.Fn) //Gets the function name and a list of variables
-		fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
+		// fmt.Println("FnWrapper", currWrapper)
+		// fnName, funcVars := GetFuncInfo(currWrapper, currWrapper.Fn) //Gets the function name and a list of variables
+		// fmt.Printf("Function name -- (%s), Vars: -- (%v)\n", fnName, funcVars)
 
 	case *BlockWrapper:
 
@@ -51,7 +51,11 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 							fnName = "lit"
 
 						}
-						node.Name = fmt.Sprint(fnName, ".", node.Name)
+
+						//Remove extra fnName.fnName.fnName... (works for now)
+						if !strings.Contains(node.Name, fnName){
+							node.Name = fmt.Sprint(fnName, ".", node.Name)
+						}
 					}
 				}
 				return true
@@ -91,15 +95,30 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 			}
 			if !contained {
 				vars = append(vars, v)
-				paths.Expressions = append(paths.Expressions, v) //Add variables to expressions
+				varName := fmt.Sprint(v)
+				
+				var good bool = true
+				
+				//Filter again for duplicates
+				for _, expr := range paths.Expressions{
+					if fmt.Sprint(expr) == varName{
+						good = false
+						break
+					}
+				}
+				
+				if good{
+					paths.Expressions = append(paths.Expressions, v)
+				}
 			}
 		}
+		
 
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
 		if condition != nil {
 			// condStmts = append(condStmts, condition)
-			fmt.Println("Condition is", condition)
+			// fmt.Println("Condition is", condition)
 
 			// Add label to each statement
 			if _, ok := condStmts[condition]; ok {
@@ -515,7 +534,7 @@ func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr
 			if n, ok := n.(*ast.FuncDecl); ok {
 				//TODO: double-check this is the proper conversion
 				if ident, ok := node.Fun.(*ast.Ident); ok {
-					if strings.EqualFold(ident.Name, n.Name.Name) {
+					if strings.EqualFold(ident.Name, n.Name.Name){
 						fn = n
 						//stop when you find it
 						stop = true

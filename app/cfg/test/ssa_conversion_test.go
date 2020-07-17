@@ -1,13 +1,15 @@
 package test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
-	"go/printer"
+	// "go/printer"
 	"go/token"
-	"os"
+	// "os"
 	"sourcecrawler/app/cfg"
 	"testing"
+	_"fmt"
 )
 
 func TestExFile(t *testing.T) {
@@ -43,9 +45,11 @@ func TestExFile(t *testing.T) {
 		path.TraverseCFG(leaf, condStmts, vars, w, make(map[string]ast.Node))
 	}
 
+	
 	for _, expr := range path.Expressions {
-		printer.Fprint(os.Stdout, fset, expr)
-		t.Log(expr)
+		fmt.Println(expr)
+		// printer.Fprint(os.Stdout, fset, expr)
+		// t.Log(expr)
 	}
 
 }
