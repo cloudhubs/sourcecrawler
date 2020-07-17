@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/printer"
@@ -36,16 +37,21 @@ func TestExFile(t *testing.T) {
 
 	condStmts := make(map[ast.Node]cfg.ExecutionLabel)
 	vars := make([]ast.Node, 0)
+	exprs := make([]ast.Node, 0)
 
-	path := cfg.CreateNewPath()
+	paths := cfg.CreateNewPath()
 	leaves := cfg.GetLeafNodes(w)
 	for _, leaf := range leaves {
-		path.TraverseCFG(leaf, condStmts, vars, w, make(map[string]ast.Node))
+		paths.TraverseCFG(leaf, condStmts, vars, exprs, w, make(map[string]ast.Node))
 	}
 
-	for _, expr := range path.Expressions {
-		printer.Fprint(os.Stdout, fset, expr)
-		t.Log(expr)
+	for _, path := range paths.Paths {
+		for _, expr := range path.Expressions {
+			printer.Fprint(os.Stdout, fset, expr)
+			fmt.Println()
+		}
+		fmt.Println()
+		// t.Log(expr)
 	}
 
 }

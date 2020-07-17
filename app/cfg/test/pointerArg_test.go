@@ -188,7 +188,7 @@ func TestPointerArgs(t *testing.T) {
 			path := cfg2.CreateNewPath()
 			leaves := cfg.GetLeafNodes(w)
 			for _, leaf := range leaves {
-				path.TraverseCFG(leaf, condStmts, vars, w, make(map[string]ast.Node))
+				path.TraverseCFG(leaf, condStmts, vars, []ast.Node{}, w, make(map[string]ast.Node))
 			}
 			// if len(leaves) > 0 {
 			// 	cfg.TraverseCFG(leaves[0], condStmts, vars, w, make(map[string]ast.Node))

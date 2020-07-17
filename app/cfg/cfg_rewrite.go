@@ -19,13 +19,13 @@ import (
 // curr -> starting block | condStmts -> holds conditional expressions | root -> outermost wrapper
 // vars -> holds list of variables on path
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
+func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
-		fmt.Println("FnWrapper", currWrapper)
-		fnName, funcVars := GetFuncInfo(currWrapper, currWrapper.Fn) //Gets the function name and a list of variables
-		fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
+		// fmt.Println("FnWrapper", currWrapper)
+		// fnName, funcVars := GetFuncInfo(currWrapper, currWrapper.Fn) //Gets the function name and a list of variables
+		// fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
 
 	case *BlockWrapper:
 
@@ -37,25 +37,29 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 		ssaInts := make(map[string]int)
 
 		for _, node := range currWrapper.Block.Nodes {
-			ast.Inspect(node, func(node ast.Node) bool {
-				switch node := node.(type) {
-				case *ast.Ident:
-					//Grab function name and identifier name
-					if fn, ok := currWrapper.GetOuterWrapper().(*FnWrapper); ok {
-						var fnName string
-						switch fn := fn.Fn.(type) {
-						case *ast.FuncDecl:
-							fnName = fn.Name.Name
-						case *ast.FuncLit:
-							//TODO: wat do??
-							fnName = "lit"
-
+			if node, ok := node.(*ast.AssignStmt); ok {
+				ast.Inspect(node, func(node ast.Node) bool {
+					switch node := node.(type) {
+					case *ast.Ident:
+						//Grab function name and identifier name
+						if fn, ok := currWrapper.GetOuterWrapper().(*FnWrapper); ok {
+							var fnName string
+							switch fn := fn.Fn.(type) {
+							case *ast.FuncDecl:
+								fnName = fn.Name.Name
+							case *ast.FuncLit:
+								//TODO: wat do??
+								fnName = "lit"
+							}
+							if !strings.Contains(node.Name, fnName+".") {
+								node.Name = fmt.Sprint(fnName, ".", node.Name)
+							}
 						}
-						node.Name = fmt.Sprint(fnName, ".", node.Name)
 					}
-				}
-				return true
-			})
+					return true
+				})
+			}
+
 		}
 
 		for _, node := range currWrapper.Block.Nodes {
@@ -90,8 +94,8 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 				}
 			}
 			if !contained {
+				stmts = append(stmts, v)
 				vars = append(vars, v)
-				paths.Expressions = append(paths.Expressions, v) //Add variables to expressions
 			}
 		}
 
@@ -99,14 +103,15 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 		condition := currWrapper.GetCondition()
 		if condition != nil {
 			// condStmts = append(condStmts, condition)
-			fmt.Println("Condition is", condition)
+			// fmt.Println("Condition is", condition)
 
 			// Add label to each statement
 			if _, ok := condStmts[condition]; ok {
 
 			} else {
-				condStmts[condition] = currWrapper.Label                 //Set label to current block's label
-				paths.Expressions = append(paths.Expressions, condition) //add to big list of ast.nodes
+				stmts = append(stmts, condition)
+				condStmts[condition] = currWrapper.Label //Set label to current block's label
+				// paths.Expressions = append(paths.Expressions, condition) //add to big list of ast.nodes
 			}
 		}
 
@@ -116,13 +121,13 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			paths.TraverseCFG(parent, condStmts, vars, root, varFilter)
+			paths.TraverseCFG(parent, condStmts, vars, stmts, root, varFilter)
 		}
 	} else {
 
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
-		paths.AddNewPath(Path{Stmts: condStmts, Variables: vars})
+		paths.AddNewPath(Path{Stmts: condStmts, Variables: vars, Expressions: stmts})
 		// executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
 	}
 }
@@ -298,14 +303,24 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 				for i, node := range b.Block.Nodes {
 					//check if the node is a callExpr
 					var call *ast.CallExpr
-					switch node := node.(type) {
-					case *ast.CallExpr:
-						call = node
-					case *ast.ExprStmt:
-						if x, ok := node.X.(*ast.CallExpr); ok {
-							call = x
+					ast.Inspect(node, func(node ast.Node) bool {
+						if node, ok := node.(*ast.CallExpr); ok {
+							call = node
+							return false
 						}
-					}
+						if _, ok := node.(*ast.FuncLit); ok {
+							return false
+						}
+						return true
+					})
+					// switch node := node.(type) {
+					// case *ast.CallExpr:
+					// 	call = node
+					// case *ast.ExprStmt:
+					// 	if x, ok := node.X.(*ast.CallExpr); ok {
+					// 		call = x
+					// 	}
+					// }
 
 					if call != nil {
 						//get arguments
@@ -342,6 +357,12 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 									c.RemoveParent(b)
 									c.AddParent(bottomBlock)
 									bottomBlock.AddChild(c)
+								}
+							} else {
+								for _, c := range b.Succs {
+									b.RemoveChild(c)
+									c.RemoveParent(b)
+									newFn.connectReturnsTo(c)
 								}
 							}
 							//stop after first function, block is now

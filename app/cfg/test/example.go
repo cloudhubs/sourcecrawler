@@ -6,7 +6,7 @@ func exampleMain() {
 	x := 1
 
 	if x < 2 {
-		x = foo(x)
+		foo(x)
 		if x == 2 {
 			x := 3
 			y := bar(x, x)
@@ -16,7 +16,6 @@ func exampleMain() {
 			}
 		}
 	}
-
 }
 
 func foo(x int) int {
