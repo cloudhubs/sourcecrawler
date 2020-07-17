@@ -7,3 +7,4 @@ sourcecrawler.exe
 .gitignore~
 temp.txt
 app/cfg/test/checklines_test.go
+.devcontainer/
