@@ -148,33 +148,14 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AS
 }
 
 //Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
-func (b *BlockWrapper) GetCondition() string {
-
-	var condition string = ""
-	//Return block or panic, fatal, etc
-	if len(b.Succs) == 0 {
-		return ""
-	}
-	//Normal block
-	if len(b.Succs) == 1 {
-		return ""
-	}
+func (b *BlockWrapper) GetCondition() ast.Node {
 	//Conditional block
 	if len(b.Succs) == 2 && b.Block != nil && len(b.Block.Nodes) > 0 {
-		condNode := b.Block.Nodes[len(b.Block.Nodes)-1] //conditional is last node in a block
-
-		ast.Inspect(condNode, func(currNode ast.Node) bool {
-
-			//Get the expression string for the condition
-			if exprNode, ok := condNode.(ast.Expr); ok {
-				condition = GetExprStr(exprNode)
-			}
-
-			return true
-		})
+		//conditional is last node in a block
+		return b.Block.Nodes[len(b.Block.Nodes)-1]
 	}
 
-	return condition
+	return nil
 }
 
 //Process the AST node to extract function literals (can be called in traverse or parse time)

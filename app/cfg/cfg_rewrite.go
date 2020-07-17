@@ -17,7 +17,7 @@ import (
 type Path struct {
 	//Stmts map[string]ExecutionLabel     	//List of statements along with it's label (could be duplicate statements - may use diff struct)
 	//Variables map[ast.Node]ExecutionLabel	//*ast.AssignStmt or *ast.ValueSpec (Not sure if variable need to be labeled)
-	Stmts     []string
+	Stmts     []ast.Node
 	Variables []ast.Node //*ast.AssignStmt or *ast.ValueSpec
 }
 
@@ -266,7 +266,7 @@ func (b *BlockWrapper) SetLabel(label ExecutionLabel) {
 // vars -> holds list of variables on path
 // Identify variables being executed as function (keep track of it) -> check if it's a func Literal
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
+func TraverseCFG(curr Wrapper, condStmts []ast.Node, vars []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -299,7 +299,7 @@ func TraverseCFG(curr Wrapper, condStmts []string, vars []ast.Node, root Wrapper
 
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
-		if condition != "" {
+		if condition != nil {
 			condStmts = append(condStmts, condition)
 		}
 
