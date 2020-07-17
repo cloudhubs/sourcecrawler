@@ -95,10 +95,8 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 			}
 			if !contained {
 				vars = append(vars, v)
-				varName := fmt.Sprint(v)
-				
-				var good bool = true
-				
+				varName := fmt.Sprint(v)			
+				var good bool = true				
 				//Filter again for duplicates
 				for _, expr := range paths.Expressions{
 					if fmt.Sprint(expr) == varName{
@@ -106,7 +104,7 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 						break
 					}
 				}
-				
+
 				if good{
 					paths.Expressions = append(paths.Expressions, v)
 				}
@@ -124,6 +122,7 @@ func (paths *PathList) TraverseCFG(curr Wrapper, condStmts map[ast.Node]Executio
 			if _, ok := condStmts[condition]; ok {
 
 			} else {
+				
 				condStmts[condition] = currWrapper.Label                 //Set label to current block's label
 				paths.Expressions = append(paths.Expressions, condition) //add to big list of ast.nodes
 			}
