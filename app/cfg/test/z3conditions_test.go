@@ -43,6 +43,20 @@ func TestZ3Conditions(t *testing.T) {
 				`,
 			}
 		},
+		func() z3Test {
+			return z3Test{
+				Name: "Contradictions",
+				Src: `
+				package main
+				func main() {
+					x, y := 0, 0
+					x < 2
+					x == 2
+					x > 2
+				}
+				`,
+			}
+		},
 	}
 
 	for _, testCase := range cases {
