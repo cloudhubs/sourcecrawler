@@ -1,14 +1,151 @@
 package cfg
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/printer"
 	"go/token"
 	"sourcecrawler/app/logsource"
+	"strconv"
 	"strings"
 
+	"github.com/mitchellh/go-z3"
 	"golang.org/x/tools/go/cfg"
 )
+
+func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AST {
+	if ctx == nil || expr == nil {
+		// fmt.Println("returning nil")
+		return nil
+	}
+	// fmt.Println("checking", expr, reflect.TypeOf(expr))
+	switch expr := expr.(type) {
+	case *ast.BasicLit:
+		switch expr.Kind {
+		case token.INT:
+			v, err := strconv.Atoi(expr.Value)
+			// fmt.Println("literal value", v)
+			if err == nil {
+				return ctx.Int(v, ctx.IntSort())
+			}
+		}
+		return nil
+	case *ast.Ident:
+		if expr.Obj != nil {
+			// fmt.Println("nonnil obj")
+			switch decl := expr.Obj.Decl.(type) {
+			case *ast.Field:
+				// fmt.Println("good field")
+				switch t := decl.Type.(type) {
+				case *ast.Ident:
+					// fmt.Println("is ident")
+					var sort *z3.Sort
+					if strings.Contains(t.Name, "int") {
+						sort = ctx.IntSort()
+					} else if t.Name == "bool" {
+						sort = ctx.BoolSort()
+					}
+					// fmt.Println("sort?", sort)
+					//exprStr(expr)
+					var bf bytes.Buffer
+					printer.Fprint(&bf, fset, expr)
+					//fmt.Println(bf.String())
+					return ctx.Const(ctx.Symbol(bf.String()), sort)
+					//case *ast.StarExpr:
+					//case *ast.SelectorExpr:
+				}
+			case *ast.AssignStmt:
+				for i, id := range decl.Lhs {
+					if id.(*ast.Ident).Obj == expr.Obj {
+						rhs := decl.Rhs[i]
+						switch rhs := rhs.(type) {
+						case *ast.UnaryExpr:
+							if rhs, ok := rhs.X.(*ast.BasicLit); ok {
+								switch rhs.Kind {
+								case token.INT:
+									var bf bytes.Buffer
+									printer.Fprint(&bf, fset, id)
+									return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
+								}
+							}
+						case *ast.BasicLit:
+							switch rhs.Kind {
+							case token.INT:
+								var bf bytes.Buffer
+								printer.Fprint(&bf, fset, id)
+								return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
+							}
+						}
+					}
+				}
+			}
+		}
+		return nil
+	case *ast.UnaryExpr:
+		inner := ConvertExprToZ3(ctx, expr.X, fset)
+		switch expr.Op {
+		case token.NOT:
+			return inner.Not()
+		case token.ILLEGAL:
+			return inner
+		case token.SUB:
+			return ctx.Int(0, ctx.IntSort()).Sub(inner)
+		}
+		return inner
+	case *ast.BinaryExpr:
+		left := ConvertExprToZ3(ctx, expr.X, fset)
+		right := ConvertExprToZ3(ctx, expr.Y, fset)
+		if left == nil || right == nil {
+			// fmt.Println("can't combine", left, right)
+			return nil
+		}
+		// fmt.Println("combining", left, right)
+		switch expr.Op {
+		case token.ADD:
+			return left.Add(right)
+		case token.SUB:
+			return left.Sub(right)
+		case token.MUL:
+			return left.Mul(right)
+		case token.LAND:
+			return left.And(right)
+		case token.LOR:
+			return left.Or(right)
+		case token.EQL:
+			return left.Eq(right)
+		case token.NEQ:
+			//if int, Eq().Not()
+			if _, err := strconv.Atoi(right.String()); err == nil {
+				return left.Eq(right).Not()
+			}
+			//if variable, Distinct()
+			return left.Distinct(right)
+		case token.LSS:
+			return left.Lt(right)
+		case token.GTR:
+			return left.Gt(right)
+		case token.LEQ:
+			return left.Le(right)
+		case token.GEQ:
+			return left.Ge(right)
+		case token.XOR:
+			return left.Xor(right)
+		}
+	case *ast.ParenExpr:
+		return ConvertExprToZ3(ctx, expr.X, fset)
+	case *ast.SelectorExpr:
+		oldName := expr.Sel.Name
+		//exprStr(expr.X)
+		expr.Sel.Name = fmt.Sprintf("%v.%v", fmt.Sprint(expr.X), oldName)
+		ident := ConvertExprToZ3(ctx, expr.Sel, fset)
+		expr.Sel.Name = oldName
+		return ident
+	case *ast.StarExpr:
+		return ConvertExprToZ3(ctx, expr.X, fset)
+	}
+	return nil
+}
 
 //Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
 func (b *BlockWrapper) GetCondition() string {
@@ -31,6 +168,20 @@ func (b *BlockWrapper) GetCondition() string {
 			//Get the expression string for the condition
 			if exprNode, ok := condNode.(ast.Expr); ok {
 				condition = GetExprStr(exprNode)
+				//fmt.Println("Expression node to be used in SMT solver", exprNode)
+
+				//Init pathInstance if not initialized
+				if PathInstance == nil {
+					CreateNewPath()
+				}
+
+				//Add exprNode to list of expressions if not already in
+				if _, ok := PathInstance.Expressions[exprNode]; ok {
+					//fmt.Println(exprNode, " exists already")
+				} else {
+					fmt.Println("Condition is:", condition)
+					PathInstance.Expressions[exprNode] = condition
+				}
 			}
 
 			return true
@@ -74,21 +225,35 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 			// fmt.Println("hm", reflect.TypeOf(node))
 			ast.Inspect(node, func(currNode ast.Node) bool {
 				// fmt.Println("hm2", reflect.TypeOf(node))
+
+				//Handle getting expression separately (may be used in SMT solver)
+				if assignNode, ok := node.(*ast.AssignStmt); ok{
+					//Create path if not existent
+					if PathInstance == nil {
+						CreateNewPath()
+					}
+					//Filter duplicate
+					if _, ok := PathInstance.Expressions[assignNode]; ok {
+						// fmt.Println(varExpr, " is already in the list")
+					} else {
+						varExpr := GetVarExpr(curr, assignNode)
+						fmt.Println("Variable is:", varExpr)
+						PathInstance.Expressions[assignNode] = varExpr
+					}
+				}
+
 				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
 				switch node := node.(type) {
 				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.Ident: //*ast.ExprStmt,
 					//Gets variable name
 					name, node := GetVar(curr, node)
-					if name != "" && node != nil {
-						// fmt.Println("filter", filter)
-						//filter out duplicates
-						_, ok := filter[name]
-						if ok && name != "" {
-							// fmt.Println(name, " is already in the list")
-						} else {
-							filter[name] = node
-							// fmt.Println("map", name, "to", node, reflect.TypeOf(node))
-						}
+
+					//filter out duplicates
+					_, ok := filter[name]
+					if ok && name != "" {
+						//fmt.Println(name, " is already in the list")
+					} else {
+						filter[name] = node
 					}
 
 				}

@@ -181,7 +181,7 @@ func TestPointerArgs(t *testing.T) {
 				cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 			}
 
-			condStmts := make([]string, 0)
+			condStmts := make(map[string]cfg.ExecutionLabel)
 			vars := make([]ast.Node, 0)
 
 			leaves := cfg.GetLeafNodes(w)
@@ -199,7 +199,7 @@ func TestPointerArgs(t *testing.T) {
 			// cfg.TraverseCFG(w, condStmts, vars, w)
 
 			// traverse(w)
-			path := cfg.GetExecPath()
+			path := cfg.PathInstance.GetExecPath()
 			t.Log(path)
 			for _, p := range path {
 				for _, v := range p.Variables {
