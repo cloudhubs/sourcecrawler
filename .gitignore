@@ -9,3 +9,4 @@ temp.txt
 app/cfg/test/checklines_test.go
 docker-compose.yml
 .devcontainer/
+Dockerfile
