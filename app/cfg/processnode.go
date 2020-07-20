@@ -14,13 +14,28 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
-func ConvertExprToZ3(ctx *z3.Context, expr ast.Expr, fset *token.FileSet) *z3.AST {
+func ConvertExprToZ3(ctx *z3.Context, expr ast.Node, fset *token.FileSet) *z3.AST {
 	if ctx == nil || expr == nil {
 		// fmt.Println("returning nil")
 		return nil
 	}
 	// fmt.Println("checking", expr, reflect.TypeOf(expr))
 	switch expr := expr.(type) {
+	case *ast.AssignStmt:
+		var e *z3.AST
+		for i, l := range expr.Lhs {
+			r := expr.Rhs[i]
+			lhs := ConvertExprToZ3(ctx, l, fset)
+			rhs := ConvertExprToZ3(ctx, r, fset)
+			if lhs != nil && rhs != nil {
+				if e == nil {
+					lhs.Eq(rhs)
+				} else {
+					e = e.And(lhs.Eq(rhs))
+				}
+			}
+		}
+		return e
 	case *ast.BasicLit:
 		switch expr.Kind {
 		case token.INT:
