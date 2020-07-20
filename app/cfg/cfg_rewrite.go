@@ -97,20 +97,19 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 		for _, node := range currWrapper.Block.Nodes {
 			//Increment counter for each object encountered
 			switch node := node.(type) {
-			case *ast.AssignStmt:
-				for _, l := range node.Lhs {
+			case *ast.AssignStmt, *ast.IncDecStmt:
+				artificial := RessignmentConversion(node)
+				for i, l := range artificial.Lhs {
 					if id, ok := l.(*ast.Ident); ok {
 						name := id.Name
+						ssaInts[name]--
+						SSAconversion(artificial.Rhs[i], ssaInts)
+						ssaInts[name]++
 						SSAconversion(l, ssaInts)
 						ssaInts[name]++
 					}
 				}
-			case *ast.IncDecStmt:
-				if id, ok := node.X.(*ast.Ident); ok {
-					name := id.Name
-					SSAconversion(id, ssaInts)
-					ssaInts[name]++
-				}
+				stmts = append(stmts, artificial)
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)
 			case ast.Expr:

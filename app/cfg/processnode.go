@@ -161,6 +161,86 @@ func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
 	})
 }
 
+// Converts shorthand assignment forms (or IncDec) to their
+// lengthier regular token.ASSIGN counterpart.
+//
+// Note: The identifier is copied because otherwise the
+// left and right hand side would always share the exact same
+// identifier which we would not want.
+func RessignmentConversion(node ast.Node) *ast.AssignStmt {
+	stmt := new(ast.AssignStmt)
+	stmt.Tok = token.ASSIGN
+
+	var tok token.Token
+
+	switch node := node.(type) {
+	case *ast.AssignStmt:
+		switch node.Tok {
+		case token.ADD_ASSIGN: // +=
+			tok = token.ADD
+		case token.SUB_ASSIGN: // -=
+			tok = token.SUB
+		case token.MUL_ASSIGN: // *=
+			tok = token.MUL
+		case token.QUO_ASSIGN: // /=
+			tok = token.SUB
+		case token.REM_ASSIGN: // %=
+			tok = token.REM
+		default:
+			return node
+		}
+
+		stmt.TokPos = node.TokPos
+		for i, l := range node.Lhs {
+			stmt.Lhs = append(stmt.Lhs, l)
+			var id *ast.Ident
+			if node, ok := l.(*ast.Ident); ok {
+				id = &ast.Ident{
+					Name:    node.Name,
+					NamePos: node.NamePos,
+					Obj:     node.Obj,
+				}
+			}
+			bin := &ast.BinaryExpr{
+				X:     id,
+				OpPos: node.TokPos,
+				Op:    tok,
+				Y:     node.Rhs[i],
+			}
+			stmt.Rhs = append(stmt.Rhs, bin)
+		}
+	case *ast.IncDecStmt:
+		switch node.Tok {
+		case token.INC: // ++
+			tok = token.ADD
+		case token.DEC: // --
+			tok = token.SUB
+		default:
+			return nil
+		}
+
+		stmt.TokPos = node.TokPos
+		stmt.Lhs = append(stmt.Lhs, node.X)
+		var id *ast.Ident
+		if node, ok := node.X.(*ast.Ident); ok {
+			id = &ast.Ident{
+				Name:    node.Name,
+				NamePos: node.NamePos,
+				Obj:     node.Obj,
+			}
+		}
+		bin := &ast.BinaryExpr{
+			X:     id,
+			OpPos: node.TokPos,
+			Op:    tok,
+			Y:     &ast.BasicLit{Value: "1", Kind: token.INT, ValuePos: node.TokPos},
+		}
+		stmt.Rhs = append(stmt.Rhs, bin)
+	}
+
+	return stmt
+}
+
 //Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
 func (b *BlockWrapper) GetCondition() ast.Node {
 	//Conditional block

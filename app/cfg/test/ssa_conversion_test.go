@@ -12,8 +12,7 @@ import (
 	"testing"
 )
 
-func TestExFile(t *testing.T) { //NOTE: missing some numbers before var names, missing displaying assignStmts/IncDecStmts?
-	fileName := "example.go"
+func testUtil(t *testing.T, fileName string) {
 	// file2 := "testunsafe.go"
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
@@ -59,5 +58,12 @@ func TestExFile(t *testing.T) { //NOTE: missing some numbers before var names, m
 		fmt.Println()
 		// t.Log(expr)
 	}
+}
 
+func TestExFile(t *testing.T) { //NOTE: missing some numbers before var names, missing displaying assignStmts/IncDecStmts?
+	testUtil(t, "example.go")
+}
+
+func TestReassignment(t *testing.T) {
+	testUtil(t, "example_reassignment.go")
 }
