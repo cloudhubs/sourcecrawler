@@ -12,7 +12,7 @@ import (
 	_"fmt"
 )
 
-func TestExFile(t *testing.T) {
+func TestExFile(t *testing.T) { //NOTE: missing some numbers before var names, missing displaying assignStmts/IncDecStmts?
 	fileName := "example.go"
 	// file2 := "testunsafe.go"
 	fset := token.NewFileSet()
