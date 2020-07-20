@@ -175,6 +175,20 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 
 	switch node := node.(type) {
 	case *ast.AssignStmt:
+		for _, r := range node.Rhs {
+			call := false
+			ast.Inspect(r, func(node ast.Node) bool {
+				if _, ok := node.(*ast.CallExpr); ok {
+					call = true
+					return false
+				}
+				return true
+			})
+			if call {
+				return nil
+			}
+		}
+
 		switch node.Tok {
 		case token.ADD_ASSIGN: // +=
 			tok = token.ADD

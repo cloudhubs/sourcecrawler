@@ -99,27 +99,29 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 			switch node := node.(type) {
 			case *ast.AssignStmt, *ast.IncDecStmt:
 				artificial := RessignmentConversion(node)
-				for i, l := range artificial.Lhs {
-					if id, ok := l.(*ast.Ident); ok {
-						name := id.Name
-						negative := true
-						if i, ok := ssaInts[name]; ok && i > -1 {
-							negative = false
-							ssaInts[name]--
-							// Delete the map entry since a 0 would get prepended to the ID
-							if ssaInts[name] == 0 {
-								delete(ssaInts, name)
+				if artificial != nil {
+					for i, l := range artificial.Lhs {
+						if id, ok := l.(*ast.Ident); ok {
+							name := id.Name
+							negative := true
+							if i, ok := ssaInts[name]; ok && i > -1 {
+								negative = false
+								ssaInts[name]--
+								// Delete the map entry since a 0 would get prepended to the ID
+								if ssaInts[name] == 0 {
+									delete(ssaInts, name)
+								}
 							}
-						}
-						SSAconversion(artificial.Rhs[i], ssaInts)
-						if !negative {
+							SSAconversion(artificial.Rhs[i], ssaInts)
+							if !negative {
+								ssaInts[name]++
+							}
+							SSAconversion(l, ssaInts)
 							ssaInts[name]++
 						}
-						SSAconversion(l, ssaInts)
-						ssaInts[name]++
 					}
+					stmts = append(stmts, artificial)
 				}
-				stmts = append(stmts, artificial)
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)
 			case ast.Expr:
