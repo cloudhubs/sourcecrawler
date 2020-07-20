@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"reflect"
 	"sourcecrawler/app/cfg"
+	cfg2 "sourcecrawler/app/cfg"
 	"testing"
 )
 
@@ -41,7 +42,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Nested Pointer",
 				Src:  src,
-				Vars: []string{"i"},
+				Vars: []string{"main.i"},
 			}
 		},
 		func() pointerTest {
@@ -59,7 +60,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Pass by value",
 				Src:  src,
-				Vars: []string{"x", "a"},
+				Vars: []string{"foo.x", "main.a"},
 			}
 		},
 		func() pointerTest {
@@ -80,7 +81,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Struct Attribute",
 				Src:  src,
-				Vars: []string{"a.Prop", "a"},
+				Vars: []string{"main.a.Prop", "main.a"},
 			}
 		},
 		func() pointerTest {
@@ -97,7 +98,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Local Function Arg",
 				Src:  src,
-				Vars: []string{"a"},
+				Vars: []string{"main.a"},
 			}
 		},
 		func() pointerTest {
@@ -114,7 +115,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Function Literal Arg",
 				Src:  src,
-				Vars: []string{"b"},
+				Vars: []string{},
 			}
 		},
 		func() pointerTest {
@@ -134,7 +135,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Package Function Arg",
 				Src:  src,
-				Vars: []string{},
+				Vars: []string{"main.b"},
 			}
 		},
 		func() pointerTest {
@@ -154,7 +155,7 @@ func TestPointerArgs(t *testing.T) {
 			return pointerTest{
 				Name: "Nested Function Arg",
 				Src:  src,
-				Vars: []string{"a"},
+				Vars: []string{"main.a"},
 			}
 		},
 	}
@@ -181,12 +182,13 @@ func TestPointerArgs(t *testing.T) {
 				cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 			}
 
-			condStmts := make(map[string]cfg.ExecutionLabel)
-			vars := make([]ast.Node, 0)
+			// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
+			// stmts := make([]ast.Node, 0)
 
+			path := cfg2.CreateNewPath()
 			leaves := cfg.GetLeafNodes(w)
 			for _, leaf := range leaves {
-				cfg.TraverseCFG(leaf, condStmts, vars, w, make(map[string]ast.Node))
+				path.TraverseCFG(leaf, w)
 			}
 			// if len(leaves) > 0 {
 			// 	cfg.TraverseCFG(leaves[0], condStmts, vars, w, make(map[string]ast.Node))
@@ -199,9 +201,8 @@ func TestPointerArgs(t *testing.T) {
 			// cfg.TraverseCFG(w, condStmts, vars, w)
 
 			// traverse(w)
-			path := cfg.PathInstance.GetExecPath()
 			t.Log(path)
-			for _, p := range path {
+			for _, p := range path.GetExecPath() {
 				for _, v := range p.Variables {
 					fmt.Println(v)
 				}

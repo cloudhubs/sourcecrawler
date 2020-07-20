@@ -34,22 +34,22 @@ func LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper) {
 
 				//If it is part of an if-then or if-else, it is labeled as may
 				if strings.Contains(wrap.Block.String(), "if.then") ||
-					strings.Contains(wrap.Block.String(), "if.else"){
+					strings.Contains(wrap.Block.String(), "if.else") {
 					wrap.SetLabel(May)
 				}
 
 				//If-done should always be a must
-				if strings.Contains(wrap.Block.String(), "if.done"){
+				if strings.Contains(wrap.Block.String(), "if.done") {
 					wrap.SetLabel(Must)
 				}
 
 				//Should only be true for the entry or top condition block
-				if wrap.GetCondition() != "" {
+				if wrap.GetCondition() != nil {
 					wrap.SetLabel(Must)
 				}
 
 				//If two parent, go up to top and label down
-				if len(wrap.GetParents()) == 2{
+				if len(wrap.GetParents()) == 2 {
 					wrapper = GetTopAndLabel(wrap, wrap)
 				}
 
@@ -60,7 +60,7 @@ func LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper) {
 					wrap.SetLabel(Must)
 				}
 			}
-		}else{
+		} else {
 			fmt.Println("Wrapper is already labeled", wrapper)
 		}
 
@@ -76,16 +76,15 @@ func LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper) {
 	}
 }
 
-
 //Helper function to get topmost node where conditionals connect
-func GetTopAndLabel(wrapper Wrapper, start Wrapper) Wrapper{
+func GetTopAndLabel(wrapper Wrapper, start Wrapper) Wrapper {
 
 	//Go up until a node with 2 children are found (top condition)
 	curr := wrapper
-	for len(curr.GetParents()) > 0 && len(curr.GetChildren()) != 2{
-		curr =  curr.GetParents()[0]
+	for len(curr.GetParents()) > 0 && len(curr.GetChildren()) != 2 {
+		curr = curr.GetParents()[0]
 
-		if len(curr.GetChildren()) == 2{
+		if len(curr.GetChildren()) == 2 {
 			break
 		}
 	}
@@ -97,20 +96,20 @@ func GetTopAndLabel(wrapper Wrapper, start Wrapper) Wrapper{
 }
 
 //Helper function used in GetTopAndLabel
-func LabelDown(curr Wrapper, start Wrapper){
+func LabelDown(curr Wrapper, start Wrapper) {
 
 	//If at bottom, return
-	if curr == start{
+	if curr == start {
 		curr.SetLabel(Must)
 		return
 	}
 
 	//Set label downward
-	for _, child := range curr.GetChildren(){
+	for _, child := range curr.GetChildren() {
 
 		//Type switch to get specific info
 		var currNodes = []ast.Node{}
-		switch currType := curr.(type){
+		switch currType := curr.(type) {
 		case *BlockWrapper:
 			currNodes = currType.Block.Nodes
 		}
@@ -128,10 +127,10 @@ func LabelDown(curr Wrapper, start Wrapper){
 }
 
 //Helper for checking if FnWrapper is a may/must (checks function with stack to see if it is relevant)
-func CheckFnStatus(wrapper *FnWrapper) bool{
+func CheckFnStatus(wrapper *FnWrapper) bool {
 	var isMust = false
 
-	switch funcNode := wrapper.Fn.(type){
+	switch funcNode := wrapper.Fn.(type) {
 	case *ast.FuncDecl:
 		//Check if function is in the stack trace
 		//for _, stkInfo := range stackInfo{
@@ -151,11 +150,11 @@ func CheckFnStatus(wrapper *FnWrapper) bool{
 
 //Helper function to check if a BlockWrapper contains a log
 func CheckLogStatus(nodes []ast.Node) bool {
-	for _, node := range nodes{
-		if n1, ok := node.(*ast.ExprStmt); ok{
-			if call, ok := n1.X.(*ast.CallExpr); ok{
-				if realSelector, ok := call.Fun.(*ast.SelectorExpr); ok{
-					if logsource.IsFromLog(realSelector){ //if any node in the block contains a log statement, exit early
+	for _, node := range nodes {
+		if n1, ok := node.(*ast.ExprStmt); ok {
+			if call, ok := n1.X.(*ast.CallExpr); ok {
+				if realSelector, ok := call.Fun.(*ast.SelectorExpr); ok {
+					if logsource.IsFromLog(realSelector) { //if any node in the block contains a log statement, exit early
 						return true
 					}
 				}

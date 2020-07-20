@@ -84,18 +84,20 @@ func TestExpressions(t *testing.T) {
 			//stmts := make(map[string]cfg2.ExecutionLabel)
 			//vars := make(map[ast.Node]cfg2.ExecutionLabel)
 			//vars := make(map[ast.Node]string)
-			stmts := make(map[string]cfg2.ExecutionLabel)
-			vars := []ast.Node{}
+			// stmts := make(map[ast.Node]cfg2.ExecutionLabel)
+			// vars := []ast.Node{}
+			// exprs := []ast.Node{}
+
+			path := cfg2.CreateNewPath()
 
 			//Start at end node
 			//var pathList cfg2.PathList
-			cfg2.TraverseCFG(end, stmts, vars, root, make(map[string]ast.Node))
+			path.TraverseCFG(end, root)
 
 			//Print created execution path
 			//filter := make(map[string]string)
 			fmt.Println("\n========================")
-			cfg2.PathInstance.PrintExecPath()
-			cfg2.PathInstance.PrintExpressions()
+			path.PrintExecPath()
 
 			return rewriteTestCase{
 				Name: "Test Expression to Z3",

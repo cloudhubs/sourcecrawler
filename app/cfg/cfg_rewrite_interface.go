@@ -9,6 +9,7 @@ import (
 
 //---- Branch Labels ----------
 type ExecutionLabel int
+
 const (
 	NoLabel ExecutionLabel = iota
 	Must
@@ -44,7 +45,7 @@ type FnWrapper struct {
 	Outer      Wrapper
 	// ...?
 
-	Label	ExecutionLabel
+	Label        ExecutionLabel
 	Fset         *token.FileSet
 	ASTs         []*ast.File
 	ParamsToArgs map[*ast.Object]ast.Expr
@@ -56,7 +57,7 @@ type BlockWrapper struct {
 	Parents []Wrapper
 	Succs   []Wrapper
 	Outer   Wrapper
-	Label	ExecutionLabel
+	Label   ExecutionLabel
 	//PathList PathList
 }
 
@@ -157,11 +158,11 @@ func (fn *FnWrapper) GetASTs() []*ast.File {
 //	return CreatePathList()
 //}
 
-func (fn *FnWrapper) GetLabel() ExecutionLabel{
+func (fn *FnWrapper) GetLabel() ExecutionLabel {
 	return fn.Label
 }
 
-func (fn *FnWrapper) SetLabel(label ExecutionLabel){
+func (fn *FnWrapper) SetLabel(label ExecutionLabel) {
 	fn.Label = label
 }
 
@@ -186,15 +187,13 @@ func (b *BlockWrapper) AddParent(w Wrapper) {
 }
 
 func (b *BlockWrapper) RemoveParent(w Wrapper) {
-	for i, p := range b.Parents {
-		if p == w {
-			if i < len(b.Parents)-1 {
-				b.Parents = append(b.Parents[:i], b.Parents[i+1:]...)
-			} else {
-				b.Parents = b.Parents[:i]
-			}
+	parents := []Wrapper{}
+	for _, p := range b.Parents {
+		if p != w {
+			parents = append(parents, p)
 		}
 	}
+	b.Parents = parents
 }
 
 func (b *BlockWrapper) GetParents() []Wrapper {
@@ -202,20 +201,27 @@ func (b *BlockWrapper) GetParents() []Wrapper {
 }
 
 func (b *BlockWrapper) RemoveChild(w Wrapper) {
-	for i, c := range b.Succs {
-		if c == w {
-			if i < len(b.Succs)-1 {
-				b.Succs = append(b.Succs[:i], b.Succs[i+1:]...)
-			} else {
-				b.Succs = b.Succs[:i]
-			}
+	successors := []Wrapper{}
+	for _, succ := range b.Succs {
+		if succ != w {
+			successors = append(successors, succ)
 		}
 	}
+	b.Succs = successors
 }
 
 func (b *BlockWrapper) AddChild(w Wrapper) {
 	if w != nil {
-		b.Succs = append(b.Succs, w)
+		found := false
+		for _, succ := range b.Succs {
+			if w == succ {
+				found = true
+				break
+			}
+		}
+		if !found {
+			b.Succs = append(b.Succs, w)
+		}
 	}
 }
 
@@ -230,7 +236,6 @@ func (b *BlockWrapper) GetOuterWrapper() Wrapper {
 func (b *BlockWrapper) SetOuterWrapper(w Wrapper) {
 	b.Outer = w
 }
-
 
 func (b *BlockWrapper) GetFileSet() *token.FileSet {
 	if b.Outer != nil {
@@ -260,10 +265,10 @@ func (b *BlockWrapper) GetASTs() []*ast.File {
 //	return CreatePathList()
 //}
 
-func (b *BlockWrapper) GetLabel() ExecutionLabel{
+func (b *BlockWrapper) GetLabel() ExecutionLabel {
 	return b.Label
 }
 
-func (b *BlockWrapper) SetLabel(label ExecutionLabel){
+func (b *BlockWrapper) SetLabel(label ExecutionLabel) {
 	b.Label = label
 }

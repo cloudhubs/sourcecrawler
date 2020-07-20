@@ -7,20 +7,22 @@ import (
 
 // ---- Represents a possible execution path --------
 type Path struct {
-	Stmts     map[string]ExecutionLabel
-	Variables []ast.Node
+	Stmts       map[ast.Node]ExecutionLabel
+	Expressions []ast.Node
+	Variables   []ast.Node
 	//Variables map[ast.Node]string //*ast.AssignStmt or *ast.ValueSpec
 	//Stmts []string
 }
 
 //List of paths
 type PathList struct {
-	Paths       []Path
-	Expressions map[ast.Node]string //Temporary, may be subject to change
+	Paths []Path
+	// Expressions map[ast.Node]string //Temporary, may be subject to change
+	SsaInts map[string]int
 }
 
 //Singleton instance
-var PathInstance *PathList = nil
+// var PathInstance *PathList = nil
 
 //Adds a path to the list
 func (p *PathList) AddNewPath(path Path) {
@@ -30,12 +32,10 @@ func (p *PathList) AddNewPath(path Path) {
 
 //Instantiates a new instance of a path list
 func CreateNewPath() *PathList {
-	if PathInstance == nil {
-		PathInstance = new(PathList)
-		PathInstance.Expressions = make(map[ast.Node]string)
-		PathInstance.Paths = make([]Path, 0)
+	return &PathList{
+		Paths:   make([]Path, 0),
+		SsaInts: make(map[string]int),
 	}
-	return PathInstance
 }
 
 //Resets and clears out paths in the list
@@ -68,18 +68,4 @@ func (p *PathList) PrintExecPath() {
 		}
 
 	}
-}
-
-//Debug print expressions
-func (p *PathList) PrintExpressions() {
-	if len(p.Expressions) == 0 {
-		fmt.Println("Empty list of expressions")
-		return
-	}
-
-	fmt.Print("PathList Expressions: ")
-	for _, val := range p.Expressions {
-		fmt.Print(val, " | ")
-	}
-	fmt.Println()
 }
