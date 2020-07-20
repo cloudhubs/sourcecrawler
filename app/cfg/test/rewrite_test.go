@@ -250,9 +250,10 @@ func TestRegexFromBlock(t *testing.T) {
 			fmt.Println(testCFG.Format(fset))
 
 			//condStmts := []string{}
-			condStmts := make(map[ast.Node]cfg2.ExecutionLabel)
+			// condStmts := make(map[ast.Node]cfg2.ExecutionLabel)
 			//varNodes := make(map[ast.Node]string)
-			varNodes := []ast.Node{}
+			// varNodes := []ast.Node{}
+			expressionStmts := []ast.Node{}
 
 			rootWrapper := &cfg2.BlockWrapper{ //block 0
 				Block:   testCFG.Blocks[0],
@@ -292,7 +293,7 @@ func TestRegexFromBlock(t *testing.T) {
 			}
 			path := cfg2.CreateNewPath()
 			//Test on simple case
-			path.TraverseCFG(exceptionWrapper, condStmts, varNodes, rootWrapper, make(map[string]ast.Node))
+			path.TraverseCFG(exceptionWrapper, expressionStmts, rootWrapper, make(map[string]ast.Node))
 			fmt.Println("Execution path after", path.GetExecPath())
 
 			//for _, value := range cfg2.GetExecPath(){
@@ -300,7 +301,7 @@ func TestRegexFromBlock(t *testing.T) {
 			//}
 
 			//Test on function wrapper
-			path.TraverseCFG(funcWrapper, condStmts, varNodes, rootWrapper, make(map[string]ast.Node))
+			path.TraverseCFG(funcWrapper, expressionStmts, rootWrapper, make(map[string]ast.Node))
 
 			return addingTestCase{
 				Name: "TraverseCFG",

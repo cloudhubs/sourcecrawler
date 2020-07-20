@@ -152,7 +152,7 @@ func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
 		switch node := node.(type) {
 		case *ast.Ident:
 			if i, ok := ssaInts[node.Name]; ok {
-				node.Name = fmt.Sprint(i, node.Name)			
+				node.Name = fmt.Sprint(i, node.Name)
 			}
 		}
 		return true
@@ -170,28 +170,6 @@ func (b *BlockWrapper) GetCondition() ast.Node {
 	return nil
 }
 
-//Process the AST node to extract function literals (can be called in traverse or parse time)
-func GetFuncLits(node ast.Node) {
-	varMap := make(map[string]string) //switch to map[variable]variable later
-	fmt.Println(varMap)
-
-	ast.Inspect(node, func(currNode ast.Node) bool {
-		if callNode, ok := node.(*ast.CallExpr); ok {
-			for _, expr := range callNode.Args {
-				switch fnLit := expr.(type) {
-				case *ast.FuncLit:
-					fmt.Printf("func lit type %s, lit body %s", fnLit.Type, fnLit.Body)
-				case *ast.Ident:
-					fmt.Println("Ident", fnLit.Name, fnLit.Obj)
-				}
-			}
-		}
-
-		return true
-	})
-
-}
-
 //Gets all the variables within a block -
 func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 	varList := []ast.Node{}
@@ -201,27 +179,17 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 	case *BlockWrapper:
 		//Process all nodes in a block for possible variables
 		for _, node := range curr.Block.Nodes {
-			// fmt.Println("hm", reflect.TypeOf(node))
-			ast.Inspect(node, func(currNode ast.Node) bool {
-				// fmt.Println("hm2", reflect.TypeOf(node))
+			//If a node is an assignStmt or ValueSpec, it should most likely be a variable
+			//Gets variable name
+			name, node := GetVar(curr, node)
 
-				//If a node is an assignStmt or ValueSpec, it should most likely be a variable
-				switch node := node.(type) {
-				case *ast.ValueSpec, *ast.AssignStmt, *ast.IncDecStmt, *ast.Ident: //*ast.ExprStmt,
-					//Gets variable name
-					name, node := GetVar(curr, node)
-
-					//filter out duplicates
-					_, ok := filter[name]
-					if ok && name != "" {
-						//fmt.Println(name, " is already in the list")
-					} else {
-						filter[name] = node
-					}
-
-				}
-				return true
-			})
+			//filter out duplicates
+			_, ok := filter[name]
+			if ok && name != "" {
+				// name is already in the list
+			} else {
+				filter[name] = node
+			}
 		}
 
 		//Convert into list of variable nodes
@@ -235,7 +203,81 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 	return varList
 }
 
-//Processes function node information (still needs to track variables per function)
+//Helper function to get var name (handles both assign and declaration vars)
+func GetVar(curr Wrapper, node ast.Node) (string, ast.Node) {
+	var name string = ""
+
+	// fmt.Println("var", node, reflect.TypeOf(node))
+
+	switch n := node.(type) {
+	case *ast.AssignStmt:
+		if len(n.Lhs) > 0 {
+			name, node = GetPointedName(curr, n.Lhs[0])
+
+			name = name + " " + n.Tok.String() + " " + fmt.Sprint(n.Rhs[0])
+			// fmt.Println("new name", name)
+			// name = fmt.Sprint(node.Lhs[0])
+		}
+
+		//for _, lhsExpr := range node.Lhs {
+		//	switch expr := lhsExpr.(type) {
+		//	case *ast.SelectorExpr:
+		//		if expr.Sel.Name != "" {
+		//			name = expr.Sel.Name
+		//		}
+		//	}
+		//}
+	case *ast.ValueSpec:
+		//Set variable name
+		if len(n.Names) > 0 {
+			if _, ok := n.Type.(*ast.StarExpr); ok {
+				name, node = GetPointedName(curr, n.Names[0])
+			} else {
+				name = n.Names[0].Name
+			}
+		}
+	case *ast.IncDecStmt:
+		name, node = GetPointedName(curr, n.X)
+	// case *ast.ExprStmt:
+	// name, node = GetVar(curr, n.X)
+	case *ast.Ident:
+		name, node = GetPointedName(curr, n)
+	}
+
+	return name, node
+}
+
+//Get name pointed to by the expr node
+func GetPointedName(curr Wrapper, node ast.Expr) (string, ast.Node) {
+
+	if outer, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
+		switch expr := node.(type) {
+		case *ast.SelectorExpr:
+			lhs, _ := GetPointedName(outer, expr.X)
+			rhs, _ := GetPointedName(outer, expr.Sel)
+			return fmt.Sprintf("%v.%v", lhs, rhs), node
+		case *ast.StarExpr:
+			return GetPointedName(outer, expr.X)
+		case *ast.Ident:
+			if expr.Obj != nil {
+				if field, ok := expr.Obj.Decl.(*ast.Field); ok {
+					// Check if the variable should return the name it points to or
+					// otherwise, return the current node's string
+					switch field.Type.(type) {
+					case *ast.StarExpr, *ast.FuncType, *ast.StructType:
+						if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
+							return GetPointedName(outer, v)
+						}
+					}
+				}
+
+			}
+		}
+	}
+	return fmt.Sprint(node), node
+}
+
+//Processes function node information
 func GetFuncInfo(curr Wrapper, node ast.Node) (string, map[string]ast.Node) {
 
 	funcName := ""
@@ -285,34 +327,6 @@ func GetFuncInfo(curr Wrapper, node ast.Node) (string, map[string]ast.Node) {
 	})
 
 	return funcName, funcVars
-}
-
-//Extract logging statements from a cfg block
-func ExtractLogRegex(block *cfg.Block) (regexes []string) {
-
-	//For each node inside the block, check if it contains logging stmts
-	for _, currNode := range block.Nodes {
-		ast.Inspect(currNode, func(node ast.Node) bool {
-			if call, ok := node.(*ast.CallExpr); ok {
-				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-					if logsource.IsFromLog(sel) {
-						//get log regex from the node
-						for _, arg := range call.Args {
-							switch logNode := arg.(type) {
-							case *ast.BasicLit:
-								regexStr := logsource.CreateRegex(logNode.Value)
-								regexes = append(regexes, regexStr)
-							}
-							//Currently an runtime bug with catching Msgf ->
-						}
-					}
-				}
-			}
-			return true
-		})
-	}
-
-	return regexes
 }
 
 //Expression String
@@ -419,74 +433,6 @@ func GetExprStr(expr ast.Expr) string {
 	return ""
 }
 
-//Get name pointed to by the expr node
-func GetPointedName(curr Wrapper, node ast.Expr) (string, ast.Node) {
-
-	if outer, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
-		switch expr := node.(type) {
-		case *ast.SelectorExpr:
-			lhs, _ := GetPointedName(outer, expr.X)
-			rhs, _ := GetPointedName(outer, expr.Sel)
-			return fmt.Sprintf("%v.%v", lhs, rhs), node
-		case *ast.StarExpr:
-			return GetPointedName(outer, expr.X)
-		case *ast.Ident:
-			if expr.Obj != nil {
-				if field, ok := expr.Obj.Decl.(*ast.Field); ok {
-					// Check if the variable should return the name it points to or
-					// otherwise, return the current node's string
-					switch field.Type.(type) {
-					case *ast.StarExpr, *ast.FuncType, *ast.StructType:
-						if v, ok := outer.ParamsToArgs[expr.Obj]; ok {
-							return GetPointedName(outer, v)
-						}
-					}
-				}
-
-			}
-		}
-	}
-	return fmt.Sprint(node), node
-}
-
-//Helper function to get var name (handles both assign and declaration vars)
-func GetVar(curr Wrapper, node ast.Node) (string, ast.Node) {
-	var name string = ""
-
-	// fmt.Println("var", node, reflect.TypeOf(node))
-
-	switch n := node.(type) {
-	case *ast.AssignStmt:
-		if len(n.Lhs) > 0 {
-			name, node = GetPointedName(curr, n.Lhs[0])
-			// name = fmt.Sprint(node.Lhs[0])
-		}
-		//for _, lhsExpr := range node.Lhs {
-		//	switch expr := lhsExpr.(type) {
-		//	case *ast.SelectorExpr:
-		//		if expr.Sel.Name != "" {
-		//			name = expr.Sel.Name
-		//		}
-		//	}
-		//}
-	case *ast.ValueSpec:
-		//Set variable name
-		if len(n.Names) > 0 {
-			if _, ok := n.Type.(*ast.StarExpr); ok {
-				name, node = GetPointedName(curr, n.Names[0])
-			} else {
-				name = n.Names[0].Name
-			}
-		}
-	case *ast.IncDecStmt:
-		name, node = GetPointedName(curr, n.X)
-	case *ast.ExprStmt:
-		name, node = GetVar(curr, n.X)
-	}
-
-	return name, node
-}
-
 func GetVarExpr(curr Wrapper, assignNode *ast.AssignStmt) string {
 
 	var exprValue string
@@ -566,4 +512,32 @@ func GetVarExpr(curr Wrapper, assignNode *ast.AssignStmt) string {
 	}
 
 	return exprValue
+}
+
+//Extract logging statements from a cfg block
+func ExtractLogRegex(block *cfg.Block) (regexes []string) {
+
+	//For each node inside the block, check if it contains logging stmts
+	for _, currNode := range block.Nodes {
+		ast.Inspect(currNode, func(node ast.Node) bool {
+			if call, ok := node.(*ast.CallExpr); ok {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+					if logsource.IsFromLog(sel) {
+						//get log regex from the node
+						for _, arg := range call.Args {
+							switch logNode := arg.(type) {
+							case *ast.BasicLit:
+								regexStr := logsource.CreateRegex(logNode.Value)
+								regexes = append(regexes, regexStr)
+							}
+							//Currently an runtime bug with catching Msgf ->
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+
+	return regexes
 }

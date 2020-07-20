@@ -187,15 +187,13 @@ func (b *BlockWrapper) AddParent(w Wrapper) {
 }
 
 func (b *BlockWrapper) RemoveParent(w Wrapper) {
-	for i, p := range b.Parents {
-		if p == w {
-			if i < len(b.Parents)-1 {
-				b.Parents = append(b.Parents[:i], b.Parents[i+1:]...)
-			} else {
-				b.Parents = b.Parents[:i]
-			}
+	parents := []Wrapper{}
+	for _, p := range b.Parents {
+		if p != w {
+			parents = append(parents, p)
 		}
 	}
+	b.Parents = parents
 }
 
 func (b *BlockWrapper) GetParents() []Wrapper {
@@ -203,20 +201,27 @@ func (b *BlockWrapper) GetParents() []Wrapper {
 }
 
 func (b *BlockWrapper) RemoveChild(w Wrapper) {
-	for i, c := range b.Succs {
-		if c == w {
-			if i < len(b.Succs)-1 {
-				b.Succs = append(b.Succs[:i], b.Succs[i+1:]...)
-			} else {
-				b.Succs = b.Succs[:i]
-			}
+	successors := []Wrapper{}
+	for _, succ := range b.Succs {
+		if succ != w {
+			successors = append(successors, succ)
 		}
 	}
+	b.Succs = successors
 }
 
 func (b *BlockWrapper) AddChild(w Wrapper) {
 	if w != nil {
-		b.Succs = append(b.Succs, w)
+		found := false
+		for _, succ := range b.Succs {
+			if w == succ {
+				found = true
+				break
+			}
+		}
+		if !found {
+			b.Succs = append(b.Succs, w)
+		}
 	}
 }
 

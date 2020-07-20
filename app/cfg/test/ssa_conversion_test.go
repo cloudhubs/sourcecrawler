@@ -4,17 +4,19 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
-	// "go/printer"
+	"go/printer"
 	"go/token"
-	// "os"
+	"os"
 	"sourcecrawler/app/cfg"
 	"testing"
 	_"fmt"
 )
 
 func TestExFile(t *testing.T) {
+	fileName := "example.go"
+	// file2 := "testunsafe.go"
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "example.go", nil, parser.ParseComments)
+	f, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
 	if err != nil {
 		t.Error(err)
 		return
@@ -36,19 +38,25 @@ func TestExFile(t *testing.T) {
 		cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 	}
 
-	condStmts := make(map[ast.Node]cfg.ExecutionLabel)
-	vars := make([]ast.Node, 0)
+	// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
+	// vars := make([]ast.Node, 0)
+	exprs := make([]ast.Node, 0)
 
-	path := cfg.CreateNewPath()
+	paths := cfg.CreateNewPath()
 	leaves := cfg.GetLeafNodes(w)
 	for _, leaf := range leaves {
-		path.TraverseCFG(leaf, condStmts, vars, w, make(map[string]ast.Node))
+		paths.TraverseCFG(leaf, exprs, w, make(map[string]ast.Node))
 	}
 
-	
-	for _, expr := range path.Expressions {
-		fmt.Println(expr)
-		// printer.Fprint(os.Stdout, fset, expr)
+	cnt := 1
+	for _, path := range paths.Paths {
+		fmt.Println("---------- PATH", cnt, " -------------")
+		cnt++
+		for _, expr := range path.Expressions {
+			printer.Fprint(os.Stdout, fset, expr)
+			fmt.Println()
+		}
+		fmt.Println()
 		// t.Log(expr)
 	}
 
