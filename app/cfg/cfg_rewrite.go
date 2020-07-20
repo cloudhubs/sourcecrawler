@@ -102,7 +102,9 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 				for i, l := range artificial.Lhs {
 					if id, ok := l.(*ast.Ident); ok {
 						name := id.Name
-						ssaInts[name]--
+						if i, ok := ssaInts[name]; ok && i > -1 {
+							ssaInts[name]--
+						}
 						SSAconversion(artificial.Rhs[i], ssaInts)
 						ssaInts[name]++
 						SSAconversion(l, ssaInts)
