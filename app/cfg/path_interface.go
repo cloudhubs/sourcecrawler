@@ -18,7 +18,7 @@ type Path struct {
 type PathList struct {
 	Paths []Path
 	// Expressions map[ast.Node]string //Temporary, may be subject to change
-	SsaInts map[*ast.Object]int
+	SsaInts map[string]int
 }
 
 //Singleton instance
@@ -34,7 +34,7 @@ func (p *PathList) AddNewPath(path Path) {
 func CreateNewPath() *PathList {
 	return &PathList{
 		Paths:   make([]Path, 0),
-		SsaInts: make(map[*ast.Object]int),
+		SsaInts: make(map[string]int),
 	}
 }
 

@@ -2,6 +2,7 @@ package test
 
 import (
 	"fmt"
+	_ "fmt"
 	"go/ast"
 	"go/parser"
 	"go/printer"
@@ -9,7 +10,6 @@ import (
 	"os"
 	"sourcecrawler/app/cfg"
 	"testing"
-	_"fmt"
 )
 
 func TestExFile(t *testing.T) { //NOTE: missing some numbers before var names, missing displaying assignStmts/IncDecStmts?
@@ -40,12 +40,12 @@ func TestExFile(t *testing.T) { //NOTE: missing some numbers before var names, m
 
 	// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
 	// vars := make([]ast.Node, 0)
-	exprs := make([]ast.Node, 0)
+	// var exprs []ast.Node
 
 	paths := cfg.CreateNewPath()
 	leaves := cfg.GetLeafNodes(w)
 	for _, leaf := range leaves {
-		paths.TraverseCFG(leaf, exprs, w, make(map[string]ast.Node))
+		paths.TraverseCFG(leaf, w)
 	}
 
 	cnt := 1

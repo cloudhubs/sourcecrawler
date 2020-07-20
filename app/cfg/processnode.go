@@ -152,7 +152,9 @@ func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
 		switch node := node.(type) {
 		case *ast.Ident:
 			if i, ok := ssaInts[node.Name]; ok {
-				node.Name = fmt.Sprint(i, node.Name)
+				if !strings.Contains("0123456789", string(node.Name[0])) {
+					node.Name = fmt.Sprint(i, node.Name)
+				}
 			}
 		}
 		return true

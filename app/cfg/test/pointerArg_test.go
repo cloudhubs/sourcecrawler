@@ -183,12 +183,12 @@ func TestPointerArgs(t *testing.T) {
 			}
 
 			// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
-			stmts := make([]ast.Node, 0)
+			// stmts := make([]ast.Node, 0)
 
 			path := cfg2.CreateNewPath()
 			leaves := cfg.GetLeafNodes(w)
 			for _, leaf := range leaves {
-				path.TraverseCFG(leaf, stmts, w, make(map[string]ast.Node))
+				path.TraverseCFG(leaf, w)
 			}
 			// if len(leaves) > 0 {
 			// 	cfg.TraverseCFG(leaves[0], condStmts, vars, w, make(map[string]ast.Node))

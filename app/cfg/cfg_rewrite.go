@@ -15,9 +15,15 @@ import (
 
 // ------------------ Logical Methods ------------------
 
+func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
+
+	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node))
+	return paths.Paths
+}
+
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func (paths *PathList) TraverseCFG(curr Wrapper /* condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, */, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
+func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, , ,,*/, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -32,7 +38,6 @@ func (paths *PathList) TraverseCFG(curr Wrapper /* condStmts map[ast.Node]Execut
 		// -Filter out relevant variables
 
 		//SSA -> map of variable names to count
-		ssaInts := make(map[string]int)
 
 		if len(currWrapper.Succs) == 2 {
 			ast.Inspect(currWrapper.Block.Nodes[len(currWrapper.Block.Nodes)-1], func(node ast.Node) bool {
@@ -60,7 +65,12 @@ func (paths *PathList) TraverseCFG(curr Wrapper /* condStmts map[ast.Node]Execut
 		}
 
 		for _, node := range currWrapper.Block.Nodes {
-			if node, ok := node.(*ast.AssignStmt); ok {
+			good := false
+			switch node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt:
+				good = true
+			}
+			if good {
 				ast.Inspect(node, func(node ast.Node) bool {
 					switch node := node.(type) {
 					case *ast.Ident:
@@ -90,12 +100,16 @@ func (paths *PathList) TraverseCFG(curr Wrapper /* condStmts map[ast.Node]Execut
 			case *ast.AssignStmt:
 				for _, l := range node.Lhs {
 					if id, ok := l.(*ast.Ident); ok {
-						ssaInts[id.Name]++
+						name := id.Name
+						SSAconversion(l, ssaInts)
+						ssaInts[name]++
 					}
 				}
 			case *ast.IncDecStmt:
 				if id, ok := node.X.(*ast.Ident); ok {
-					ssaInts[id.Name]++
+					name := id.Name
+					SSAconversion(id, ssaInts)
+					ssaInts[name]++
 				}
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)
@@ -128,9 +142,7 @@ func (paths *PathList) TraverseCFG(curr Wrapper /* condStmts map[ast.Node]Execut
 		if condition != nil {
 			ast.Inspect(condition, func(node ast.Node) bool {
 				if node, ok := node.(*ast.Ident); ok {
-					if _, ok := ssaInts[node.Name]; ok {
-						node.Name = fmt.Sprint(ssaInts[node.Name], node.Name)
-					}
+					SSAconversion(node, ssaInts)
 				}
 				return true
 			})
@@ -154,15 +166,16 @@ func (paths *PathList) TraverseCFG(curr Wrapper /* condStmts map[ast.Node]Execut
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			paths.TraverseCFG(parent, stmts, root, varFilter)
+			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter)
 		}
 	} else {
 
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
+		// fmt.Println("hello", stmts)
 		paths.AddNewPath(Path{Expressions: stmts})
-		// executionPath = append(executionPath, Path{Stmts: condStmts, Variables: vars}) //If at root node, then add path
 	}
+
 }
 
 //The value returned should be the topmost wrapper
@@ -569,7 +582,7 @@ func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr
 			if n, ok := n.(*ast.FuncDecl); ok {
 				//TODO: double-check this is the proper conversion
 				if ident, ok := node.Fun.(*ast.Ident); ok {
-					if strings.EqualFold(ident.Name, n.Name.Name){
+					if strings.EqualFold(ident.Name, n.Name.Name) {
 						fn = n
 						//stop when you find it
 						stop = true

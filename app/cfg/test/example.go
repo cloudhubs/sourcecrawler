@@ -37,3 +37,11 @@ func bar(x, y int) int {
 	}
 	return x
 }
+
+// func simple() {
+// 	x := 0
+// 	x *= 10
+// 	x /= 200
+// 	x %= 2
+// 	x += 3
+// }

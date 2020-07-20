@@ -86,13 +86,13 @@ func TestExpressions(t *testing.T) {
 			//vars := make(map[ast.Node]string)
 			// stmts := make(map[ast.Node]cfg2.ExecutionLabel)
 			// vars := []ast.Node{}
-			exprs := []ast.Node{}
+			// exprs := []ast.Node{}
 
 			path := cfg2.CreateNewPath()
 
 			//Start at end node
 			//var pathList cfg2.PathList
-			path.TraverseCFG(end, exprs, root, make(map[string]ast.Node))
+			path.TraverseCFG(end, root)
 
 			//Print created execution path
 			//filter := make(map[string]string)
