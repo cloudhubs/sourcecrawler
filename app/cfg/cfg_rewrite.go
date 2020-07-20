@@ -106,6 +106,10 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 						if i, ok := ssaInts[name]; ok && i > -1 {
 							negative = false
 							ssaInts[name]--
+							// Delete the map entry since a 0 would get prepended to the ID
+							if ssaInts[name] == 0 {
+								delete(ssaInts, name)
+							}
 						}
 						SSAconversion(artificial.Rhs[i], ssaInts)
 						if !negative {
