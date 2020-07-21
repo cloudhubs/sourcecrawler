@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bufio"
 	"fmt"
 	_ "fmt"
 	"go/ast"
@@ -9,12 +10,16 @@ import (
 	"go/token"
 	"os"
 	"sourcecrawler/app/cfg"
-	"sourcecrawler/app/model"
+	"sourcecrawler/app/helper"
 	"testing"
 )
 
 //Test labeling with log matching + stack trace
 func testLabel(t *testing.T, fileName string) {
+
+	projectRoot := "../../../../sourcecrawler"
+	traceFile := "../../../stackTrace.log"
+
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
 	if err != nil {
@@ -39,31 +44,32 @@ func testLabel(t *testing.T, fileName string) {
 		cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 	}
 
-	//Test log type
-	logTypes := []model.LogType{
-		{
-			LineNumber: 13,
-			FilePath:   "simple.go",
-			Regex:      "Logging msg",
-		},
-		{
-			LineNumber: 50,
-			FilePath: "test.go",
-			Regex: "Number %d here",
-		},
+	//Sample stack trace
+	stkTrcFile, err := os.Open(traceFile)
+	if err != nil {
+		fmt.Println("Bad stack trace file")
 	}
+	scanner := bufio.NewScanner(stkTrcFile)
+	messageString := ""
+	for scanner.Scan() {
+		messageString += scanner.Text() + "\n"
+	}
+	// fmt.Println("Message", messageString)
+	stackInfo := helper.ParsePanic(projectRoot, messageString)
 
+	//Sample logs
+	logTypes := helper.ParseProject(projectRoot)
 
-	//Gather expressions for paths
+	//Once expanded, label all the blocks, then in traverse gather all the expressions
 	paths := cfg.CreateNewPath()
 	leaves := cfg.GetLeafNodes(w)
 	for _, leaf := range leaves {
-		paths.LabelCFG(leaf, logTypes, w) //Label each block with executionLabel (TraverseCFG can be updated to map each stmt to a label)
-		paths.TraverseCFG(leaf, w)
+		paths.LabelCFG(leaf, logTypes, w, stackInfo) //Label each block with executionLabel (TraverseCFG can be updated to map each stmt to a label)
+		paths.TraverseCFG(leaf, w)                   //Gather expressions for paths
 	}
 
 	//Test print labels
-	PrintLabels(w)
+	// PrintLabels(w)
 
 	cnt := 1
 	for _, path := range paths.Paths {
@@ -75,6 +81,13 @@ func testLabel(t *testing.T, fileName string) {
 		}
 		fmt.Println()
 		// t.Log(expr)
+
+		for pthNode, execLabel := range path.Stmts {
+			fmt.Println("==============Conditional labels==============")
+			fmt.Print(execLabel, " ---- ")
+			printer.Fprint(os.Stdout, fset, pthNode)
+			fmt.Println()
+		}
 	}
 }
 
@@ -82,17 +95,17 @@ func TestLabelFile(t *testing.T) {
 	testLabel(t, "simple.go")
 }
 
-func PrintLabels(curr cfg.Wrapper){
+func PrintLabels(curr cfg.Wrapper) {
 
-	if curr == nil{
+	if curr == nil {
 		return
 	}
 
 	switch wrap := curr.(type) {
 	case *cfg.FnWrapper:
-		fmt.Println(wrap, " | ", wrap.Label)
+		fmt.Println(wrap)
 	case *cfg.BlockWrapper:
-		fmt.Println(wrap, " | ", wrap.Label)
+		fmt.Println(wrap)
 	}
 
 	if len(curr.GetChildren()) == 0 {

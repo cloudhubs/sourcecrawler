@@ -18,6 +18,7 @@ type PathList struct {
 	Paths []Path
 	SsaInts map[string]int
 	Regexes		[]string		//List of all regex strings in the paths
+	//StkTrcInfo	[]handler.StackTraceStruct
 }
 
 //Adds a path to the list

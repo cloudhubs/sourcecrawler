@@ -1,4 +1,4 @@
-package handler
+package helper
 
 import (
 	"fmt"
@@ -6,12 +6,9 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
-	"sourcecrawler/app/cfg"
 	"sourcecrawler/app/db"
-	"sourcecrawler/app/helper"
 	"sourcecrawler/app/logsource"
 	"sourcecrawler/app/model"
-	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -64,13 +61,13 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 }
 
 //Parse project to create log types
-func parseProject(projectRoot string) []model.LogType {
+func ParseProject(projectRoot string) []model.LogType {
 
 	//Holds a slice of log types
 	logTypes := []model.LogType{}
 	variableDeclarations := varDecls{}
 	variablesUsedInLogs := map[string]struct{}{}
-	filesToParse := helper.GatherGoFiles(projectRoot)
+	filesToParse := GatherGoFiles(projectRoot)
 
 	//parse each file to collect logs and the variables used in them
 	//as well as collecting variables declared in the file for later use
@@ -150,149 +147,6 @@ func parseProject(projectRoot string) []model.LogType {
 	// //printErrorList(errorList)
 
 	return logTypes
-}
-
-//Helper function to find origin of function (not used but may need later)
-func findFuncOrigin(name string, funcDecList []fdeclStruct) {
-	for _, value := range funcDecList {
-		if name == value.fd.Name.Name {
-			fmt.Println(name, value.filePath, value.lineNum)
-		}
-	}
-}
-
-//Struct for quick access to the function declaration nodes
-type fdeclStruct struct {
-	node     ast.Node
-	fd       *ast.FuncDecl
-	filePath string
-	lineNum  string
-	Name     string
-}
-
-/*
- Determines if a function is called somewhere else based on its name (path and line number)
-  -currently goes through all files and finds if it's used
-*/
-func functionDeclsMap(filesToParse []string) map[string][]string {
-
-	//Map of all function names with a [line number, file path]
-	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
-	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
-	functMap := map[string][]string{}
-	functCalls := []fdeclStruct{}
-
-	//Inspect each file for calls to this function
-	for _, file := range filesToParse {
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, file, nil, 0)
-		if err != nil {
-			log.Error().Err(err).Msg("Error parsing file " + file)
-		}
-
-		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
-		//packageName := node.Name.Name + ":"
-
-		//Inspect AST for explicit function declarations
-		ast.Inspect(node, func(currNode ast.Node) bool {
-			fdNode, ok := currNode.(*ast.FuncDecl)
-			if ok {
-				//package name is appended to separate diff functions across packages
-				functionName := fdNode.Name.Name
-				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
-				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
-
-				//Add the data to the function list
-				data := []string{linePos, fpath}
-				functMap[functionName] = data
-
-				//Add astNode and the FuncDecl node to the function calls
-				functCalls = append(functCalls, fdeclStruct{
-					currNode,
-					fdNode,
-					fpath,
-					linePos,
-					functionName,
-				})
-			}
-			return true
-		})
-
-		//Inspect the AST Call Expressions (where they call a function)
-		//ast.Inspect(node, func(currNode ast.Node) bool {
-		//	callExprNode, ok := currNode.(*ast.CallExpr)
-		//	if ok {
-		//		//Filter single function calls such as parseMsg(msg.Value)
-		//		//functionName := packageName + fmt.Sprint(callExprNode.Fun)
-		//		functionName := packageName
-		//		if _, found := functMap[functionName]; found {
-		//			//fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
-		//			//fmt.Println("")
-		//		}
-		//	}
-		//	return true
-		//})
-	}
-
-	return functMap
-}
-
-/*
- Determines if a function is called somewhere else based on its name (path and line number)
-  -currently goes through all files and finds if it's used
-*/
-func findFunctionNodes(filesToParse []string) []fdeclStruct {
-
-	//Map of all function names with a [line number, file path]
-	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
-	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
-	functCalls := []fdeclStruct{}
-
-	//Inspect each file for calls to this function
-	for _, file := range filesToParse {
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, file, nil, 0)
-		if err != nil {
-			log.Error().Err(err).Msg("Error parsing file " + file)
-		}
-
-		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
-		//packageName := node.Name.Name + ":"
-
-		//Inspect AST for explicit function declarations
-		ast.Inspect(node, func(currNode ast.Node) bool {
-			fdNode, ok := currNode.(*ast.FuncDecl)
-			if ok {
-				//package name is appended to separate diff functions across packages
-				functionName := fdNode.Name.Name
-				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
-				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
-
-				//Add astNode and the FuncDecl node to the function calls
-				functCalls = append(functCalls, fdeclStruct{
-					currNode,
-					fdNode,
-					fpath,
-					linePos,
-					functionName,
-				})
-			}
-			return true
-		})
-	}
-
-	return functCalls
-}
-
-//Takes in a file name + function name -> returns AST FuncDecl node
-func getFdASTNode(fileName string, functionName string, stackFuncNodes []fdeclStruct) *ast.FuncDecl {
-	for _, val := range stackFuncNodes {
-		if strings.Contains(val.filePath, fileName) && functionName == val.Name {
-			return val.fd
-		}
-	}
-
-	return nil
 }
 
 //This is just a struct
@@ -546,20 +400,6 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		}
 		//fmt.Println()
 	}
-
-	//Create CFG -- NEED to call after regex has been created
-	//regexes := mapLogRegex(logInfo)
-	ast.Inspect(node, func(n ast.Node) bool {
-		// Keep track of the current parent function the log statement is contained in
-		if funcDecl, ok := n.(*ast.FuncDecl); ok {
-			//fmt.Println("checking funcDecl", funcDecl.Name)
-			cfg := cfg.NewFnCfgCreator("pkg", base, fset)
-			/*root := */ cfg.CreateCfg(funcDecl)
-			//printCfg(root, "")
-			//fmt.Println()
-		}
-		return true
-	})
 
 	return logInfo, varsInLogs
 }

@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"os"
 	"sourcecrawler/app/helper"
 	"strings"
 
@@ -17,13 +18,14 @@ import (
 
 func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 
-	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node))
+	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make(map[ast.Node]ExecutionLabel))
 	return paths.Paths
 }
 
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, , ,,*/, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
+func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
+	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels map[ast.Node]ExecutionLabel) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -143,7 +145,6 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 			}
 			if !contained {
 				vars = append([]ast.Node{v}, vars...)
-
 			}
 		}
 		stmts = append(stmts, vars...)
@@ -157,6 +158,15 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 				}
 				return true
 			})
+
+			if currWrapper.GetLabel() == NoLabel {
+				fmt.Println("Condition below has no label")
+				printer.Fprint(os.Stdout, currWrapper.Outer.GetFileSet(), condition)
+				fmt.Println()
+			}
+
+			pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
+
 			// condStmts = append(condStmts, condition)
 			// fmt.Println("Condition is", condition)
 			contained := false
@@ -177,14 +187,14 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter)
+			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels)
 		}
 	} else {
 
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
 		// fmt.Println("hello", stmts)
-		paths.AddNewPath(Path{Expressions: stmts})
+		paths.AddNewPath(Path{Expressions: stmts, Stmts: pathLabels})
 	}
 
 }
