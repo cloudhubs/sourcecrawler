@@ -7,7 +7,9 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"sourcecrawler/app/handler"
 	"sourcecrawler/app/helper"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/cfg"
@@ -22,23 +24,14 @@ func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 }
 
 // ------------- Traversal function ---------------
-// Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, , ,,*/, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
+//This function modifies the names of variables in the cfg
+//to simulate SSA form, for use in Z3
+//TODO: include label functionality?
+func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
-		// fmt.Println("FnWrapper", currWrapper)
-		// fnName, funcVars := GetFuncInfo(currWrapper, currWrapper.Fn) //Gets the function name and a list of variables
-		// fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
-
 	case *BlockWrapper:
-
-		// get cond after getting variables, and replace them in the condition
-		//Gets a list of all variables inside the block, and add
-		// -Filter out relevant variables
-
-		//SSA -> map of variable names to count
-
 		if len(currWrapper.Succs) == 2 {
 			ast.Inspect(currWrapper.Block.Nodes[len(currWrapper.Block.Nodes)-1], func(node ast.Node) bool {
 				switch node := node.(type) {
@@ -325,7 +318,11 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 //goal is to continuously build the CFG
 //by adding in function calls, should be called
 //from the root with an empty stack
-func ExpandCFG(w Wrapper, stack []*FnWrapper) {
+func ExpandCFG(w Wrapper) {
+	ExpandCFGRecur(w, make([]*FnWrapper, 0))
+}
+
+func ExpandCFGRecur(w Wrapper, stack []*FnWrapper) {
 	if w != nil {
 		switch b := w.(type) {
 		case *FnWrapper:
@@ -340,7 +337,7 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 				}
 			}
 			if !found {
-				ExpandCFG(b.FirstBlock, append(stack, b))
+				ExpandCFGRecur(b.FirstBlock, append(stack, b))
 			}
 		case *BlockWrapper:
 			//check if the next block is a FnWrapper
@@ -385,10 +382,9 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 						topBlock, bottomBlock := b.splitAtNodeIndex(i)
 
 						//TODO:
-						newFn := getDeclarationOfFunction(b.Outer, call, call.Args)
+						newFn := GetDeclarationOfFunction(b.Outer, call, call.Args)
 
 						//get new function wrapper
-						//newFn := b.getFunctionWrapperFor(call, call.Args)
 						if newFn != nil {
 							newFn.SetOuterWrapper(b.Outer)
 
@@ -425,7 +421,7 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 							//stop after first function, block is now
 							//obsolete, move on to sucessors of topBlock
 							for _, succ := range topBlock.Succs {
-								ExpandCFG(succ, stack)
+								ExpandCFGRecur(succ, stack)
 							}
 						}
 
@@ -441,14 +437,14 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 			// it should be harmless since it has no connections
 			// and the recursion will still expand its successors
 			for _, c := range b.Succs {
-				ExpandCFG(c, stack)
+				ExpandCFGRecur(c, stack)
 			}
 		}
 	}
 }
 
 //TODO: test this because it's a mess and I'm pretty sure it'll break
-func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrapper {
+func GetDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrapper {
 	//if in map, get declaration
 	switch v := fn.(type) {
 	case *ast.CallExpr:
@@ -460,11 +456,11 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 					return NewFnWrapper(fnParam, args)
 				} else {
 					//identifier
-					return getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
+					return GetDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 				}
 			} else {
 				//if not a parameter, find it using blind method
-				return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
+				return w.(*FnWrapper).FirstBlock.(*BlockWrapper).GetFunctionWrapperFor(fn.(*ast.CallExpr), args)
 			}
 		}
 	case *ast.Ident:
@@ -476,7 +472,7 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 				return NewFnWrapper(fnParam, args)
 			} else {
 				//identifier
-				return getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
+				return GetDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 			}
 		}
 		switch decl := v.Obj.Decl.(type) {
@@ -584,7 +580,7 @@ func GetLeafNodes(w Wrapper) []Wrapper {
 }
 
 //must be called on a Wrapper to give access to the ASTs
-func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr) *FnWrapper {
+func (b *BlockWrapper) GetFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr) *FnWrapper {
 	var fn *ast.FuncDecl
 	//loop through every AST file
 	for _, file := range b.GetASTs() {
@@ -612,6 +608,30 @@ func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr
 
 	if fn != nil {
 		return NewFnWrapper(fn, args)
+	}
+	return nil
+}
+
+func FindPanicWrapper(w Wrapper, traceStruct *handler.StackTraceStruct) *BlockWrapper {
+	if w != nil {
+		switch w := w.(type) {
+		case *BlockWrapper:
+			for _, node := range w.Block.Nodes {
+				pos := w.GetFileSet().Position(node.Pos())
+				if pos.Filename == traceStruct.FileName[0]{
+					lineNum, err := strconv.Atoi(traceStruct.LineNum[0])
+					if err == nil && pos.Line == lineNum  {
+						return w
+					}
+				}
+			}
+		}
+		for _, child := range w.GetChildren() {
+			ret := FindPanicWrapper(child, traceStruct)
+			if ret != nil {
+				return ret
+			}
+		}
 	}
 	return nil
 }

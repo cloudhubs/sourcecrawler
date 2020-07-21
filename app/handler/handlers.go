@@ -3,9 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/mitchellh/go-z3"
 	"sourcecrawler/app/helper"
 	"sourcecrawler/app/unsafe"
-	"strconv"
 	"strings"
 
 	"go/ast"
@@ -211,7 +211,7 @@ func TestRewriteCFG(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	// if wrap != nil {
 	// 	wrap.Fset = outerWrapper.Fset
 	// 	wrap.ASTs = outerWrapper.GetASTs()
-	// 	cfg.ExpandCFG(wrap, make([]*cfg.FnWrapper, 0))
+	// 	cfg.ExpandCFGRecur(wrap, make([]*cfg.FnWrapper, 0))
 	// }
 
 	// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
@@ -231,7 +231,7 @@ func TestRewriteCFG(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 //Slices the program - first parses the stack trace, and then parses the project for log calls
 // -Afterwards it creates the CFG and attempts to connect each of the functions in the stack trace
-func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+func SliceProgram(w http.ResponseWriter, r *http.Request) {
 	request := struct {
 		StackTrace  string   `json:"stackTrace"`
 		LogMessages []string `json:"logMessages"` //it holds raw log statements
@@ -252,12 +252,12 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	logTypes := parseProject(request.ProjectRoot)
 
 	// Matching log messages to a regex (only returns used regexes)
-	regexes := []string{}
-	for index := range request.LogMessages {
+	seenLogTypes := []model.LogType{}
+	for _, msg := range request.LogMessages {
 		for _, value := range logTypes {
-			matched, _ := regexp.MatchString(value.Regex, request.LogMessages[index])
+			matched, _ := regexp.MatchString(value.Regex, msg)
 			if matched {
-				regexes = append(regexes, value.Regex)
+				seenLogTypes = append(seenLogTypes, value)
 				//fmt.Println("Valid regexes:", value.Regex)
 				break
 			}
@@ -265,161 +265,70 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3 -- Generate CFGs (including log information) for each function in the stack trace
-	var decls []neoDb.Node
-	fset := token.NewFileSet()
-	filesToParse := helper.GatherGoFiles(request.ProjectRoot)
-	for _, goFile := range filesToParse {
+	topLevelWrapper := cfg.SetupPersistentData(request.ProjectRoot)
 
-		// only parse this file if it appears in the stack trace
-		shouldParseFile := false
-		for _, value := range parsedStack {
-			for _, stackFileName := range value.FileName {
-				if strings.Contains(goFile, stackFileName) {
-					shouldParseFile = true
-					break
-				}
-			}
-		}
+	stack := parsedStack[0] //likely only one stack trace
+	entryFile := stack.FileName[len(stack.FileName)-1]
+	entryName := stack.FuncName[len(stack.FuncName)-1]
 
-		if !shouldParseFile { // file not in stack trace, skip it
-			continue
-		}
-
-		// get ast root for this file
-		f, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
-		if err != nil {
-			log.Error().Err(err).Msg("unable to parse file")
-		}
-
-		// get map of linenumber -> regex for thsi file
-		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
-		//regexes := mapLogRegex(logInfo)
-
-		// extract CFGs for all relevant functions from this file
-		c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
-		ast.Inspect(f, func(node ast.Node) bool {
-			if fn, ok := node.(*ast.FuncDecl); ok {
-				// only add this function declaration if it is part of the stack trace
-				shouldAppendFunction := false
-				for _, value := range parsedStack {
-					for index, stackFuncName := range value.FuncName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.FileName[index]) {
-							shouldAppendFunction = true
-							break
-						}
+	//grab the entry function
+	var entryFnNode ast.Node
+	for _, file := range topLevelWrapper.ASTs{
+		if strings.Contains(file.Name.Name, entryFile) {
+			for _, decl := range file.Decls {
+				if decl, ok := decl.(*ast.FuncDecl); ok {
+					if strings.EqualFold(decl.Name.Name, entryName) {
+						entryFnNode = decl
 					}
 				}
-
-				if shouldAppendFunction {
-					decls = append(decls, c.CreateCfg(fn))
-				}
 			}
-			return true
-		})
-	}
-
-	// // find all function declarations in this project
-	// allFuncDecls := findFunctionNodes(filesToParse)
-	// funcDeclMap := make(map[string]*ast.FuncDecl)
-	// for _, fn := range allFuncDecls {
-	// 	key := fmt.Sprintf("%v", fn.Name)
-	// 	funcDeclMap[key] = fn.fd
-	// }
-
-	//4 -- Connect the CFG nodes together
-	decls = cfg.ConnectFnCfgs(decls)
-
-	for _, decl := range decls {
-		fmt.Println(decl)
-	}
-
-	line, _ := strconv.Atoi(parsedStack[0].LineNum[0])
-
-	node := *getExceptionNode(&decls[len(decls)-1], parsedStack[0].FileName[0], line)
-
-	fmt.Println(node.GetFilename(), node.GetLineNumber(), node.GetParents())
-
-	c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
-
-	c.ConstructExecutionPaths(node, nil, nil, false)
-
-	var returnVal [][]string
-
-	for _, path := range c.GetExecutionPaths() {
-		var stringPath []string
-		for _, stmt := range path.Statements {
-			stringPath = append(stringPath, stmt)
-		}
-		returnVal = append(returnVal, stringPath)
-	}
-
-	respondJSON(w, http.StatusOK, returnVal)
-
-	// funcLabels := map[string]string{}
-	// funcCalls := []neoDb.Node{}
-	// mustHaves := []neoDb.Node{}
-	// mayHaves := []neoDb.Node{}
-
-	// for _, root := range decls {
-	// 	newFuncs, newLabels := FindMustHaves(root, parsedStack, regexes)
-	// 	funcLabels = cfg.MergeLabelMaps(funcLabels, newLabels)
-	// 	funcCalls = append(funcCalls, newFuncs...)
-	// }
-
-	// mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
-
-	// //Test print the declarations
-	// for _, decl := range decls {
-	// 	cfg.PrintCfg(decl, "")
-	// 	fmt.Println()
-	// }
-
-	// response := struct {
-	// 	MustHaveFunctions []string `json:"mustHaveFunctions"`
-	// 	MayHaveFunctions  []string `json:"mayHaveFunctions"`
-	// }{}
-
-	// response.MustHaveFunctions = convertNodesToStrings(mustHaves)
-	// response.MayHaveFunctions = convertNodesToStrings(mayHaves)
-
-	// respondJSON(w, http.StatusOK, response)
-}
-
-// Returns the function names of the passed-in function call nodes
-func convertNodesToStrings(elements []neoDb.Node) []string {
-	encountered := map[string]bool{}
-	result := []string{}
-	for _, v := range elements {
-		node := v.(*neoDb.FunctionNode)
-		if encountered[node.FunctionName] == true {
-			// Do not add duplicate.
-		} else {
-			// Record this element as an encountered element.
-			encountered[node.FunctionName] = true
-			// Append to result slice.
-			result = append(result, node.FunctionName)
-		}
-	}
-	// Return the new slice.
-	return result
-}
-
-func getExceptionNode(node *neoDb.Node, filename string, linenumber int) *neoDb.Node {
-	fmt.Println((*node).GetFilename(), (*node).GetLineNumber())
-
-	if strings.Contains((*node).GetFilename(), filename) && (*node).GetLineNumber() == linenumber {
-		return node
-	}
-
-	fmt.Println((*node).GetChildren())
-
-	for child, _ := range (*node).GetChildren() {
-		fmt.Println("child", child.GetFilename(), child.GetLineNumber())
-		newNode := getExceptionNode(&child, filename, linenumber)
-		if newNode != nil {
-			return newNode
 		}
 	}
 
-	return nil
+	//expand the cfg
+	entryFn := cfg.NewFnWrapper(entryFnNode, nil)
+	entryFn.SetOuterWrapper(topLevelWrapper)
+	cfg.ExpandCFG(entryFn)
+
+	//find the block originating the exception
+	exceptionBlock := cfg.FindPanicWrapper(entryFn, &stack)
+
+	//label the tree starting from the exception block
+	cfg.LabelCFG(exceptionBlock,logTypes,entryFn)
+
+	//gather the paths
+	pathList := cfg.CreateNewPath()
+	paths := pathList.TraverseCFG(exceptionBlock, entryFn)
+
+	//transform to z3
+	config := z3.NewConfig()
+	ctx := z3.NewContext(config)
+	config.Close()
+	defer ctx.Close()
+
+	s := ctx.NewSolver()
+	defer s.Close()
+
+	for _, path := range paths {
+		var z3group *z3.AST
+		for _, expr := range path.Expressions {
+			z3group = cfg.ConvertExprToZ3(ctx,expr,topLevelWrapper.Fset)
+			if z3group != nil {
+				s.Assert(z3group)
+			}
+		}
+
+		if v := s.Check(); v != z3.True {
+			fmt.Println("Unsolvable")
+			continue
+		}
+		m := s.Model()
+		assignments := m.Assignments()
+		for name, val := range assignments {
+			fmt.Printf("%s = %s\n", name, val)
+		}
+		m.Close()
+	}
+
+
 }
