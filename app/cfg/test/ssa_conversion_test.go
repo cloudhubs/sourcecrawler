@@ -60,7 +60,7 @@ func testUtil(t *testing.T, fileName string) {
 	}
 }
 
-func TestExFile(t *testing.T) { //NOTE: missing some numbers before var names, missing displaying assignStmts/IncDecStmts?
+func TestExFile(t *testing.T) { 
 	testUtil(t, "example.go")
 }
 

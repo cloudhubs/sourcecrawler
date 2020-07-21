@@ -147,6 +147,8 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	fmt.Println("ERROR")
+
 	messages, err := unsafe.Unsafe(request.X, request.Msg)
 
 	if err != nil {
@@ -154,7 +156,14 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	} else {
 		respondJSON(w, http.StatusBadRequest, nil)
 	}
+}
 
+// NOTE: Values can be hardcoded in here for testing (Can't run from Postman without additional docker configuration)
+//  Run the following: curl -X POST http://127.0.0.1:3000/container
+func ContainerEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request){
+	projectRoot := "./"
+	fmt.Println("container endpoint")
+	respondJSON(w, http.StatusOK, projectRoot)
 }
 
 //Test for rewrite cfg

@@ -7,26 +7,22 @@ import (
 
 // ---- Represents a possible execution path --------
 type Path struct {
-	Stmts       map[ast.Node]ExecutionLabel
-	Expressions []ast.Node
-	Variables   []ast.Node
-	//Variables map[ast.Node]string //*ast.AssignStmt or *ast.ValueSpec
-	//Stmts []string
+	Stmts       map[ast.Node]ExecutionLabel //Conditional statements
+	Expressions []ast.Node		//List of all expressions
+	Variables   []ast.Node      //AssignStmt, ValueSpec, IncDecStmt, Ident
+	ExecStatus	ExecutionLabel  //Should indicate if path was executed
 }
 
 //List of paths
 type PathList struct {
 	Paths []Path
-	// Expressions map[ast.Node]string //Temporary, may be subject to change
 	SsaInts map[string]int
+	Regexes		[]string		//List of all regex strings in the paths
 }
 
-//Singleton instance
-// var PathInstance *PathList = nil
-
 //Adds a path to the list
-func (p *PathList) AddNewPath(path Path) {
-	p.Paths = append(p.Paths, path)
+func (paths *PathList) AddNewPath(path Path) {
+	paths.Paths = append(paths.Paths, path)
 	//pathList.Paths = append(pathList.Paths, path)
 }
 
@@ -39,24 +35,24 @@ func CreateNewPath() *PathList {
 }
 
 //Resets and clears out paths in the list
-func (p *PathList) ClearPath() {
-	p.Paths = make([]Path, 0)
+func (paths *PathList) ClearPath() {
+	paths.Paths = make([]Path, 0)
 }
 
 //Gets the list of paths inside the pathlist
-func (p *PathList) GetExecPath() []Path {
-	return p.Paths
+func (paths *PathList) GetExecPath() []Path {
+	return paths.Paths
 }
 
 //Debug print
-func (p *PathList) PrintExecPath() {
+func (paths *PathList) PrintExecPath() {
 
-	if len(p.Paths) == 0 {
+	if len(paths.Paths) == 0 {
 		fmt.Println("Empty path list")
 		return
 	}
 
-	for _, path := range p.Paths {
+	for _, path := range paths.Paths {
 		//fmt.Println("Path is", path)
 		//Print statements
 		for key, value := range path.Stmts {

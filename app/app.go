@@ -1,11 +1,11 @@
 package app
 
 import (
-	"fmt"
+	// "fmt"
 	"log"
 	"net/http"
 	"sourcecrawler/app/handler"
-	"sourcecrawler/app/model"
+	// "sourcecrawler/app/model"
 	"sourcecrawler/config"
 
 	"github.com/gorilla/mux"
@@ -20,20 +20,20 @@ type App struct {
 
 // Initialize initializes the app with predefined configuration
 func (a *App) Initialize(config *config.Config) {
-	dbURI := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True",
-		config.DB.Username,
-		config.DB.Password,
-		config.DB.Host,
-		config.DB.Port,
-		config.DB.Name,
-		config.DB.Charset)
+	// dbURI := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True",
+	// 	config.DB.Username,
+	// 	config.DB.Password,
+	// 	config.DB.Host,
+	// 	config.DB.Port,
+	// 	config.DB.Name,
+	// 	config.DB.Charset)
 
-	db, err := gorm.Open(config.DB.Dialect, dbURI)
-	if err != nil {
-		log.Fatal("Could not connect database")
-	}
-
-	a.DB = model.DBMigrate(db)
+	// db, err := gorm.Open(config.DB.Dialect, dbURI)
+	// if err != nil {
+	// 	log.Fatal("Could not connect database")
+	// }
+	// a.DB = model.DBMigrate(db)
+	
 	a.Router = mux.NewRouter()
 	a.setRouters()
 }
@@ -48,6 +48,7 @@ func (a *App) setRouters() {
 	a.Post("/neotest", a.handleRequest(handler.NeoTest))
 	a.Post("/cfg", a.handleRequest(handler.ConnectedCfgTest))
 	a.Post("/rewrite", a.handleRequest(handler.TestRewriteCFG))
+	a.Post("/container", a.handleRequest(handler.ContainerEndpoint))
 }
 
 // Get wraps the router for GET method
