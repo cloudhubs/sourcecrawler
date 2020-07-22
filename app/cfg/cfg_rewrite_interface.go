@@ -251,20 +251,6 @@ func (b *BlockWrapper) GetASTs() []*ast.File {
 	return []*ast.File{}
 }
 
-//Must always be defined by the outermost wrapper
-//Assumptions: PathList has already been created
-//func (b *BlockWrapper) GetPathList() PathList{
-//	if b.Outer != nil{
-//		if b == b.Outer{
-//			return b.PathList
-//		} else{
-//			return b.Outer.GetPathList()
-//		}
-//	}
-//
-//	return CreatePathList()
-//}
-
 func (b *BlockWrapper) GetLabel() ExecutionLabel {
 	return b.Label
 }

@@ -3,7 +3,7 @@ package cfg
 import (
 	"fmt"
 	"go/ast"
-	"sourcecrawler/app/logsource"
+	"sourcecrawler/app/helper"
 	"sourcecrawler/app/model"
 	"strings"
 )
@@ -154,7 +154,7 @@ func CheckLogStatus(nodes []ast.Node) bool {
 		if n1, ok := node.(*ast.ExprStmt); ok {
 			if call, ok := n1.X.(*ast.CallExpr); ok {
 				if realSelector, ok := call.Fun.(*ast.SelectorExpr); ok {
-					if logsource.IsFromLog(realSelector) { //if any node in the block contains a log statement, exit early
+					if helper.IsFromLog(realSelector) { //if any node in the block contains a log statement, exit early
 						return true
 					}
 				}

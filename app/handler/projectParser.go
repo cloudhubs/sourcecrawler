@@ -9,7 +9,6 @@ import (
 	"sourcecrawler/app/cfg"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/helper"
-	"sourcecrawler/app/logsource"
 	"sourcecrawler/app/model"
 	"strconv"
 	"strings"
@@ -152,101 +151,16 @@ func parseProject(projectRoot string) []model.LogType {
 	return logTypes
 }
 
-//Helper function to find origin of function (not used but may need later)
-func findFuncOrigin(name string, funcDecList []fdeclStruct) {
-	for _, value := range funcDecList {
-		if name == value.fd.Name.Name {
-			fmt.Println(name, value.filePath, value.lineNum)
-		}
-	}
-}
-
-//Struct for quick access to the function declaration nodes
-type fdeclStruct struct {
-	node     ast.Node
-	fd       *ast.FuncDecl
-	filePath string
-	lineNum  string
-	Name     string
-}
-
 /*
  Determines if a function is called somewhere else based on its name (path and line number)
   -currently goes through all files and finds if it's used
 */
-func functionDeclsMap(filesToParse []string) map[string][]string {
+func findFunctionNodes(filesToParse []string) []helper.FdeclStruct {
 
 	//Map of all function names with a [line number, file path]
 	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
 	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
-	functMap := map[string][]string{}
-	functCalls := []fdeclStruct{}
-
-	//Inspect each file for calls to this function
-	for _, file := range filesToParse {
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, file, nil, 0)
-		if err != nil {
-			log.Error().Err(err).Msg("Error parsing file " + file)
-		}
-
-		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
-		//packageName := node.Name.Name + ":"
-
-		//Inspect AST for explicit function declarations
-		ast.Inspect(node, func(currNode ast.Node) bool {
-			fdNode, ok := currNode.(*ast.FuncDecl)
-			if ok {
-				//package name is appended to separate diff functions across packages
-				functionName := fdNode.Name.Name
-				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
-				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
-
-				//Add the data to the function list
-				data := []string{linePos, fpath}
-				functMap[functionName] = data
-
-				//Add astNode and the FuncDecl node to the function calls
-				functCalls = append(functCalls, fdeclStruct{
-					currNode,
-					fdNode,
-					fpath,
-					linePos,
-					functionName,
-				})
-			}
-			return true
-		})
-
-		//Inspect the AST Call Expressions (where they call a function)
-		//ast.Inspect(node, func(currNode ast.Node) bool {
-		//	callExprNode, ok := currNode.(*ast.CallExpr)
-		//	if ok {
-		//		//Filter single function calls such as parseMsg(msg.Value)
-		//		//functionName := packageName + fmt.Sprint(callExprNode.Fun)
-		//		functionName := packageName
-		//		if _, found := functMap[functionName]; found {
-		//			//fmt.Println("The function " + functionName + " was found on line " + val[0] + " in " + val[1])
-		//			//fmt.Println("")
-		//		}
-		//	}
-		//	return true
-		//})
-	}
-
-	return functMap
-}
-
-/*
- Determines if a function is called somewhere else based on its name (path and line number)
-  -currently goes through all files and finds if it's used
-*/
-func findFunctionNodes(filesToParse []string) []fdeclStruct {
-
-	//Map of all function names with a [line number, file path]
-	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
-	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
-	functCalls := []fdeclStruct{}
+	functCalls := []helper.FdeclStruct{}
 
 	//Inspect each file for calls to this function
 	for _, file := range filesToParse {
@@ -269,7 +183,7 @@ func findFunctionNodes(filesToParse []string) []fdeclStruct {
 				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
 
 				//Add astNode and the FuncDecl node to the function calls
-				functCalls = append(functCalls, fdeclStruct{
+				functCalls = append(functCalls, helper.FdeclStruct{
 					currNode,
 					fdNode,
 					fpath,
@@ -285,10 +199,10 @@ func findFunctionNodes(filesToParse []string) []fdeclStruct {
 }
 
 //Takes in a file name + function name -> returns AST FuncDecl node
-func getFdASTNode(fileName string, functionName string, stackFuncNodes []fdeclStruct) *ast.FuncDecl {
+func getFdASTNode(fileName string, functionName string, stackFuncNodes []helper.FdeclStruct) *ast.FuncDecl {
 	for _, val := range stackFuncNodes {
-		if strings.Contains(val.filePath, fileName) && functionName == val.Name {
-			return val.fd
+		if strings.Contains(val.FilePath, fileName) && functionName == val.Name {
+			return val.Fd
 		}
 	}
 
@@ -466,7 +380,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if (strings.Contains(val, "Msg") || val == "Err") && logsource.IsFromLog(fn) {
+				if (strings.Contains(val, "Msg") || val == "Err") && helper.IsFromLog(fn) {
 					parentArgs := usesParentArgs(parentFn, ret)
 					value := fnStruct{
 						n:              n,
@@ -515,7 +429,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				good = true
 				// fmt.Println("Basic", v.Value)
 
-				currentLog.Regex = logsource.CreateRegex(v.Value)
+				currentLog.Regex = helper.CreateRegex(v.Value)
 
 				logInfo = append(logInfo, currentLog)
 
@@ -547,20 +461,6 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		//fmt.Println()
 	}
 
-	//Create CFG -- NEED to call after regex has been created
-	//regexes := mapLogRegex(logInfo)
-	ast.Inspect(node, func(n ast.Node) bool {
-		// Keep track of the current parent function the log statement is contained in
-		if funcDecl, ok := n.(*ast.FuncDecl); ok {
-			//fmt.Println("checking funcDecl", funcDecl.Name)
-			cfg := cfg.NewFnCfgCreator("pkg", base, fset)
-			/*root := */ cfg.CreateCfg(funcDecl)
-			//printCfg(root, "")
-			//fmt.Println()
-		}
-		return true
-	})
-
 	return logInfo, varsInLogs
 }
 
@@ -576,64 +476,4 @@ func mapLogRegex(logInfo []model.LogType) map[int]string {
 	}
 
 	return regexMap
-}
-
-func FindMustHaves(root db.Node, stackTrace []StackTraceStruct, regexs []string) ([]db.Node, map[string]string) {
-	//must-have is on stack trace or contains a regex
-	funcLabels := make(map[string]string)
-	return findMustHavesRecur(root, stackTrace, regexs, &funcLabels), funcLabels
-}
-
-func findMustHavesRecur(n db.Node, stackTrace []StackTraceStruct, regexs []string, funcLabels *map[string]string) []db.Node {
-	funcCalls := []db.Node{}
-
-	if n != nil {
-		if n, ok := n.(*db.FunctionNode); ok {
-			funcCalls = append(funcCalls, n)
-			if isInStack(n, stackTrace) || wasLogged(n, regexs) {
-				(*funcLabels)[n.FunctionName] = "must"
-			} else {
-				(*funcLabels)[n.FunctionName] = "may"
-			}
-		}
-		for child := range n.GetChildren() {
-			funcCalls = append(funcCalls, findMustHavesRecur(child, stackTrace, regexs, funcLabels)...)
-		}
-	}
-	return funcCalls
-}
-
-func isInStack(fn db.Node, stackTrace []StackTraceStruct) bool {
-	//traverse
-	for _, trace := range stackTrace {
-		for _, funcName := range trace.FuncName {
-			if fn, ok := fn.(*db.FunctionNode); ok {
-				if fn.FunctionName == funcName {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-func wasLogged(fn db.Node, regexs []string) bool {
-	//traverse children that are not function
-	//calls and see if any contain log statements seen
-	//in regexs
-	for child := range fn.GetChildren() {
-		//stop at function nodes
-		if _, ok := child.(*db.FunctionNode); ok {
-			continue
-		}
-		if child, ok := child.(*db.StatementNode); ok {
-			if strings.Contains(strings.Join(regexs, ","), child.LogRegex) {
-				return true
-			}
-		}
-		return wasLogged(child, regexs)
-	}
-	//if no children found a matching log statment
-	//this function is not logged
-	return false
 }

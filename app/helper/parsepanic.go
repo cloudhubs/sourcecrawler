@@ -1,4 +1,4 @@
-package handler
+package helper
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"go/parser"
 	"go/token"
 	"runtime"
-	"sourcecrawler/app/helper"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -42,7 +41,7 @@ func GrabOS() string {
 //Parse through a panic message and find originating file/line number/function name
 // Takes in a string of the stack trace error and parse thru
 // ** Assuming that the stack trace message ends with a \n **
-func parsePanic(projectRoot string, stackMessage string) []StackTraceStruct {
+func ParsePanic(projectRoot string, stackMessage string) []StackTraceStruct {
 
 	//Generates test stack traces (run once and redirect to log file)
 	// "go run main.go 2>stackTrace.log"
@@ -53,7 +52,7 @@ func parsePanic(projectRoot string, stackMessage string) []StackTraceStruct {
 	separator := GrabOS()
 
 	//Grab files to parse, split stack trace string, get project root
-	filesToParse := helper.GatherGoFiles(projectRoot)
+	filesToParse := GatherGoFiles(projectRoot)
 	stackStrs := splitStackTraceString(stackMessage)
 
 	//Helper map for quick lookup
@@ -65,7 +64,7 @@ func parsePanic(projectRoot string, stackMessage string) []StackTraceStruct {
 	}
 
 	//Helper map for quick function lookup
-	functionsMap := functionDeclsMap(filesToParse)
+	functionsMap := FunctionDeclsMap(filesToParse)
 
 	//Open stack trace log file (assume there will be a log file named this)
 	//file, err := os.Open("stackTrace.log")

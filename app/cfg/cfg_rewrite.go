@@ -7,7 +7,6 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"sourcecrawler/app/handler"
 	"sourcecrawler/app/helper"
 	"strconv"
 	"strings"
@@ -612,7 +611,7 @@ func (b *BlockWrapper) GetFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr
 	return nil
 }
 
-func FindPanicWrapper(w Wrapper, traceStruct *handler.StackTraceStruct) *BlockWrapper {
+func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) *BlockWrapper {
 	if w != nil {
 		switch w := w.(type) {
 		case *BlockWrapper:
