@@ -55,10 +55,14 @@ func testLabel(t *testing.T, fileName string) {
 		messageString += scanner.Text() + "\n"
 	}
 	// fmt.Println("Message", messageString)
-	stackInfo := helper.ParsePanic(projectRoot, messageString)
+	// stackInfo := helper.ParsePanic(projectRoot, messageString)
+	stackInfo := []helper.StackTraceStruct{}
 
 	//Sample logs
 	logTypes := helper.ParseProject(projectRoot)
+	for _, l := range logTypes {
+		fmt.Println(l)
+	}
 
 	//Once expanded, label all the blocks, then in traverse gather all the expressions
 	paths := cfg.CreateNewPath()

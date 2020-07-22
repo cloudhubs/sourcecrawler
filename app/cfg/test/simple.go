@@ -11,8 +11,9 @@ func Simple(num int) int {
 	if x < 15 {
 		y := 200
 		log.Println("Logging msg", x, y)
+		log.Print("Log2")
 		if y < 300 {
-			panic("Exception HERE!") //Path 1 -- should be a MUST
+			panic("Exception HERE!") //Path 1 - the block containing this statement should be a must
 		} else {
 			fmt.Println("Safe from panic. Deep breath") //Path 2 -- May
 		}

@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"path/filepath"
 	"sourcecrawler/app/db"
 	"sourcecrawler/app/logsource"
 	"sourcecrawler/app/model"
@@ -130,23 +129,32 @@ func ParseProject(projectRoot string) []model.LogType {
 		}
 	}
 
-	// //Get stack trace string
-	// file, err := os.Open("stackTrace.log")
-	// if err != nil {
-	// 	log.Error().Msg("Error opening file")
-	// }
-	// scanner := bufio.NewScanner(file)
-	// stackTraceString := ""
-	// for scanner.Scan() {
-	// 	stackTraceString += scanner.Text() + "\n"
-	// }
-
-	// //Parses panic stack trace message
-	// parsePanic(projectRoot, stackTraceString)
-	// //errorList := parsePanic(projectRoot, "")
-	// //printErrorList(errorList)
+	//Remove duplicate regexes and log statements
+	logTypes = RemoveDuplicateLogs(logTypes)
 
 	return logTypes
+}
+
+func RemoveDuplicateLogs(logTypes []model.LogType) []model.LogType{
+
+	filteredLogs := []model.LogType{}
+
+	//Loop through to add only 1 copy to new array
+	for _, currLog := range logTypes{
+		var isDuplicate bool = false
+		for _, goodLog := range filteredLogs{
+			if currLog.Regex == goodLog.Regex{
+				isDuplicate = true
+				break
+			}
+		}
+
+		if !isDuplicate{
+			filteredLogs = append(filteredLogs, currLog)
+		}
+	}
+
+	return filteredLogs
 }
 
 //This is just a struct
@@ -309,10 +317,16 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		if ret, ok := n.(*ast.CallExpr); ok {
 			//continue processing if CallExpr casts
 			//as a SelectorExpr
+
+			//Additional processing for "log" library in go
+			basicLog := strings.Contains(fmt.Sprint(ret.Fun), "log")
+
+
 			if fn, ok := ret.Fun.(*ast.SelectorExpr); ok {
 				// fmt.Printf("%T, %v\n", fn, fn)
 				//convert Selector into String for comparison
 				val := fmt.Sprint(fn.Sel)
+
 
 				//fmt.Println("Val: " + val)
 
@@ -320,7 +334,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if (strings.Contains(val, "Msg") || val == "Err") && logsource.IsFromLog(fn) {
+				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && logsource.IsFromLog(fn)  {
 					parentArgs := usesParentArgs(parentFn, ret)
 					value := fnStruct{
 						n:              n,
@@ -353,8 +367,10 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		// fn, _ := l.fn.Fun.(*ast.SelectorExpr)
 		// fmt.Printf("Args for %v at line %d\n", fn.Sel, fset.Position(l.n.Pos()).Line)
 
-		relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name())
-		currentLog.FilePath = filepath.ToSlash(relPath)
+		//relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name())
+		//currentLog.FilePath = filepath.ToSlash(relPath) //TODO: bug with empty path, using absolute path right now
+
+		currentLog.FilePath = fset.File(l.n.Pos()).Name()
 		currentLog.LineNumber = fset.Position(l.n.Pos()).Line
 		for _, a := range l.fn.Args {
 			good := false
@@ -367,7 +383,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			//our proof-of-concept case
 			case *ast.BasicLit:
 				good = true
-				// fmt.Println("Basic", v.Value)
+				//fmt.Println("Basic v.Value", v.Value)
 
 				currentLog.Regex = logsource.CreateRegex(v.Value)
 
@@ -380,7 +396,8 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			//This case represents variables used as log arguments
 			case *ast.Ident:
 				//store var name, will be   updated later
-				currentLog.Regex = v.Name
+				//currentLog.Regex = v.Name
+
 				// fmt.Printf("%v, ", v.Name)
 
 				//add an entry in the map for the variable name
