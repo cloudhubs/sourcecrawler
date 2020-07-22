@@ -34,6 +34,13 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 			case *BlockWrapper: //BlockWrapper can represent a condition, but could be a statement, etc
 				//Check if it's a condition, if not set as must
 
+				//Entry should be a must
+				if strings.Contains(wrap.Block.String(), "entry"){
+					wrap.SetLabel(Must)
+				}else{
+					wrap.SetLabel(May)
+				}
+
 				//If it is part of an if-then or if-else, it is labeled as may
 				if strings.Contains(wrap.Block.String(), "if.then") ||
 					strings.Contains(wrap.Block.String(), "if.else") {
@@ -46,9 +53,9 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 				}
 
 				//Only true if a block has 2 successors
-				//if wrap.GetCondition() != nil {
-				//	wrap.SetLabel(May)
-				//}
+				if wrap.GetCondition() != nil {
+					wrap.SetLabel(May)
+				}
 
 				//If two parents, go up to top and label down
 				if len(wrap.GetParents()) == 2 {
@@ -121,13 +128,7 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 			currNodes = currType.Block.Nodes
 		}
 
-		//If there is a regex match (along with relevant file in stack trace)
-		//if MatchLogRegex(logs) {
-		//	curr.SetLabel(Must)
-		//	isLog = true
-		//}
-
-		//If it is a log then need to label as must
+		//If it is a log stmt or matches regex then need to label as must
 		if CheckLogStatus(currNodes, logs) {
 			isLog = true
 		}
@@ -135,7 +136,6 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 		//If it's part of a log block then label as must
 		if isLog {
 			curr.SetLabel(Must)
-			// fmt.Println("IS LOG NODE")
 		} else {
 			curr.SetLabel(May)
 		}
@@ -177,7 +177,7 @@ func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 				if realSelector, ok := call.Fun.(*ast.SelectorExpr); ok {
 
 					//Set status of log
-					if logsource.IsFromLog(realSelector) || strings.Contains(possibleLog, "log"){ //if any node in the block contains a log statement, exit early
+					if logsource.IsFromLog(realSelector) || strings.Contains(possibleLog, "log") { //if any node in the block contains a log statement, exit early
 						fmt.Println(realSelector, " is a log statement -> label as must")
 
 						//get log from node

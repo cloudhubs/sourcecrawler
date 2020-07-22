@@ -340,9 +340,9 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		fmt.Println(decl)
 	}
 
-	line, _ := strconv.Atoi(parsedStack[0].LineNum[0])
+	line, _ := strconv.Atoi(parsedStack.LineNum[0])
 
-	node := *getExceptionNode(&decls[len(decls)-1], parsedStack[0].FileName[0], line)
+	node := *getExceptionNode(&decls[len(decls)-1], parsedStack.FileName[0], line)
 
 	fmt.Println(node.GetFilename(), node.GetLineNumber(), node.GetParents())
 

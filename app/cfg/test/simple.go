@@ -17,7 +17,7 @@ func Simple(num int) int {
 			fmt.Println("Safe from panic. Deep breath") //Path 2 -- May
 		}
 	} else {
-		x = 500 //Path 3 - May
+		x = 500 //Path 3 - May (The constraints in path 3 have a lot of NoLabels --> can probably assume it's a MustNot?)
 	}
 
 	return x

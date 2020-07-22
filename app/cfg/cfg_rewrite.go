@@ -7,7 +7,6 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"os"
 	"sourcecrawler/app/helper"
 	"strings"
 
@@ -18,14 +17,14 @@ import (
 
 func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 
-	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make(map[ast.Node]ExecutionLabel))
+	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0))
 	return paths.Paths
 }
 
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
-	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels map[ast.Node]ExecutionLabel) {
+	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -123,6 +122,10 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 						}
 					}
 					stmts = append(stmts, artificial)
+					if currWrapper.GetLabel() == NoLabel{
+						fmt.Println("Shouldnt happen: inside ssa func")
+					}
+					pathLabels = append(pathLabels, currWrapper.GetLabel())
 				}
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)
@@ -145,9 +148,14 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 			}
 			if !contained {
 				vars = append([]ast.Node{v}, vars...)
+				if currWrapper.GetLabel() == NoLabel{
+					fmt.Println("Shouldnt happen, inside varlist")
+				}
+				pathLabels = append(pathLabels, currWrapper.GetLabel())
 			}
 		}
 		stmts = append(stmts, vars...)
+
 
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
@@ -159,16 +167,10 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				return true
 			})
 
-			if currWrapper.GetLabel() == NoLabel {
-				fmt.Println("Condition below has no label")
-				printer.Fprint(os.Stdout, currWrapper.Outer.GetFileSet(), condition)
-				fmt.Println()
-			}
+			//pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
+			//pathLabels = append(pathLabels, currWrapper.GetLabel())
 
-			pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
-
-			// condStmts = append(condStmts, condition)
-			// fmt.Println("Condition is", condition)
+			//Prevent duplicates
 			contained := false
 			for _, existingCondition := range stmts {
 				if condition == existingCondition {
@@ -178,6 +180,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 			}
 			if !contained {
 				stmts = append(stmts, condition)
+				pathLabels = append(pathLabels, currWrapper.GetLabel())
 			}
 		}
 
@@ -194,7 +197,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
 		// fmt.Println("hello", stmts)
-		paths.AddNewPath(Path{Expressions: stmts, Stmts: pathLabels})
+		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels})
 	}
 
 }

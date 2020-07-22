@@ -56,7 +56,6 @@ func testLabel(t *testing.T, fileName string) {
 	}
 	// fmt.Println("Message", messageString)
 	stackInfo := helper.ParsePanic(projectRoot, messageString)
-	// stackInfo := []helper.StackTraceStruct{}
 
 	//Sample logs
 	logTypes := helper.ParseProject(projectRoot)
@@ -76,20 +75,24 @@ func testLabel(t *testing.T, fileName string) {
 	for _, path := range paths.Paths {
 		fmt.Println("---------- PATH", cnt, " -------------")
 		cnt++
-		for _, expr := range path.Expressions {
-			printer.Fprint(os.Stdout, fset, expr)
-			fmt.Println()
-		}
-		fmt.Println()
+
+		//for _, expr := range path.Expressions {
+		//	printer.Fprint(os.Stdout, fset, expr)
+		//	fmt.Println()
+		//}
+		//fmt.Println()
 		// t.Log(expr)
 
-		for pthNode, execLabel := range path.Stmts {
-			fmt.Println("==============Conditional labels==============")
-			fmt.Print(execLabel, " ---- ")
-			printer.Fprint(os.Stdout, fset, pthNode)
+		//Should have same # of elts
+		for index := range path.Expressions{
+			printer.Fprint(os.Stdout, fset, path.Expressions[index])
+			fmt.Print(" ---- ", path.ExecStatus[index])
 			fmt.Println()
 		}
+		// fmt.Println(len(path.Expressions), len(path.ExecStatus))
+
 	}
+
 }
 
 func TestLabelFile(t *testing.T) {

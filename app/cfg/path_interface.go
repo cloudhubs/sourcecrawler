@@ -7,17 +7,15 @@ import (
 
 // ---- Represents a possible execution path --------
 type Path struct {
-	Stmts       map[ast.Node]ExecutionLabel //Conditional statements
-	Expressions []ast.Node		//List of all expressions
-	Variables   []ast.Node      //AssignStmt, ValueSpec, IncDecStmt, Ident
-	ExecStatus	ExecutionLabel  //Should indicate if path was executed
+	Expressions []ast.Node                  //List of all expressions (includes conditions and vars) (slice used b/c of ordering issue with maps)
+	ExecStatus	[]ExecutionLabel			//Parallel array with Expressions
 }
 
 //List of paths
 type PathList struct {
-	Paths []Path
+	Paths   []Path
 	SsaInts map[string]int
-	Regexes		[]string		//List of all regex strings in the paths
+	Regexes []string //List of all regex strings in the paths
 	//StkTrcInfo	[]handler.StackTraceStruct
 }
 
@@ -53,16 +51,16 @@ func (paths *PathList) PrintExecPath() {
 		return
 	}
 
-	for _, path := range paths.Paths {
-		//fmt.Println("Path is", path)
-		//Print statements
-		for key, value := range path.Stmts {
-			fmt.Printf("Stmt: %v - %s ", key, value)
-			for _, varNode := range path.Variables {
-				fmt.Printf("| Vars: (%v)", varNode)
-			}
-			fmt.Println()
-		}
+	// for _, path := range paths.Paths {
+	// 	//fmt.Println("Path is", path)
+	// 	//Print statements
+	// 	for key, value := range path.Stmts {
+	// 		fmt.Printf("Stmt: %v - %s ", key, value)
+	// 		for _, varNode := range path.Variables {
+	// 			fmt.Printf("| Vars: (%v)", varNode)
+	// 		}
+	// 		fmt.Println()
+	// 	}
 
-	}
+	// }
 }
