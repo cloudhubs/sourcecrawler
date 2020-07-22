@@ -61,9 +61,28 @@ func hasAssignment(nodes []ast.Node, id *ast.Ident) bool {
 		ast.Inspect(node, func(node ast.Node) bool {
 			switch node := node.(type) {
 			case *ast.AssignStmt:
-				for _, l := range node.Lhs {
+				for i, l := range node.Lhs {
 					if foundID, ok := l.(*ast.Ident); ok && id == foundID {
-						isAssigned = true
+						switch r := node.Rhs[i].(type) {
+						case *ast.SelectorExpr:
+							if id, ok := r.X.(*ast.Ident); ok {
+								if id.Name == "os" {
+									args := false
+									ast.Inspect(r.Sel, func(node ast.Node) bool {
+										if argsID, ok := node.(*ast.Ident); ok {
+											if argsID.Name == "Args" {
+												args = true
+												return false
+											}
+										}
+										return true
+									})
+									if !args {
+										isAssigned = true
+									}
+								}
+							}
+						}
 						return false
 					}
 				}
