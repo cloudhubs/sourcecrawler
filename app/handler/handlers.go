@@ -198,14 +198,14 @@ func TestRewriteCFG(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
 				shouldAppendFunction := false
-				for _, value := range parsedStack {
-					for index, stackFuncName := range value.FuncName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile.Name.Name, value.FileName[index]) {
+				//for _, value := range parsedStack {
+					for index, stackFuncName := range parsedStack.FuncName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile.Name.Name, parsedStack.FileName[index]) {
 							shouldAppendFunction = true
 							break
 						}
 					}
-				}
+				//}
 
 				if shouldAppendFunction && wrap == nil {
 					wrap = cfg.NewFnWrapper(fn, make([]ast.Expr, 0))
@@ -279,14 +279,14 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 		// only parse this file if it appears in the stack trace
 		shouldParseFile := false
-		for _, value := range parsedStack {
-			for _, stackFileName := range value.FileName {
+		//for _, value := range parsedStack {
+			for _, stackFileName := range parsedStack.FileName {
 				if strings.Contains(goFile, stackFileName) {
 					shouldParseFile = true
 					break
 				}
 			}
-		}
+		//}
 
 		if !shouldParseFile { // file not in stack trace, skip it
 			continue
@@ -308,14 +308,14 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
 				shouldAppendFunction := false
-				for _, value := range parsedStack {
-					for index, stackFuncName := range value.FuncName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.FileName[index]) {
+				//for _, value := range parsedStack {
+					for index, stackFuncName := range parsedStack.FuncName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile, parsedStack.FileName[index]) {
 							shouldAppendFunction = true
 							break
 						}
 					}
-				}
+				//}
 
 				if shouldAppendFunction {
 					decls = append(decls, c.CreateCfg(fn))

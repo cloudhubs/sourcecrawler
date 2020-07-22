@@ -14,10 +14,9 @@ import (
 
 //---------- Labeling feature for Must/May-haves (rewrite) --------------
 //Assumptions: CFG tree already created
-func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper, stackInfo []helper.StackTraceStruct) {
+func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper, stackInfo helper.StackTraceStruct) {
 
 	wrapper := curr //holds current wrapper
-	fmt.Println("Wrapper in label", wrapper)
 
 	//Iterate up through parents up to root
 	for len(wrapper.GetParents()) > 0 {
@@ -25,10 +24,8 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 			switch wrap := wrapper.(type) {
 			case *FnWrapper:
 				//If it's a function in the stack trace, then it must run
-				//TODO: (Need to give it stack trace info from somewhere for matching) -
-				// -circular dependency bug if stackTraceStruct is passed (need to refactor)
 				//fnwrapper connected to blockWrapper succs
-				if CheckFnStatus(wrap) {
+				if CheckFnStatus(wrap, stackInfo) {
 					wrap.SetLabel(Must)
 				} else {
 					wrap.SetLabel(May)
@@ -55,11 +52,11 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 
 				//If two parents, go up to top and label down
 				if len(wrap.GetParents()) == 2 {
-					wrapper = GetTopAndLabel(wrap, logs, wrap)
+					wrapper = GetTopAndLabel(wrap, logs, wrap, stackInfo)
 				}
 
 				//Check for possible log msg and log matchings
-				if CheckLogStatus(wrap.Block.Nodes) {
+				if CheckLogStatus(wrap.Block.Nodes, logs) {
 					//Add log label functionality
 					fmt.Println("Add log labeling stuff")
 					wrap.SetLabel(Must)
@@ -82,7 +79,7 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 }
 
 //Helper function to get topmost node where conditionals connect
-func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper) Wrapper {
+func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackInfo helper.StackTraceStruct) Wrapper {
 
 	//Go up until a node with 2 children are found (top condition)
 	curr := wrapper
@@ -94,21 +91,19 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper) Wrappe
 		}
 	}
 
-	fmt.Println("Topmost wrapper", curr)
-
 	//Label topmost node as must
 	curr.SetLabel(Must)
 
 	var isLog bool = false
 
 	//Go down through children to label nodes
-	LabelDown(curr, start, isLog, logs)
+	LabelDown(curr, start, isLog, logs, stackInfo)
 
 	return curr
 }
 
 //Helper function used in GetTopAndLabel
-func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType) {
+func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, stackInfo helper.StackTraceStruct) {
 
 	//If at bottom, return
 	if curr == start {
@@ -126,18 +121,18 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType) {
 			currNodes = currType.Block.Nodes
 		}
 
-		//If there is a regex match,
-		if MatchLogRegex(logs) {
-			curr.SetLabel(Must)
-			isLog = true
-		}
+		//If there is a regex match (along with relevant file in stack trace)
+		//if MatchLogRegex(logs) {
+		//	curr.SetLabel(Must)
+		//	isLog = true
+		//}
 
 		//If it is a log then need to label as must
-		if CheckLogStatus(currNodes) {
+		if CheckLogStatus(currNodes, logs) {
 			isLog = true
 		}
 
-		//If it's part of a log branch then label as must
+		//If it's part of a log block then label as must
 		if isLog {
 			curr.SetLabel(Must)
 			// fmt.Println("IS LOG NODE")
@@ -145,25 +140,25 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType) {
 			curr.SetLabel(May)
 		}
 
-		LabelDown(child, start, isLog, logs)
+		LabelDown(child, start, isLog, logs, stackInfo)
 	}
 }
 
 //Helper for checking if FnWrapper is a may/must (checks function with stack to see if it is relevant)
-func CheckFnStatus(wrapper *FnWrapper) bool {
+func CheckFnStatus(wrapper *FnWrapper, stackInfo helper.StackTraceStruct) bool {
 	var isMust = false
 
 	switch funcNode := wrapper.Fn.(type) {
 	case *ast.FuncDecl:
 		//Check if function is in the stack trace
-		//for _, stkInfo := range stackInfo{
-		//	for _, funcName := range stkInfo.FuncName {
-		//		if funcNode.Name.Name == funcName{
-		//			isMust = true
-		//			break
-		//		}
-		//	}
-		//}
+		for _, funcName := range stackInfo.FuncName {
+			fmt.Println(funcNode.Name.Name, " | ", funcName)
+			if funcNode.Name.Name == funcName {
+				isMust = true
+				fmt.Println("Function ", funcNode.Name.Name, " is in the stack trace")
+				break
+			}
+		}
 	case *ast.FuncLit:
 		fmt.Println(funcNode)
 	}
@@ -171,15 +166,40 @@ func CheckFnStatus(wrapper *FnWrapper) bool {
 	return isMust
 }
 
-//Helper function to check if a BlockWrapper contains a log, or if it matches
-func CheckLogStatus(nodes []ast.Node) bool {
+//Helper function to check if a BlockWrapper contains a log, or if it matches a relevant regex
+func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
+
+	var done = false
 	for _, node := range nodes {
 		if n1, ok := node.(*ast.ExprStmt); ok {
 			if call, ok := n1.X.(*ast.CallExpr); ok {
+				possibleLog := fmt.Sprint(call.Fun)
 				if realSelector, ok := call.Fun.(*ast.SelectorExpr); ok {
-					if logsource.IsFromLog(realSelector) { //if any node in the block contains a log statement, exit early
-						// fmt.Println(realSelector, " is a log statement -> label as must")
-						return true
+
+					//Set status of log
+					if logsource.IsFromLog(realSelector) || strings.Contains(possibleLog, "log"){ //if any node in the block contains a log statement, exit early
+						fmt.Println(realSelector, " is a log statement -> label as must")
+
+						//get log from node
+						for _, arg := range call.Args {
+							switch argNode := arg.(type) {
+							case *ast.BasicLit:
+								//Match regex to possible log
+								for _, currLog := range logs {
+									fullRegex := "^" + currLog.Regex + "$"
+									str := strings.Trim(argNode.Value, "\"") //remove double quotes
+									if regex, err := regexp.Compile(fullRegex); err == nil {
+										if regex.Match([]byte(str)) {
+											fmt.Println(str, " - MATCHES -", fullRegex)
+											done = true
+											return true
+										}
+									}
+								}
+
+							}
+						}
+
 					}
 				}
 			}
@@ -187,7 +207,7 @@ func CheckLogStatus(nodes []ast.Node) bool {
 
 	}
 
-	return false
+	return done
 }
 
 func MatchLogRegex(logs []model.LogType) bool {
@@ -218,7 +238,7 @@ func MatchLogRegex(logs []model.LogType) bool {
 										str := strings.Trim(v.Value, "\"")
 										if regex, err := regexp.Compile(fullRegex); err == nil {
 											if regex.Match([]byte(str)) {
-												// fmt.Println(str, " - MATCHES -", fullRegex)
+												//fmt.Println(str, " - MATCHES -", fullRegex)
 												doesMatch = true
 											}
 										}
