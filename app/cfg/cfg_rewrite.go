@@ -129,24 +129,24 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 			}
 		}
 
-		varList := GetVariables(currWrapper, varFilter)
+		// varList := GetVariables(currWrapper, varFilter)
 
-		vars := []ast.Node{}
-		// Filter out variables already in the array again
-		for _, v := range varList {
-			contained := false
-			for _, existingVar := range stmts {
-				if v == existingVar {
-					contained = true
-					break
-				}
-			}
-			if !contained {
-				vars = append([]ast.Node{v}, vars...)
+		// vars := []ast.Node{}
+		// // Filter out variables already in the array again
+		// for _, v := range varList {
+		// 	contained := false
+		// 	for _, existingVar := range stmts {
+		// 		if v == existingVar {
+		// 			contained = true
+		// 			break
+		// 		}
+		// 	}
+		// 	if !contained {
+		// 		vars = append([]ast.Node{v}, vars...)
 
-			}
-		}
-		stmts = append(stmts, vars...)
+		// 	}
+		// }
+		// stmts = append(stmts, vars...)
 
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()

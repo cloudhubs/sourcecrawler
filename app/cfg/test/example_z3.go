@@ -1,7 +1,7 @@
 package test
 
-func z3example() {
-	x, y, z := -1, -2, 8
+func z3example(z int) {
+	x, y := -1, -2
 	if x+y+z > 4 {
 	}
 	if x+y < 2 {
