@@ -134,27 +134,48 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 			}
 		}
 
-		varList := GetVariables(currWrapper, varFilter)
+		//=====Integrate-labeling changes
+		// varList := GetVariables(currWrapper, varFilter)
+		// vars := []ast.Node{}
+		// // Filter out variables already in the array again
+		// for _, v := range varList {
+		// 	contained := false
+		// 	for _, existingVar := range stmts {
+		// 		if v == existingVar {
+		// 			contained = true
+		// 			break
+		// 		}
+		// 	}
+		// 	if !contained {
+		// 		vars = append([]ast.Node{v}, vars...)
+		// 		if currWrapper.GetLabel() == NoLabel{
+		// 			fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
+		// 		}
+		// 		pathLabels = append(pathLabels, currWrapper.GetLabel())
+		// 	}
+		// }
+		// stmts = append(stmts, vars...)
 
-		vars := []ast.Node{}
-		// Filter out variables already in the array again
-		for _, v := range varList {
-			contained := false
-			for _, existingVar := range stmts {
-				if v == existingVar {
-					contained = true
-					break
-				}
-			}
-			if !contained {
-				vars = append([]ast.Node{v}, vars...)
-				if currWrapper.GetLabel() == NoLabel{
-					fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
-				}
-				pathLabels = append(pathLabels, currWrapper.GetLabel())
-			}
-		}
-		stmts = append(stmts, vars...)
+
+		//=========== rewrite branch changes ===============
+		// varList := GetVariables(currWrapper, varFilter)
+
+		// vars := []ast.Node{}
+		// // Filter out variables already in the array again
+		// for _, v := range varList {
+		// 	contained := false
+		// 	for _, existingVar := range stmts {
+		// 		if v == existingVar {
+		// 			contained = true
+		// 			break
+		// 		}
+		// 	}
+		// 	if !contained {
+		// 		vars = append([]ast.Node{v}, vars...)
+
+		// 	}
+		// }
+		// stmts = append(stmts, vars...)
 
 
 		//If conditional block, extract the condition and add to list

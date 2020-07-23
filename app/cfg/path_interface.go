@@ -9,6 +9,7 @@ import (
 type Path struct {
 	Expressions []ast.Node                  //List of all expressions (includes conditions and vars) (slice used b/c of ordering issue with maps)
 	ExecStatus	[]ExecutionLabel			//Parallel array with Expressions
+	Stmts       map[ast.Node]ExecutionLabel
 }
 
 //List of paths
@@ -20,9 +21,8 @@ type PathList struct {
 }
 
 //Adds a path to the list
-func (paths *PathList) AddNewPath(path Path) {
-	paths.Paths = append(paths.Paths, path)
-	//pathList.Paths = append(pathList.Paths, path)
+func (p *PathList) AddNewPath(path Path) {
+	p.Paths = append(p.Paths, path)
 }
 
 //Instantiates a new instance of a path list
