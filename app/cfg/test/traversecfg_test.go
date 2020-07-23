@@ -1,6 +1,6 @@
-/**
-This is just a test file for the rewrite functions
-*/
+// /**
+// This is just a test file for the rewrite functions
+// */
 package test
 
 import (

@@ -79,7 +79,7 @@ func TestExpressions(t *testing.T) {
 			// tsucc2.AddChild(end)
 
 			//Start at end node and label
-			cfg2.LabelCFG(end, nil, root)
+			// cfg2.LabelCFG(end, nil, root)
 
 			//stmts := make(map[string]cfg2.ExecutionLabel)
 			//vars := make(map[ast.Node]cfg2.ExecutionLabel)

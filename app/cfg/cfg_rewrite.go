@@ -17,13 +17,14 @@ import (
 
 func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 
-	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node))
+	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0))
 	return paths.Paths
 }
 
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
-func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* condStmts map[ast.Node]ExecutionLabel, vars []ast.Node, , ,,*/, stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node) {
+func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
+	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -120,7 +121,11 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 							ssaInts[name]++
 						}
 					}
-					stmts = append(stmts, artificial)
+					stmts = append(stmts, artificial)				
+					pathLabels = append(pathLabels, currWrapper.GetLabel())
+					// if currWrapper.GetLabel() == NoLabel{
+					// 	fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
+					// }
 				}
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)
@@ -129,6 +134,30 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 			}
 		}
 
+		//=====Integrate-labeling changes
+		// varList := GetVariables(currWrapper, varFilter)
+		// vars := []ast.Node{}
+		// // Filter out variables already in the array again
+		// for _, v := range varList {
+		// 	contained := false
+		// 	for _, existingVar := range stmts {
+		// 		if v == existingVar {
+		// 			contained = true
+		// 			break
+		// 		}
+		// 	}
+		// 	if !contained {
+		// 		vars = append([]ast.Node{v}, vars...)
+		// 		if currWrapper.GetLabel() == NoLabel{
+		// 			fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
+		// 		}
+		// 		pathLabels = append(pathLabels, currWrapper.GetLabel())
+		// 	}
+		// }
+		// stmts = append(stmts, vars...)
+
+
+		//=========== rewrite branch changes ===============
 		// varList := GetVariables(currWrapper, varFilter)
 
 		// vars := []ast.Node{}
@@ -148,6 +177,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 		// }
 		// stmts = append(stmts, vars...)
 
+
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
 		if condition != nil {
@@ -157,8 +187,11 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 				}
 				return true
 			})
-			// condStmts = append(condStmts, condition)
-			// fmt.Println("Condition is", condition)
+
+			//pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
+			//pathLabels = append(pathLabels, currWrapper.GetLabel())
+
+			//Prevent duplicates
 			contained := false
 			for _, existingCondition := range stmts {
 				if condition == existingCondition {
@@ -168,6 +201,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 			}
 			if !contained {
 				stmts = append(stmts, condition)
+				pathLabels = append(pathLabels, currWrapper.GetLabel())
 			}
 		}
 
@@ -177,14 +211,14 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int /* 
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter)
+			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels)
 		}
 	} else {
 
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
 		// fmt.Println("hello", stmts)
-		paths.AddNewPath(Path{Expressions: stmts})
+		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels})
 	}
 
 }

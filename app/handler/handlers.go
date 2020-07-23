@@ -65,9 +65,9 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 }
 
-func NeoTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	createTestNeoNodes()
-}
+//func NeoTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+//	helper.createTestNeoNodes()
+//}
 
 func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := model.ParseProjectRequest{}
@@ -80,7 +80,7 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	defer r.Body.Close()
 
 	//actually parse the project
-	logsTypes := parseProject(request.ProjectRoot)
+	logsTypes := helper.ParseProject(request.ProjectRoot)
 
 	for _, logType := range logsTypes {
 
@@ -147,6 +147,8 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	fmt.Println("ERROR")
+
 	messages, err := unsafe.Unsafe(request.X, request.Msg)
 
 	if err != nil {
@@ -154,7 +156,14 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	} else {
 		respondJSON(w, http.StatusBadRequest, nil)
 	}
+}
 
+// NOTE: Values can be hardcoded in here for testing (Can't run from Postman without additional docker configuration)
+//  Run the following: curl -X POST http://127.0.0.1:3000/container
+func ContainerEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	projectRoot := "./"
+	fmt.Println("container endpoint")
+	respondJSON(w, http.StatusOK, projectRoot)
 }
 
 //Test for rewrite cfg
@@ -173,10 +182,10 @@ func TestRewriteCFG(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	//1 -- parse stack trace for functions that led to exception
-	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
+	parsedStack := helper.ParsePanic(request.ProjectRoot, request.StackTrace)
 
 	//2 -- Parse project for log statements with regex + line + file name
-	logTypes := parseProject(request.ProjectRoot)
+	logTypes := helper.ParseProject(request.ProjectRoot)
 	fmt.Println(logTypes)
 
 	// 3 -- Generate CFGs (including log information) for each function in the stack trace
@@ -189,16 +198,16 @@ func TestRewriteCFG(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
 				shouldAppendFunction := false
-				for _, value := range parsedStack {
-					for index, stackFuncName := range value.FuncName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile.Name.Name, value.FileName[index]) {
+				//for _, value := range parsedStack {
+					for index, stackFuncName := range parsedStack.FuncName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile.Name.Name, parsedStack.FileName[index]) {
 							shouldAppendFunction = true
 							break
 						}
 					}
-				}
+				//}
 
-				if shouldAppendFunction && wrap == nil{
+				if shouldAppendFunction && wrap == nil {
 					wrap = cfg.NewFnWrapper(fn, make([]ast.Expr, 0))
 				}
 			}
@@ -223,8 +232,6 @@ func TestRewriteCFG(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	// 	path.TraverseCFG(leaf, condStmts, vars, wrap, make(map[string]ast.Node))
 	// }
 
-
-
 	response := ""
 	respondJSON(w, http.StatusOK, response)
 }
@@ -246,10 +253,10 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	//1 -- parse stack trace for functions that led to exception
-	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
+	parsedStack := helper.ParsePanic(request.ProjectRoot, request.StackTrace)
 
 	//2 -- Parse project for log statements with regex + line + file name
-	logTypes := parseProject(request.ProjectRoot)
+	logTypes := helper.ParseProject(request.ProjectRoot)
 
 	// Matching log messages to a regex (only returns used regexes)
 	regexes := []string{}
@@ -272,14 +279,14 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 		// only parse this file if it appears in the stack trace
 		shouldParseFile := false
-		for _, value := range parsedStack {
-			for _, stackFileName := range value.FileName {
+		//for _, value := range parsedStack {
+			for _, stackFileName := range parsedStack.FileName {
 				if strings.Contains(goFile, stackFileName) {
 					shouldParseFile = true
 					break
 				}
 			}
-		}
+		//}
 
 		if !shouldParseFile { // file not in stack trace, skip it
 			continue
@@ -301,14 +308,14 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
 				shouldAppendFunction := false
-				for _, value := range parsedStack {
-					for index, stackFuncName := range value.FuncName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.FileName[index]) {
+				//for _, value := range parsedStack {
+					for index, stackFuncName := range parsedStack.FuncName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile, parsedStack.FileName[index]) {
 							shouldAppendFunction = true
 							break
 						}
 					}
-				}
+				//}
 
 				if shouldAppendFunction {
 					decls = append(decls, c.CreateCfg(fn))
@@ -333,9 +340,9 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		fmt.Println(decl)
 	}
 
-	line, _ := strconv.Atoi(parsedStack[0].LineNum[0])
+	line, _ := strconv.Atoi(parsedStack.LineNum[0])
 
-	node := *getExceptionNode(&decls[len(decls)-1], parsedStack[0].FileName[0], line)
+	node := *getExceptionNode(&decls[len(decls)-1], parsedStack.FileName[0], line)
 
 	fmt.Println(node.GetFilename(), node.GetLineNumber(), node.GetParents())
 
