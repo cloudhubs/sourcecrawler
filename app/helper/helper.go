@@ -12,6 +12,15 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+//Struct for quick access to the function declaration nodes
+type fdeclStruct struct {
+	node     ast.Node
+	fd       *ast.FuncDecl
+	filePath string
+	lineNum  string
+	Name     string
+}
+
 //Gathers all go files to parse
 func GatherGoFiles(projectRoot string) []string {
 	filesToParse := []string{}

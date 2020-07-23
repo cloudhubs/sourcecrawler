@@ -1,4 +1,4 @@
-package handler
+package helper
 
 import (
 	"fmt"
@@ -30,13 +30,13 @@ func indexOf(elt model.LogType, arr []model.LogType) (int, bool) {
 }
 
 //Parse project to create log types
-func parseProject(projectRoot string) []model.LogType {
+func ParseProject(projectRoot string) []model.LogType {
 
 	//Holds a slice of log types
 	logTypes := []model.LogType{}
 	variableDeclarations := varDecls{}
 	variablesUsedInLogs := map[string]struct{}{}
-	filesToParse := helper.GatherGoFiles(projectRoot)
+	filesToParse := GatherGoFiles(projectRoot)
 
 	//parse each file to collect logs and the variables used in them
 	//as well as collecting variables declared in the file for later use
@@ -157,7 +157,7 @@ func getFdASTNode(fileName string, functionName string, stackFuncNodes []helper.
 		}
 	}
 
-	return nil
+	return filteredLogs
 }
 
 //This is just a struct
@@ -320,6 +320,10 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		if ret, ok := n.(*ast.CallExpr); ok {
 			//continue processing if CallExpr casts
 			//as a SelectorExpr
+
+			//Additional processing for "log" library in go
+			basicLog := strings.Contains(fmt.Sprint(ret.Fun), "log")
+
 			if fn, ok := ret.Fun.(*ast.SelectorExpr); ok {
 				// fmt.Printf("%T, %v\n", fn, fn)
 				//convert Selector into String for comparison
@@ -331,7 +335,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if (strings.Contains(val, "Msg") || val == "Err") && helper.IsFromLog(fn) {
+				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && logsource.IsFromLog(fn) {
 					parentArgs := usesParentArgs(parentFn, ret)
 					value := fnStruct{
 						n:              n,
@@ -364,8 +368,10 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		// fn, _ := l.fn.Fun.(*ast.SelectorExpr)
 		// fmt.Printf("Args for %v at line %d\n", fn.Sel, fset.Position(l.n.Pos()).Line)
 
-		relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name())
-		currentLog.FilePath = filepath.ToSlash(relPath)
+		//relPath, _ := filepath.Rel(base, fset.File(l.n.Pos()).Name())
+		//currentLog.FilePath = filepath.ToSlash(relPath) //TODO: bug with empty path, using absolute path right now
+
+		currentLog.FilePath = fset.File(l.n.Pos()).Name()
 		currentLog.LineNumber = fset.Position(l.n.Pos()).Line
 		for _, a := range l.fn.Args {
 			// good := false
@@ -391,7 +397,8 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			//This case represents variables used as log arguments
 			case *ast.Ident:
 				//store var name, will be   updated later
-				currentLog.Regex = v.Name
+				//currentLog.Regex = v.Name
+
 				// fmt.Printf("%v, ", v.Name)
 
 				//add an entry in the map for the variable name

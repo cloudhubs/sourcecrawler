@@ -14,6 +14,131 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+// Deletes the keys of any assignments that aren't user input (were assigned a value)
+func FilterToUserInput(block Wrapper, nodes []ast.Node, assignments map[string]*z3.AST) {
+	isAssigned := make(map[*ast.Object]bool)
+
+	for _, node := range nodes {
+		ast.Inspect(node, func(id ast.Node) bool {
+			if id, ok := id.(*ast.Ident); ok && id.Obj != nil && id.Obj.Decl != nil {
+				switch id.Obj.Decl.(type) {
+				case *ast.AssignStmt:
+					assigned := hasAssignment(nodes, id)
+					if _, ok := assignments[id.Name]; ok && assigned {
+						delete(assignments, id.Name)
+					}
+				case *ast.Field:
+					if _, ok := assignments[id.Name]; ok {
+						filterFnArgsUserInput(block, nodes, isAssigned, id)
+						if assigned, ok := isAssigned[id.Obj]; ok {
+							if assigned {
+								delete(assignments, id.Name)
+							}
+						}
+					}
+				}
+			}
+			return true
+		})
+		// switch node := node.(type) {
+		// case *ast.AssignStmt:
+		// 	for _, l := range node.Lhs {
+		// 		if id, ok := l.(*ast.Ident); ok {
+		// 			if _, ok := assignments[id.Name]; ok {
+		// 				delete(assignments, id.Name)
+		// 			}
+		// 		}
+		// 	}
+		// default:
+
+		// }
+	}
+}
+
+func hasAssignment(nodes []ast.Node, id *ast.Ident) bool {
+	isAssigned := false
+	for _, node := range nodes {
+		ast.Inspect(node, func(node ast.Node) bool {
+			switch node := node.(type) {
+			case *ast.AssignStmt:
+				for i, l := range node.Lhs {
+					if foundID, ok := l.(*ast.Ident); ok && id == foundID {
+						switch r := node.Rhs[i].(type) {
+						case *ast.SelectorExpr:
+							if id, ok := r.X.(*ast.Ident); ok {
+								if id.Name == "os" {
+									args := false
+									ast.Inspect(r.Sel, func(node ast.Node) bool {
+										if argsID, ok := node.(*ast.Ident); ok {
+											if argsID.Name == "Args" {
+												args = true
+												return false
+											}
+										}
+										return true
+									})
+									if !args {
+										isAssigned = true
+									}
+								}
+							}
+						}
+						return false
+					}
+				}
+			}
+			return true
+		})
+	}
+	return isAssigned
+}
+
+func filterFnArgsUserInput(block Wrapper, constraints []ast.Node, isAssigned map[*ast.Object]bool, id *ast.Ident) {
+	if block == nil || id.Obj == nil || id.Obj.Decl == nil {
+		return
+	}
+
+	switch block := block.(type) {
+	case *FnWrapper:
+		var fnType *ast.FuncType
+		switch fn := block.Fn.(type) {
+		case *ast.FuncDecl:
+			fnType = fn.Type
+		case *ast.FuncLit:
+			fnType = fn.Type
+		}
+
+		if fnType != nil || fnType.Params == nil {
+			return
+		}
+
+		foundArg := false
+		for _, field := range fnType.Params.List {
+			if f, ok := id.Obj.Decl.(*ast.Field); ok && field == f {
+				foundArg = true
+				arg := block.ParamsToArgs[id.Obj]
+				if argID, ok := arg.(*ast.Ident); ok && id.Obj != nil {
+					if _, ok := isAssigned[argID.Obj]; !ok {
+						// return isUserInput[id.Obj]
+						assigned := hasAssignment(constraints, argID)
+						isAssigned[argID.Obj] = assigned
+					}
+					isAssigned[id.Obj] = isAssigned[argID.Obj]
+					// return isUserInput[id.Obj]
+				}
+				return
+			}
+		}
+
+		if !foundArg {
+			filterFnArgsUserInput(block.GetOuterWrapper(), constraints, isAssigned, id)
+		}
+	case *BlockWrapper:
+		filterFnArgsUserInput(block.GetOuterWrapper(), constraints, isAssigned, id)
+	}
+	// return false
+}
+
 func ConvertExprToZ3(ctx *z3.Context, expr ast.Node, fset *token.FileSet) *z3.AST {
 	if ctx == nil || expr == nil {
 		// fmt.Println("returning nil")
@@ -29,7 +154,7 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Node, fset *token.FileSet) *z3.AS
 			rhs := ConvertExprToZ3(ctx, r, fset)
 			if lhs != nil && rhs != nil {
 				if e == nil {
-					lhs.Eq(rhs)
+					e = lhs.Eq(rhs)
 				} else {
 					e = e.And(lhs.Eq(rhs))
 				}

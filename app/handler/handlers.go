@@ -32,6 +32,8 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	fmt.Println("ERROR")
+
 	messages, err := unsafe.Unsafe(request.X, request.Msg)
 
 	if err != nil {
@@ -39,7 +41,14 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	} else {
 		respondJSON(w, http.StatusBadRequest, nil)
 	}
+}
 
+// NOTE: Values can be hardcoded in here for testing (Can't run from Postman without additional docker configuration)
+//  Run the following: curl -X POST http://127.0.0.1:3000/container
+func ContainerEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	projectRoot := "./"
+	fmt.Println("container endpoint")
+	respondJSON(w, http.StatusOK, projectRoot)
 }
 
 //Slices the program - first parses the stack trace, and then parses the project for log calls
@@ -62,7 +71,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	parsedStack := helper.ParsePanic(request.ProjectRoot, request.StackTrace)
 
 	//2 -- Parse project for log statements with regex + line + file name
-	logTypes := parseProject(request.ProjectRoot)
+	logTypes := helper.ParseProject(request.ProjectRoot)
 
 	// Matching log messages to a regex (only returns used regexes)
 	seenLogTypes := []model.LogType{}
