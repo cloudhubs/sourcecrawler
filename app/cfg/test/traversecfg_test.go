@@ -40,9 +40,6 @@ func printPath(paths []cfg2.Path) {
 		//Print statements
 		for _, value := range path.Stmts {
 			fmt.Printf("Stmt: %s ", value)
-			for _, vars := range path.Variables {
-				fmt.Printf("| Vars: (%v)", vars)
-			}
 			fmt.Println()
 		}
 

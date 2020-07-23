@@ -28,7 +28,7 @@ func TestZ3Conditions(t *testing.T) {
 				Src: `
 				package main
 				func main() {
-					x, y, z := -1, -2, 8
+					// x, y, z := -1, -2, 8
 					x + y + z > 4
 					x + y < 2
 					z > 0
@@ -67,7 +67,7 @@ func TestZ3Conditions(t *testing.T) {
 
 		test := testCase()
 		t.Run(test.Name, func(t *testing.T) {
-			exprs := make([]ast.Expr, 0)
+			exprs := make([]ast.Node, 0)
 			fset := token.NewFileSet()
 			f, err := parser.ParseFile(fset, "", test.Src, parser.ParseComments)
 			if err != nil {
@@ -121,6 +121,7 @@ func TestZ3Conditions(t *testing.T) {
 			t.Log("it passed!")
 			m := s.Model()
 			assignments := m.Assignments()
+			// cfg.FilterToUserInput(exprs, assignments)
 			for name, val := range assignments {
 				t.Logf("%s = %s\n", name, val)
 				fmt.Printf("%s = %s\n", name, val)

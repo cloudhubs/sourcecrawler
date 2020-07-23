@@ -9,15 +9,11 @@ import (
 type Path struct {
 	Stmts       map[ast.Node]ExecutionLabel
 	Expressions []ast.Node
-	Variables   []ast.Node
-	//Variables map[ast.Node]string //*ast.AssignStmt or *ast.ValueSpec
-	//Stmts []string
 }
 
 //List of paths
 type PathList struct {
-	Paths []Path
-	// Expressions map[ast.Node]string //Temporary, may be subject to change
+	Paths   []Path
 	SsaInts map[string]int
 }
 
@@ -27,7 +23,6 @@ type PathList struct {
 //Adds a path to the list
 func (p *PathList) AddNewPath(path Path) {
 	p.Paths = append(p.Paths, path)
-	//pathList.Paths = append(pathList.Paths, path)
 }
 
 //Instantiates a new instance of a path list
@@ -57,13 +52,8 @@ func (p *PathList) PrintExecPath() {
 	}
 
 	for _, path := range p.Paths {
-		//fmt.Println("Path is", path)
-		//Print statements
 		for key, value := range path.Stmts {
 			fmt.Printf("Stmt: %v - %s ", key, value)
-			for _, varNode := range path.Variables {
-				fmt.Printf("| Vars: (%v)", varNode)
-			}
 			fmt.Println()
 		}
 
