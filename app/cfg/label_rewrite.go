@@ -39,9 +39,9 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 				// fmt.Println("Current wrapper in label", curr)
 
 				//Entry should be a must
-				if strings.Contains(wrap.Block.String(), "entry"){
+				if strings.Contains(wrap.Block.String(), "entry") {
 					wrap.SetLabel(Must)
-				}else{
+				} else {
 					wrap.SetLabel(May)
 				}
 
@@ -102,10 +102,10 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 	done := false
 
 	//Go up to very top
-	for !done{
+	for !done {
 
 		//Each time a block containing a condition is found, increment the count
-		switch curr := curr.(type){
+		switch curr := curr.(type) {
 		case *BlockWrapper:
 			condNode := curr.GetCondition()
 			if condNode != nil {
@@ -126,8 +126,6 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 			}
 			done = true
 		}
-	} else {
-		panic("no parent nodes")
 	}
 
 	//Go up until a node with 2 children are found (top condition)
@@ -142,7 +140,7 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 	//Label topmost node as must
 	curr.SetLabel(Must)
 
-	var isLog bool = false
+	isLog := false
 
 	//Go down through children to label nodes
 	LabelDown(curr, start, isLog, logs, stackInfo, totalCount)
@@ -154,7 +152,7 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, stackInfo helper.StackTraceStruct, totalCount int) {
 
 	//If at bottom, return
-	if curr == start || totalCount == 0{
+	if curr == start || totalCount == 0 {
 		curr.SetLabel(Must)
 		return
 	}
@@ -171,7 +169,7 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 			currNodes = currType.Block.Nodes
 
 			//If it's a condition, decrement the count
-			if currType.GetCondition() != nil{
+			if currType.GetCondition() != nil {
 				totalCount--
 			}
 		}
@@ -274,7 +272,7 @@ func MatchLogRegex(logs []model.LogType) bool {
 		ast.Inspect(fileNode, func(n ast.Node) bool {
 			if call, ok := n.(*ast.CallExpr); ok {
 				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-					if logsource.IsFromLog(sel) {
+					if helper.IsFromLog(sel) {
 						if fset.Position(n.Pos()).Line == logMsg.LineNumber {
 							//get log from node
 							for _, arg := range call.Args {

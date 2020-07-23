@@ -6,7 +6,6 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
-	"sourcecrawler/app/helper"
 	"sourcecrawler/app/model"
 	"strconv"
 	"strings"
@@ -106,12 +105,12 @@ func ParseProject(projectRoot string) []model.LogType {
  Determines if a function is called somewhere else based on its name (path and line number)
   -currently goes through all files and finds if it's used
 */
-func findFunctionNodes(filesToParse []string) []helper.FdeclStruct {
+func findFunctionNodes(filesToParse []string) []FdeclStruct {
 
 	//Map of all function names with a [line number, file path]
 	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
 	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
-	functCalls := []helper.FdeclStruct{}
+	functCalls := []FdeclStruct{}
 
 	//Inspect each file for calls to this function
 	for _, file := range filesToParse {
@@ -134,7 +133,7 @@ func findFunctionNodes(filesToParse []string) []helper.FdeclStruct {
 				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
 
 				//Add astNode and the FuncDecl node to the function calls
-				functCalls = append(functCalls, helper.FdeclStruct{
+				functCalls = append(functCalls, FdeclStruct{
 					currNode,
 					fdNode,
 					fpath,
@@ -147,17 +146,6 @@ func findFunctionNodes(filesToParse []string) []helper.FdeclStruct {
 	}
 
 	return functCalls
-}
-
-//Takes in a file name + function name -> returns AST FuncDecl node
-func getFdASTNode(fileName string, functionName string, stackFuncNodes []helper.FdeclStruct) *ast.FuncDecl {
-	for _, val := range stackFuncNodes {
-		if strings.Contains(val.FilePath, fileName) && functionName == val.Name {
-			return val.Fd
-		}
-	}
-
-	return filteredLogs
 }
 
 //This is just a struct
@@ -335,7 +323,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && logsource.IsFromLog(fn) {
+				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && IsFromLog(fn) {
 					parentArgs := usesParentArgs(parentFn, ret)
 					value := fnStruct{
 						n:              n,
@@ -386,7 +374,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				// good = true
 				// fmt.Println("Basic", v.Value)
 
-				currentLog.Regex = helper.CreateRegex(v.Value)
+				currentLog.Regex = CreateRegex(v.Value)
 
 				logInfo = append(logInfo, currentLog)
 

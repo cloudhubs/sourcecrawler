@@ -88,7 +88,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	topLevelWrapper := cfg.SetupPersistentData(request.ProjectRoot)
 
-	stack := parsedStack[0] //likely only one stack trace
+	stack := parsedStack //likely only one stack trace
 	entryPackage := stack.PackageName[len(stack.FileName)-1]
 	entryName := stack.FuncName[len(stack.FuncName)-1]
 
@@ -115,11 +115,12 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//find the block originating the exception
 	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
 
+	pathList := cfg.CreateNewPath()
+
 	//label the tree starting from the exception block
-	cfg.LabelCFG(exceptionBlock, seenLogTypes, entryWrapper)
+	pathList.LabelCFG(exceptionBlock, seenLogTypes, entryWrapper, stack)
 
 	//gather the paths
-	pathList := cfg.CreateNewPath()
 	paths := pathList.TraverseCFG(exceptionBlock, entryWrapper)
 
 	//transform to z3

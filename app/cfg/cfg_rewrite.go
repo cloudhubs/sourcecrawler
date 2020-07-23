@@ -641,7 +641,7 @@ func (b *BlockWrapper) GetFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr
 	return nil
 }
 
-func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) *BlockWrapper {
+func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
 	if w != nil {
 		switch w := w.(type) {
 		case *BlockWrapper:
