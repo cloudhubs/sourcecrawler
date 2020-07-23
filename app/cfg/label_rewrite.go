@@ -30,9 +30,12 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 				} else {
 					wrap.SetLabel(May)
 				}
+				// fmt.Println("Current wrapper in label", curr)
 
 			case *BlockWrapper: //BlockWrapper can represent a condition, but could be a statement, etc
 				//Check if it's a condition, if not set as must
+
+				// fmt.Println("Current wrapper in label", curr)
 
 				//Entry should be a must
 				if strings.Contains(wrap.Block.String(), "entry"){
@@ -92,6 +95,7 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 	curr := wrapper
 	for len(curr.GetParents()) > 0 && len(curr.GetChildren()) != 2 {
 		curr = curr.GetParents()[0]
+	
 
 		if len(curr.GetChildren()) == 2 {
 			break
@@ -117,6 +121,8 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 		curr.SetLabel(Must)
 		return
 	}
+
+	// fmt.Println("Current wrapper in label", curr)
 
 	//Set label downward
 	for _, child := range curr.GetChildren() {

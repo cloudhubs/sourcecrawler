@@ -64,6 +64,7 @@ func testLabel(t *testing.T, fileName string) {
 	paths := cfg.CreateNewPath()
 	leaves := cfg.GetLeafNodes(w)
 	for _, leaf := range leaves {
+		fmt.Println("Leaf is", leaf)
 		paths.LabelCFG(leaf, logTypes, w, stackInfo) //Label each block with executionLabel (TraverseCFG can be updated to map each stmt to a label)
 		paths.TraverseCFG(leaf, w)                   //Gather expressions for paths
 	}
@@ -83,14 +84,12 @@ func testLabel(t *testing.T, fileName string) {
 		//fmt.Println()
 		// t.Log(expr)
 
-		//Should have same # of elts
+		//Should print each constraint with its label
 		for index := range path.Expressions{
 			printer.Fprint(os.Stdout, fset, path.Expressions[index])
 			fmt.Print(" ---- ", path.ExecStatus[index])
 			fmt.Println()
 		}
-		// fmt.Println(len(path.Expressions), len(path.ExecStatus))
-
 	}
 
 }

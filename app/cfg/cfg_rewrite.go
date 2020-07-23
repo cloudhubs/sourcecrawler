@@ -121,11 +121,11 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 							ssaInts[name]++
 						}
 					}
-					stmts = append(stmts, artificial)
-					if currWrapper.GetLabel() == NoLabel{
-						fmt.Println("Shouldnt happen: inside ssa func")
-					}
+					stmts = append(stmts, artificial)				
 					pathLabels = append(pathLabels, currWrapper.GetLabel())
+					// if currWrapper.GetLabel() == NoLabel{
+					// 	fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
+					// }
 				}
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)
@@ -149,7 +149,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 			if !contained {
 				vars = append([]ast.Node{v}, vars...)
 				if currWrapper.GetLabel() == NoLabel{
-					fmt.Println("Shouldnt happen, inside varlist")
+					fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
 				}
 				pathLabels = append(pathLabels, currWrapper.GetLabel())
 			}
