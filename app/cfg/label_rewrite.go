@@ -13,9 +13,11 @@ import (
 func LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper) {
 
 	wrapper := curr //holds current wrapper
+	var prv Wrapper
 
 	//Iterate up through parents up to root
-	for len(wrapper.GetParents()) > 0 {
+	for len(wrapper.GetParents()) > 0 && prv != wrapper {
+		prv = wrapper
 		if wrapper.GetLabel() == NoLabel {
 			switch wrap := wrapper.(type) {
 			case *FnWrapper:
@@ -39,14 +41,14 @@ func LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper) {
 				}
 
 				//If-done should always be a must
-				if strings.Contains(wrap.Block.String(), "if.done") {
-					wrap.SetLabel(Must)
-				}
+				// if strings.Contains(wrap.Block.String(), "if.done") {
+				// 	wrap.SetLabel(Must)
+				// }
 
 				//Should only be true for the entry or top condition block
-				if wrap.GetCondition() != nil {
-					wrap.SetLabel(Must)
-				}
+				// if wrap.GetCondition() != nil {
+				// 	wrap.SetLabel(Must)
+				// }
 
 				//If two parent, go up to top and label down
 				if len(wrap.GetParents()) == 2 {
@@ -78,17 +80,42 @@ func LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper) {
 
 //Helper function to get topmost node where conditionals connect
 func GetTopAndLabel(wrapper Wrapper, start Wrapper) Wrapper {
+	var curr Wrapper
+	var next Wrapper
 
-	//Go up until a node with 2 children are found (top condition)
-	curr := wrapper
-	for len(curr.GetParents()) > 0 && len(curr.GetChildren()) != 2 {
-		curr = curr.GetParents()[0]
-
-		if len(curr.GetChildren()) == 2 {
-			break
+	if len(start.GetParents()) != 0 {
+		curr = start.GetParents()[0]
+		next = curr
+		if len(curr.GetParents()) != 0 {
+			next = curr.GetParents()[0]
 		}
+	} else {
+		panic("no parent nodes")
 	}
 
+	var top Wrapper
+	var depth = 1
+	for depth != 0 {
+		if curr, ok := curr.(*BlockWrapper); ok {
+			if strings.Contains(curr.Block.String(), "if.done") {
+				depth++
+			} else if strings.Contains(curr.Block.String(), "if.then") ||
+				strings.Contains(curr.Block.String(), "if.else") {
+				depth--
+			}
+		}
+		if depth != 0 {
+			if curr == next {
+				panic("something isn't right")
+			}
+			curr = next
+			if len(next.GetParents()) > 0 {
+				next = next.GetParents()[0]
+			}
+		}
+	}
+	top = curr
+	top.SetLabel(Must)
 	//Go down through children to label nodes
 	LabelDown(curr, start)
 
@@ -114,7 +141,9 @@ func LabelDown(curr Wrapper, start Wrapper) {
 			currNodes = currType.Block.Nodes
 		}
 
-		curr.SetLabel(May)
+		if curr.GetLabel() == NoLabel {
+			curr.SetLabel(May)
+		}
 
 		//If it is a log then need to label as must
 		//Check each wrapper to see if it is from log

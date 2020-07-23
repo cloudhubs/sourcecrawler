@@ -617,9 +617,9 @@ func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) *BlockWra
 		case *BlockWrapper:
 			for _, node := range w.Block.Nodes {
 				pos := w.GetFileSet().Position(node.Pos())
-				if pos.Filename == traceStruct.FileName[0]{
+				if strings.Contains(pos.Filename, traceStruct.FileName[0]) {
 					lineNum, err := strconv.Atoi(traceStruct.LineNum[0])
-					if err == nil && pos.Line == lineNum  {
+					if err == nil && pos.Line == lineNum {
 						return w
 					}
 				}

@@ -80,17 +80,18 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	topLevelWrapper := cfg.SetupPersistentData(request.ProjectRoot)
 
 	stack := parsedStack[0] //likely only one stack trace
-	entryFile := stack.FileName[len(stack.FileName)-1]
+	entryPackage := stack.PackageName[len(stack.FileName)-1]
 	entryName := stack.FuncName[len(stack.FuncName)-1]
 
 	//grab the entry function
 	var entryFnNode ast.Node
 	for _, file := range topLevelWrapper.ASTs {
-		if strings.Contains(file.Name.Name, entryFile) {
+		if strings.Contains(file.Name.Name, entryPackage) {
 			for _, decl := range file.Decls {
 				if decl, ok := decl.(*ast.FuncDecl); ok {
 					if strings.EqualFold(decl.Name.Name, entryName) {
 						entryFnNode = decl
+						break
 					}
 				}
 			}
@@ -106,7 +107,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
 
 	//label the tree starting from the exception block
-	cfg.LabelCFG(exceptionBlock, logTypes, entryWrapper)
+	cfg.LabelCFG(exceptionBlock, seenLogTypes, entryWrapper)
 
 	//gather the paths
 	pathList := cfg.CreateNewPath()

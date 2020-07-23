@@ -6,8 +6,6 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
-	"sourcecrawler/app/cfg"
-	"sourcecrawler/app/db"
 	"sourcecrawler/app/helper"
 	"sourcecrawler/app/model"
 	"strconv"
@@ -15,37 +13,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 )
-
-func createTestNeoNodes() {
-	//These literals don't have the right amount of values
-
-	// node7 := db.StatementNode{"test.go", 7, "", nil}
-	// node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
-	// node5 := db.StatementNode{"test.go", 5, "", &node6}
-	// node4 := db.StatementNode{"test.go", 4, "my log regex", &node6}
-	// node3 := db.ConditionalNode{"test.go", 3, "myvar != nil", &node4, &node5}
-	// node2 := db.StatementNode{"test.go", 2, "", &node3}
-	// node1 := db.StatementNode{"test.go", 1, "", &node2}
-
-	// dao := db.NodeDaoNeoImpl{}
-	// //close driver when dao goes out of scope
-	// defer dao.DisconnectFromNeo()
-	// dao.CreateTree(&node1)
-
-	// nodeG := db.StatementNode{"connect.go", 7, "do nothing", nil}
-	// nodeF := db.FunctionNode{"connect.go", 6, "main", nil}
-	// nodeE := db.ConditionalNode{"connect.go", 5, "yes?", &nodeF, &nodeG}
-	// nodeD := db.FunctionDeclNode{"connect.go", 4, "func", nil, nil, nil, &nodeE}
-
-	// nodeC := db.StatementNode{"connect.go", 3, "the end", nil}
-	// nodeB := db.StatementNode{"connect.go", 2, "", &nodeC}
-	// nodeA := db.FunctionDeclNode{"connect.go", 1, "main", nil, nil, nil, &nodeB}
-
-	// cfg.PrintCfg(&nodeD, "")
-	// fmt.Println()
-	// cfg.ConnectStackTrace([]db.Node{&nodeA, &nodeD})
-	// cfg.PrintCfg(&nodeD, "")
-}
 
 type varDecls struct {
 	asns  []*ast.AssignStmt
@@ -131,22 +98,6 @@ func parseProject(projectRoot string) []model.LogType {
 			}
 		}
 	}
-
-	// //Get stack trace string
-	// file, err := os.Open("stackTrace.log")
-	// if err != nil {
-	// 	log.Error().Msg("Error opening file")
-	// }
-	// scanner := bufio.NewScanner(file)
-	// stackTraceString := ""
-	// for scanner.Scan() {
-	// 	stackTraceString += scanner.Text() + "\n"
-	// }
-
-	// //Parses panic stack trace message
-	// parsePanic(projectRoot, stackTraceString)
-	// //errorList := parsePanic(projectRoot, "")
-	// //printErrorList(errorList)
 
 	return logTypes
 }
@@ -417,7 +368,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		currentLog.FilePath = filepath.ToSlash(relPath)
 		currentLog.LineNumber = fset.Position(l.n.Pos()).Line
 		for _, a := range l.fn.Args {
-			good := false
+			// good := false
 			//later will be used to call functions
 			//to extract data more eficiently for multiple
 			//types of arguments
@@ -426,7 +377,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			//this case catches string literals,
 			//our proof-of-concept case
 			case *ast.BasicLit:
-				good = true
+				// good = true
 				// fmt.Println("Basic", v.Value)
 
 				currentLog.Regex = helper.CreateRegex(v.Value)
@@ -447,16 +398,16 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//so we can check if declarations refer to a
 				//variable used in a log statement
 				varsInLogs[v.Name] = struct{}{}
-				good = true
+				// good = true
 
 			default:
 				//fmt.Println("type arg", reflect.TypeOf(a), a)
 			}
 			//if the type is known and handled,
 			//add it to the result array
-			if good {
-				logInfo = append(logInfo, currentLog)
-			}
+			// if good {
+			// 	logInfo = append(logInfo, currentLog)
+			// }
 		}
 		//fmt.Println()
 	}
