@@ -23,6 +23,7 @@ func matchLog(logMessage string, db *gorm.DB) (*model.LogSourceResponse, error) 
 	for _, logType := range logTypes {
 		fullRegex := "^" + logType.Regex + "$"
 		if regex, err := regexp.Compile(fullRegex); err == nil {
+
 			if regex.Match([]byte(logMessage)) {
 				// Found a log type, set values
 				response = &model.LogSourceResponse{

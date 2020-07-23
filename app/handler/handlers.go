@@ -65,9 +65,9 @@ func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 }
 
-func NeoTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	createTestNeoNodes()
-}
+//func NeoTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+//	helper.createTestNeoNodes()
+//}
 
 func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := model.ParseProjectRequest{}
@@ -80,7 +80,7 @@ func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) 
 	defer r.Body.Close()
 
 	//actually parse the project
-	logsTypes := parseProject(request.ProjectRoot)
+	logsTypes := helper.ParseProject(request.ProjectRoot)
 
 	for _, logType := range logsTypes {
 
@@ -147,6 +147,8 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	fmt.Println("ERROR")
+
 	messages, err := unsafe.Unsafe(request.X, request.Msg)
 
 	if err != nil {
@@ -154,11 +156,18 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	} else {
 		respondJSON(w, http.StatusBadRequest, nil)
 	}
-
 }
 
-//Test endpoint for propogating labels
-func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+// NOTE: Values can be hardcoded in here for testing (Can't run from Postman without additional docker configuration)
+//  Run the following: curl -X POST http://127.0.0.1:3000/container
+func ContainerEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	projectRoot := "./"
+	fmt.Println("container endpoint")
+	respondJSON(w, http.StatusOK, projectRoot)
+}
+
+//Test for rewrite cfg
+func TestRewriteCFG(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := struct {
 		StackTrace  string   `json:"stackTrace"`
 		LogMessages []string `json:"logMessages"` //it holds raw log statements
@@ -173,138 +182,57 @@ func TestProp(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	//1 -- parse stack trace for functions that led to exception
-	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
+	parsedStack := helper.ParsePanic(request.ProjectRoot, request.StackTrace)
 
 	//2 -- Parse project for log statements with regex + line + file name
-	logTypes := parseProject(request.ProjectRoot)
-
-	// Matching log messages to a regex (only returns used regexes)
-	regexes := []string{}
-	for index := range request.LogMessages {
-		for _, value := range logTypes {
-			matched, _ := regexp.MatchString(value.Regex, request.LogMessages[index])
-			if matched {
-				regexes = append(regexes, value.Regex)
-				//fmt.Println("Valid regexes:", value.Regex)
-				break
-			}
-		}
-	}
+	logTypes := helper.ParseProject(request.ProjectRoot)
+	fmt.Println(logTypes)
 
 	// 3 -- Generate CFGs (including log information) for each function in the stack trace
-	var decls []neoDb.Node
-	fset := token.NewFileSet()
-	filesToParse := helper.GatherGoFiles(request.ProjectRoot)
-	for _, goFile := range filesToParse {
-
-		// only parse this file if it appears in the stack trace
-		shouldParseFile := false
-		for _, value := range parsedStack {
-			for _, stackFileName := range value.fileName {
-				if strings.Contains(goFile, stackFileName) {
-					shouldParseFile = true
-					break
-				}
-			}
-		}
-
-		if !shouldParseFile { // file not in stack trace, skip it
-			continue
-		}
-
-		// get ast root for this file
-		f, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
-		if err != nil {
-			log.Error().Err(err).Msg("unable to parse file")
-		}
-
-		// get map of linenumber -> regex for thsi file
-		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
-		//regexes := mapLogRegex(logInfo)
+	outerWrapper := cfg.SetupPersistentData(request.ProjectRoot)
+	var wrap *cfg.FnWrapper
+	for _, goFile := range outerWrapper.GetASTs() {
 
 		// extract CFGs for all relevant functions from this file
-		c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
-		ast.Inspect(f, func(node ast.Node) bool {
+		ast.Inspect(goFile, func(node ast.Node) bool {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
 				shouldAppendFunction := false
-				for _, value := range parsedStack {
-					for index, stackFuncName := range value.funcName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.fileName[index]) {
+				//for _, value := range parsedStack {
+					for index, stackFuncName := range parsedStack.FuncName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile.Name.Name, parsedStack.FileName[index]) {
 							shouldAppendFunction = true
 							break
 						}
 					}
-				}
+				//}
 
-				if shouldAppendFunction {
-					decls = append(decls, c.CreateCfg(fn))
+				if shouldAppendFunction && wrap == nil {
+					wrap = cfg.NewFnWrapper(fn, make([]ast.Expr, 0))
 				}
 			}
 			return true
 		})
-
-		//TODO: test
-		//Test if variable are retrieved
-		ast.Inspect(f, func(node ast.Node) bool {
-
-			return true
-		})
-		//for _, dec := range f.Decls{
-		//	switch decl := dec.(type) {
-		//	case *ast.FuncDecl:
-		//		fmt.Println("func",decl.Name.Name)
-		//	case *ast.GenDecl:
-		//		for _, spec := range decl.Specs{
-		//			switch spec := spec.(type){
-		//			case *ast.ValueSpec:
-		//				for _, id := range spec.Names {
-		//					fmt.Printf("Var %s: %v", id.Name, id.Obj.Decl.(*ast.ValueSpec).Values[0].(*ast.BasicLit).Value)
-		//				}
-		//			}
-		//		}
-		//	}
-		//}
 	}
 
-	//4 -- Connect the CFG nodes together
-	decls = cfg.ConnectFnCfgs(decls)
+	//TODO: Call CFG rewrite functions
+	//Set wrapper properties if not nil
+	// if wrap != nil {
+	// 	wrap.Fset = outerWrapper.Fset
+	// 	wrap.ASTs = outerWrapper.GetASTs()
+	// 	cfg.ExpandCFG(wrap, make([]*cfg.FnWrapper, 0))
+	// }
 
-	//Filter must/may haves
-	funcLabels := map[string]string{}
-	funcCalls := []neoDb.Node{}
-	mustHaves := []neoDb.Node{}
-	mayHaves := []neoDb.Node{}
-	for _, root := range decls {
-		newFuncs, newLabels := FindMustHaves(root, parsedStack, regexes)
-		funcLabels = cfg.MergeLabelMaps(funcLabels, newLabels)
-		funcCalls = append(funcCalls, newFuncs...)
-	}
-	mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
+	// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
+	// vars := make([]ast.Node, 0)
 
-	//Request response for must/may functions
-	response := struct {
-		MustHaveFunctions []string `json:"mustHaveFunctions"`
-		MayHaveFunctions  []string `json:"mayHaveFunctions"`
-	}{}
+	// path := cfg.CreateNewPath()
+	// leaves := cfg.GetLeafNodes(w)
+	// for _, leaf := range leaves {
+	// 	path.TraverseCFG(leaf, condStmts, vars, wrap, make(map[string]ast.Node))
+	// }
 
-	response.MustHaveFunctions = convertNodesToStrings(mustHaves)
-	response.MayHaveFunctions = convertNodesToStrings(mayHaves)
-
-	varNode := &neoDb.VariableNode{
-		Filename:        "",
-		LineNumber:      0,
-		ScopeId:         "",
-		VarName:         "abc",
-		Value:           "",
-		Parent:          nil,
-		Child:           nil,
-		ValueFromParent: false,
-	}
-
-	funcNode := &neoDb.FunctionNode{Child: varNode}
-	varNode.SetParents(funcNode)
-
+	response := ""
 	respondJSON(w, http.StatusOK, response)
 }
 
@@ -325,10 +253,10 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	//1 -- parse stack trace for functions that led to exception
-	parsedStack := parsePanic(request.ProjectRoot, request.StackTrace)
+	parsedStack := helper.ParsePanic(request.ProjectRoot, request.StackTrace)
 
 	//2 -- Parse project for log statements with regex + line + file name
-	logTypes := parseProject(request.ProjectRoot)
+	logTypes := helper.ParseProject(request.ProjectRoot)
 
 	// Matching log messages to a regex (only returns used regexes)
 	regexes := []string{}
@@ -351,14 +279,14 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 		// only parse this file if it appears in the stack trace
 		shouldParseFile := false
-		for _, value := range parsedStack {
-			for _, stackFileName := range value.fileName {
+		//for _, value := range parsedStack {
+			for _, stackFileName := range parsedStack.FileName {
 				if strings.Contains(goFile, stackFileName) {
 					shouldParseFile = true
 					break
 				}
 			}
-		}
+		//}
 
 		if !shouldParseFile { // file not in stack trace, skip it
 			continue
@@ -380,14 +308,14 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			if fn, ok := node.(*ast.FuncDecl); ok {
 				// only add this function declaration if it is part of the stack trace
 				shouldAppendFunction := false
-				for _, value := range parsedStack {
-					for index, stackFuncName := range value.funcName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile, value.fileName[index]) {
+				//for _, value := range parsedStack {
+					for index, stackFuncName := range parsedStack.FuncName {
+						if stackFuncName == fn.Name.Name && strings.Contains(goFile, parsedStack.FileName[index]) {
 							shouldAppendFunction = true
 							break
 						}
 					}
-				}
+				//}
 
 				if shouldAppendFunction {
 					decls = append(decls, c.CreateCfg(fn))
@@ -412,9 +340,9 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		fmt.Println(decl)
 	}
 
-	line, _ := strconv.Atoi(parsedStack[0].lineNum[0])
+	line, _ := strconv.Atoi(parsedStack.LineNum[0])
 
-	node := *getExceptionNode(&decls[len(decls)-1], parsedStack[0].fileName[0], line)
+	node := *getExceptionNode(&decls[len(decls)-1], parsedStack.FileName[0], line)
 
 	fmt.Println(node.GetFilename(), node.GetLineNumber(), node.GetParents())
 

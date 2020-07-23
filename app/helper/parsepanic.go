@@ -1,4 +1,4 @@
-package handler
+package helper
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"go/parser"
 	"go/token"
 	"runtime"
-	"sourcecrawler/app/helper"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -20,14 +19,14 @@ type panicStruct struct {
 	lineNum  string
 }
 
-//Parsing a panic runtime stack trace (id, messageLevel, file name and line #, function name)
-// -the fileName + lineNum + funcName will be stored in parallel arrays - same index
-type stackTraceStruct struct {
-	id       int
-	msgLevel string
-	fileName []string
-	lineNum  []string
-	funcName []string
+//Parsing a panic runtime stack trace (Id, messageLevel, file name and line #, function name)
+// -the fileName + LineNum + funcName will be stored in parallel arrays - same index
+type StackTraceStruct struct {
+	Id       int
+	MsgLevel string
+	FileName []string
+	LineNum  []string
+	FuncName []string
 }
 
 //Helper function to grab OS separator
@@ -42,7 +41,7 @@ func GrabOS() string {
 //Parse through a panic message and find originating file/line number/function name
 // Takes in a string of the stack trace error and parse thru
 // ** Assuming that the stack trace message ends with a \n **
-func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
+func ParsePanic(projectRoot string, stackMessage string) StackTraceStruct {
 
 	//Generates test stack traces (run once and redirect to log file)
 	// "go run main.go 2>stackTrace.log"
@@ -53,7 +52,7 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	separator := GrabOS()
 
 	//Grab files to parse, split stack trace string, get project root
-	filesToParse := helper.GatherGoFiles(projectRoot)
+	filesToParse := GatherGoFiles(projectRoot)
 	stackStrs := splitStackTraceString(stackMessage)
 
 	//Helper map for quick lookup
@@ -75,13 +74,13 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 
 	//Parse through stack trace log file
 	//scanner := bufio.NewScanner(file)
-	stackTrc := []stackTraceStruct{}
-	tempStackTrace := stackTraceStruct{
-		id:       1,
-		msgLevel: "",
-		fileName: []string{},
-		lineNum:  []string{},
-		funcName: []string{},
+	stackTrc := []StackTraceStruct{}
+	tempStackTrace := StackTraceStruct{
+		Id:       1,
+		MsgLevel: "",
+		FileName: []string{},
+		LineNum:  []string{},
+		FuncName: []string{},
 	}
 	fileLineNum := 1
 	id := 1
@@ -97,25 +96,25 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 		if strings.Contains(logStr, "serving") {
 
 			//Make sure attributes aren't empty before adding it
-			if tempStackTrace.msgLevel != "" && len(tempStackTrace.fileName) != 0 &&
-				len(tempStackTrace.lineNum) != 0 && len(tempStackTrace.funcName) != 0 {
-				tempStackTrace.id = id
+			if tempStackTrace.MsgLevel != "" && len(tempStackTrace.FileName) != 0 &&
+				len(tempStackTrace.LineNum) != 0 && len(tempStackTrace.FuncName) != 0 {
+				tempStackTrace.Id = id
 				stackTrc = append(stackTrc, tempStackTrace)
 				id++
 			}
 
 			//New statement trace
-			tempStackTrace = stackTraceStruct{
-				id:       id,
-				msgLevel: "",
-				fileName: []string{},
-				lineNum:  []string{},
-				funcName: []string{},
+			tempStackTrace = StackTraceStruct{
+				Id:       id,
+				MsgLevel: "",
+				FileName: []string{},
+				LineNum:  []string{},
+				FuncName: []string{},
 			}
 
 			//Assign panic type
 			if strings.Contains(logStr, "panic") {
-				tempStackTrace.msgLevel = "panic"
+				tempStackTrace.MsgLevel = "panic"
 			}
 		}
 
@@ -168,8 +167,10 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 			// bug with app.go function -- inside handleRequest issue with returning a function
 			if _, found := functionsMap[tempFuncName]; found {
 				//fmt.Println("The function ", tempFuncName, "is in the local files", functionsMap[tempFuncName])
-				tempStackTrace.funcName = append(tempStackTrace.funcName, tempFuncName)
-				functionFound = true
+				if !strings.Contains(logStr, "testing.") && !strings.Contains(logStr, ".tRunner") {
+					tempStackTrace.FuncName = append(tempStackTrace.FuncName, tempFuncName)
+					functionFound = true
+				}
 			}
 			//fmt.Println("funct name:", tempFuncName)
 		}
@@ -191,9 +192,9 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 			//Check for originating files where the exception was thrown (could be multiple files, parent calls, etc)
 			// We only want to match local files and not any extraneous files
 			if _, ok := localFilesMap[fileName]; ok {
-				tempStackTrace.fileName = append(tempStackTrace.fileName, fileName)
-				tempStackTrace.lineNum = append(tempStackTrace.lineNum, lineNum)
-				//fmt.Println("Matching file+lines: ", fileName,lineNum)
+				tempStackTrace.FileName = append(tempStackTrace.FileName, fileName)
+				tempStackTrace.LineNum = append(tempStackTrace.LineNum, lineNum)
+				//fmt.Println("Matching file+lines: ", fileName,LineNum)
 			}
 		}
 
@@ -204,38 +205,25 @@ func parsePanic(projectRoot string, stackMessage string) []stackTraceStruct {
 	//Add last entry
 	stackTrc = append(stackTrc, tempStackTrace)
 
-	//Print struct
-	//printErrorList(stackTrc)
+	//Return single stack trace struct
+	var finalStkTrc StackTraceStruct
+	if len(stackTrc) > 0 {
+		finalStkTrc = stackTrc[0]
+	}
 
-	return stackTrc
+	return finalStkTrc
 }
 
 func splitStackTraceString(sts string) []string {
-
-	//Used to generate a JSON formatted stack trace for the POST request
-	//temp := strings.Split(sts, "\n")
-	//for index := range temp{
-	//	if strings.Contains(temp[index], "\""){
-	//		newStr := strings.ReplaceAll(temp[index], "\"", "")
-	//		fmt.Print(newStr + " \\n ")
-	//	} else if strings.Contains(temp[index], "\t"){
-	//		newStr := strings.ReplaceAll(temp[index], "\t", "")
-	//		fmt.Print(newStr + " \\n ")
-	//	} else{
-	//		fmt.Print(temp[index] + " \\n ")
-	//	}
-	//}
-	//fmt.Println()
-
 	return strings.Split(sts, "\n")
 }
 
 //Helper function to test print parsed info from stack trace
-func printErrorList(stackTrc []stackTraceStruct) {
+func printErrorList(stackTrc []StackTraceStruct) {
 	for _, val := range stackTrc {
 		//Should have same # of elements
-		for index := range val.fileName {
-			fmt.Printf("Depth: %d %s %s %s \n", index, val.fileName[index], val.lineNum[index], val.funcName[index])
+		for index := range val.FileName {
+			fmt.Printf("Depth: %d %s %s %s \n", index, val.FileName[index], val.LineNum[index], val.FuncName[index])
 		}
 	}
 }

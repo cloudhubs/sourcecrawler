@@ -10,6 +10,7 @@ import (
 
 //Checks if from log (two.name is Info/Err/Error)
 func IsFromLog(fn *ast.SelectorExpr) bool {
+
 	if strings.Contains(fmt.Sprint(fn.X), "log") {
 		return true
 	}
@@ -30,6 +31,7 @@ func GetLogRegexFromInfo(filename string, lineNumber int) string {
 		panic(err)
 	}
 	var regex string
+
 	ast.Inspect(tk, func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
 			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
