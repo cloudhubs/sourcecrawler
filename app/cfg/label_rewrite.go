@@ -74,6 +74,7 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 			}
 		} else {
 			fmt.Println("Wrapper is already labeled", wrapper)
+			return
 		}
 
 		//Set next wrapper (parents) - two parent case should already be handled already by GetTopAndLabel
@@ -91,16 +92,49 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 //Helper function to get topmost node where conditionals connect
 func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackInfo helper.StackTraceStruct) Wrapper {
 
-	//Go up until a node with 2 children are found (top condition)
+	//if a new endNode is found,
+	//require that many more conditional
+	//nodes to be found, until the topmost
+	//one is found
 	curr := wrapper
-	for len(curr.GetParents()) > 0 && len(curr.GetChildren()) != 2 {
-		curr = curr.GetParents()[0]
-	
+	totalCount := 0
+	done := false
 
-		if len(curr.GetChildren()) == 2 {
-			break
+	//Go up to very top
+	for !done{
+
+		//Each time a block containing a condition is found, increment the count
+		switch curr := curr.(type){
+		case *BlockWrapper:
+			condNode := curr.GetCondition()
+			if condNode != nil {
+				totalCount++
+			}
+		}
+
+		//Move to next node up the tree
+		if len(curr.GetParents()) > 0 {
+			curr = curr.GetParents()[0]
+		}
+
+		//If at very top, stop
+		if len(curr.GetParents()) == 0 {
+			fmt.Println("Finished going up tree")
+			if totalCount == 0 {
+				fmt.Println("No conditions found")
+			}
+			done = true
 		}
 	}
+
+	//Go up until a node with 2 children are found (top condition)
+	//curr := wrapper
+	//for len(curr.GetParents()) > 0 && len(curr.GetChildren()) != 2 {
+	//	curr = curr.GetParents()[0]
+	//	if len(curr.GetChildren()) == 2 {
+	//		break
+	//	}
+	//}
 
 	//Label topmost node as must
 	curr.SetLabel(Must)
@@ -108,16 +142,16 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 	var isLog bool = false
 
 	//Go down through children to label nodes
-	LabelDown(curr, start, isLog, logs, stackInfo)
+	LabelDown(curr, start, isLog, logs, stackInfo, totalCount)
 
 	return curr
 }
 
 //Helper function used in GetTopAndLabel
-func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, stackInfo helper.StackTraceStruct) {
+func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, stackInfo helper.StackTraceStruct, totalCount int) {
 
 	//If at bottom, return
-	if curr == start {
+	if curr == start || totalCount == 0{
 		curr.SetLabel(Must)
 		return
 	}
@@ -132,6 +166,11 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 		switch currType := curr.(type) {
 		case *BlockWrapper:
 			currNodes = currType.Block.Nodes
+
+			//If it's a condition, decrement the count
+			if currType.GetCondition() != nil{
+				totalCount--
+			}
 		}
 
 		//If it is a log stmt or matches regex then need to label as must
@@ -146,7 +185,7 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 			curr.SetLabel(May)
 		}
 
-		LabelDown(child, start, isLog, logs, stackInfo)
+		LabelDown(child, start, isLog, logs, stackInfo, totalCount)
 	}
 }
 
@@ -158,7 +197,7 @@ func CheckFnStatus(wrapper *FnWrapper, stackInfo helper.StackTraceStruct) bool {
 	case *ast.FuncDecl:
 		//Check if function is in the stack trace
 		for _, funcName := range stackInfo.FuncName {
-			fmt.Println(funcNode.Name.Name, " | ", funcName)
+			fmt.Println("Node func:", funcNode.Name.Name, ", Stack Func:", funcName)
 			if funcNode.Name.Name == funcName {
 				isMust = true
 				fmt.Println("Function ", funcNode.Name.Name, " is in the stack trace")

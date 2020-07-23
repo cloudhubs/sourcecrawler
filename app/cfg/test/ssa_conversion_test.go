@@ -1,12 +1,15 @@
 package test
 
 import (
+	"bufio"
 	"fmt"
 	_ "fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"sourcecrawler/app/cfg"
+	"sourcecrawler/app/helper"
 	"testing"
 
 	"github.com/mitchellh/go-z3"
@@ -37,6 +40,20 @@ func testUtil(t *testing.T, fileName string) {
 		cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
 	}
 
+	logs := helper.ParseProject("../../../../sourcecrawler")
+	//Sample stack trace
+	stkTrcFile, err := os.Open("../../../stackTrace.log")
+	if err != nil {
+		fmt.Println("Bad stack trace file")
+	}
+	scanner := bufio.NewScanner(stkTrcFile)
+	messageString := ""
+	for scanner.Scan() {
+		messageString += scanner.Text() + "\n"
+	}
+	// fmt.Println("Message", messageString)
+	stkInfo := helper.ParsePanic("../../../../sourcecrawler", messageString)
+
 	// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
 	// vars := make([]ast.Node, 0)
 	// var exprs []ast.Node
@@ -44,6 +61,7 @@ func testUtil(t *testing.T, fileName string) {
 	paths := cfg.CreateNewPath()
 	leaves := cfg.GetLeafNodes(w)
 	for _, leaf := range leaves {
+		paths.LabelCFG(leaf, logs, w, stkInfo) //output isnt printed, but labeling still occurs
 		paths.TraverseCFG(leaf, w)
 	}
 
