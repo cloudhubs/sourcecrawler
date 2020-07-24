@@ -12,13 +12,15 @@ func main() {
 
 	num, _ := strconv.Atoi(os.Args[1])
 
-	if num%2 == 0 {
+	y := num % 2
+	if y == 0 {
 		log.Log().Msgf("%d is even", num)
 	} else {
 		log.Log().Msgf("%d is odd", num)
 	}
 
-	if num%4 == 0 {
+	x := num % 4
+	if x == 0 {
 		log.Log().Msgf("%d is divisible by 4", num)
 	}
 
