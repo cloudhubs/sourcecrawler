@@ -15,6 +15,11 @@ import (
 //Assumptions: CFG tree already created
 func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper, stackInfo helper.StackTraceStruct) {
 
+	//Nil check
+	if curr == nil {
+		return
+	}
+
 	wrapper := curr //holds current wrapper
 	var prv Wrapper
 

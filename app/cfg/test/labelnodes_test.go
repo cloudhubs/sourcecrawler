@@ -41,7 +41,7 @@ func testLabel(t *testing.T, fileName string) {
 	if w != nil {
 		w.Fset = fset
 		w.ASTs = []*ast.File{f}
-		cfg.ExpandCFG(w, make([]*cfg.FnWrapper, 0))
+		cfg.ExpandCFG(w, /*make([]*cfg.FnWrapper, 0)*/)
 	}
 
 	//Sample stack trace

@@ -26,6 +26,14 @@ func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel) {
+
+
+	//Nil check
+	if curr == nil {
+		return
+	}
+
+	
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -644,22 +652,35 @@ func (b *BlockWrapper) GetFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr
 func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
 	if w != nil {
 		switch w := w.(type) {
+		case *FnWrapper:
 		case *BlockWrapper:
 			for _, node := range w.Block.Nodes {
 				pos := w.GetFileSet().Position(node.Pos())
+				fmt.Println("Node's position", node.Pos())
+
+				//Nil pointer checks on the node and pos
+				if node == nil{
+					fmt.Println("nil node, continue")
+					continue
+				}
+
+				fmt.Println("Pos's file: ", pos.Filename, ", Struct file:", traceStruct.FileName[0])
 				if strings.Contains(pos.Filename, traceStruct.FileName[0]) {
 					lineNum, err := strconv.Atoi(traceStruct.LineNum[0])
 					if err == nil && pos.Line == lineNum {
 						return w
 					}
 				}
+
 			}
 		}
 		for _, child := range w.GetChildren() {
+			fmt.Println("Child is", child)
 			ret := FindPanicWrapper(child, traceStruct)
-			if ret != nil {
-				return ret
-			}
+			fmt.Println("Ret", ret)
+			//if ret != nil {
+			//	return ret
+			//}
 		}
 	}
 	return nil
