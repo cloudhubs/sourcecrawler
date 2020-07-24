@@ -73,8 +73,6 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 
 				//Check for possible log msg and log matchings
 				if CheckLogStatus(wrap.Block.Nodes, logs) {
-					//Add log label functionality
-					fmt.Println("Add log labeling stuff")
 					wrap.SetLabel(Must)
 				}
 			}
@@ -91,7 +89,7 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 
 	//Label root as must
 	if len(wrapper.GetParents()) == 0 {
-		wrapper.SetLabel(Must)
+		//wrapper.SetLabel(Must)
 	}
 }
 
@@ -133,15 +131,6 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 		}
 	}
 
-	//Go up until a node with 2 children are found (top condition)
-	//curr := wrapper
-	//for len(curr.GetParents()) > 0 && len(curr.GetChildren()) != 2 {
-	//	curr = curr.GetParents()[0]
-	//	if len(curr.GetChildren()) == 2 {
-	//		break
-	//	}
-	//}
-
 	//Label topmost node as must
 	curr.SetLabel(Must)
 
@@ -182,13 +171,14 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 		//If it is a log stmt or matches regex then need to label as must
 		if CheckLogStatus(currNodes, logs) {
 			isLog = true
+			curr.SetLabel(Must)
+		}else{
+			curr.SetLabel(May)
 		}
 
-		//If it's part of a log block then label as must
+		//If it's part of a log block then label as must (not catching else conditions in an if-else??)
 		if isLog {
 			curr.SetLabel(Must)
-		} else {
-			curr.SetLabel(May)
 		}
 
 		LabelDown(child, start, isLog, logs, stackInfo, totalCount)
@@ -228,8 +218,8 @@ func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 				if realSelector, ok := call.Fun.(*ast.SelectorExpr); ok {
 
 					//Set status of log
-					if helper.IsFromLog(realSelector) || strings.Contains(possibleLog, "log") { //if any node in the block contains a log statement, exit early
-						fmt.Println(realSelector, " is a log statement -> label as must")
+					if helper.IsFromLog(realSelector) || strings.Contains(possibleLog, "log") {
+						//fmt.Println(realSelector, " is a log statement -> label as must")
 
 						//get log from node
 						for _, arg := range call.Args {
@@ -239,6 +229,7 @@ func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 								for _, currLog := range logs {
 									fullRegex := "^" + currLog.Regex + "$"
 									str := strings.Trim(argNode.Value, "\"") //remove double quotes
+									str = strings.ReplaceAll(str, "%d", "0") //remove flags with #'s
 									if regex, err := regexp.Compile(fullRegex); err == nil {
 										if regex.Match([]byte(str)) {
 											fmt.Println(str, " - MATCHES -", fullRegex)

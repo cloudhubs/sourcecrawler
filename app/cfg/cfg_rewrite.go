@@ -656,7 +656,6 @@ func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
 		case *BlockWrapper:
 			for _, node := range w.Block.Nodes {
 				pos := w.GetFileSet().Position(node.Pos())
-				fmt.Println("Node's position", node.Pos())
 
 				//Nil pointer checks on the node and pos
 				if node == nil{
@@ -664,7 +663,6 @@ func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
 					continue
 				}
 
-				fmt.Println("Pos's file: ", pos.Filename, ", Struct file:", traceStruct.FileName[0])
 				if strings.Contains(pos.Filename, traceStruct.FileName[0]) {
 					lineNum, err := strconv.Atoi(traceStruct.LineNum[0])
 					if err == nil && pos.Line == lineNum {
@@ -675,12 +673,10 @@ func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
 			}
 		}
 		for _, child := range w.GetChildren() {
-			fmt.Println("Child is", child)
 			ret := FindPanicWrapper(child, traceStruct)
-			fmt.Println("Ret", ret)
-			//if ret != nil {
-			//	return ret
-			//}
+			if ret != nil {
+				return ret
+			}
 		}
 	}
 	return nil

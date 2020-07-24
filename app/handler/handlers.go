@@ -3,8 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"go/printer"
-	"os"
 	"sourcecrawler/app/helper"
 	"sourcecrawler/app/unsafe"
 	"strings"
@@ -90,8 +88,8 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	stack := parsedStack //likely only one stack trace
 	entryPackage := stack.PackageName[len(stack.FileName)-1]
 	entryName := stack.FuncName[len(stack.FuncName)-1]
-	fmt.Println("entryPackage:", entryPackage)
-	fmt.Println("entryName:", entryName) 
+	//fmt.Println("entryPackage:", entryPackage)
+	//fmt.Println("entryName:", entryName)
 
 	//grab the entry function (tested)
 	var entryFnNode ast.Node
@@ -110,9 +108,9 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	//Test print entry function (Good)
 	if entryFnNode != nil {
-		fmt.Print("Entry function is: ")
-		printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), entryFnNode)
-		fmt.Println()
+		//fmt.Print("Entry function is: ")
+		//printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), entryFnNode)
+		//fmt.Println()
 	}else{
 		fmt.Println("EntryFnNode is nil")
 	}
@@ -122,7 +120,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	entryWrapper.SetOuterWrapper(topLevelWrapper)
 	cfg.ExpandCFG(entryWrapper)
 
-	//find the block originating the exception (TODO: debug and fix, currently empty)
+	//find the block originating the exception
 	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
 	if exceptionBlock != nil {
 		fmt.Println("Exception block:", exceptionBlock)
@@ -133,10 +131,22 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	pathList := cfg.CreateNewPath()
 
 	//label the tree starting from the exception block
-	//pathList.LabelCFG(exceptionBlock, seenLogTypes, entryWrapper, stack)
+	pathList.LabelCFG(exceptionBlock, seenLogTypes, entryWrapper, stack)
 
 	//gather the paths
 	paths := pathList.TraverseCFG(exceptionBlock, entryWrapper)
+
+	//Print paths
+	//cnt := 1
+	//for _, path := range paths{
+	//	fmt.Println("======= PATH", cnt, " ============")
+	//	for index := range path.Expressions{
+	//		printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.Expressions[index])
+	//		fmt.Print(" -- ", path.ExecStatus[index])
+	//		fmt.Println()
+	//	}
+	//	cnt++
+	//}
 
 	//transform to z3
 	config := z3.NewConfig()
