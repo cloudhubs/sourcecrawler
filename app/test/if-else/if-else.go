@@ -12,18 +12,19 @@ func main() {
 
 	num, _ := strconv.Atoi(os.Args[1])
 
-	y := num % 2
-	if y == 0 {
-		log.Log().Msgf("%d is even", num)
+	num *= 2
+	if num > 4 {
+		log.Log().Msgf("%d > 4", num)
 	} else {
-		log.Log().Msgf("%d is odd", num)
+		log.Log().Msgf("%d <= 4", num)
 	}
 
-	x := num % 4
-	if x == 0 {
-		log.Log().Msgf("%d is divisible by 4", num)
+	x := num * 4
+	if x < 9 {
+		log.Log().Msgf("%d < 9", num)
 	}
 
+	num -= 2
 	if num < 0 {
 		log.Log().Msgf("%d is negative", num)
 	} else if num < 10 {
