@@ -349,17 +349,23 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 
 		stmt.TokPos = node.TokPos
 		for i, l := range node.Lhs {
-			stmt.Lhs = append(stmt.Lhs, l)
-			var id *ast.Ident
-			if node, ok := l.(*ast.Ident); ok {
-				id = &ast.Ident{
-					Name:    node.Name,
-					NamePos: node.NamePos,
-					Obj:     node.Obj,
-				}
+			l, ok := l.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			leftCopy := &ast.Ident{
+				NamePos: l.NamePos,
+				Name:    l.Name,
+				Obj:     l.Obj,
+			}
+			stmt.Lhs = append(stmt.Lhs, leftCopy)
+			rightCopy := &ast.Ident{
+				Name:    l.Name,
+				NamePos: l.NamePos,
+				Obj:     l.Obj,
 			}
 			bin := &ast.BinaryExpr{
-				X:     id,
+				X:     rightCopy,
 				OpPos: node.TokPos,
 				Op:    tok,
 				Y:     node.Rhs[i],

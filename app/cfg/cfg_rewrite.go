@@ -18,14 +18,14 @@ import (
 
 func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 
-	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0), false)
+	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0), false, make(map[ast.Node]struct{}))
 	return paths.Paths
 }
 
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
-	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel, fromElse bool) {
+	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel, fromElse bool, alreadySSA map[ast.Node]struct{}) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -94,21 +94,18 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					for i, l := range artificial.Lhs {
 						if id, ok := l.(*ast.Ident); ok {
 							name := id.Name
-							negative := true
-							if i, ok := ssaInts[name]; ok && i > -1 {
-								negative = false
+							if i, ok := ssaInts[name]; ok && i == 0 {
+								delete(ssaInts, name)
+							} else if _, ok := alreadySSA[node]; ok {
+								// If we don't do this it will keep encountering
+								// the same node on different paths giving different
+								// SSA id's
 								ssaInts[name]--
-								// Delete the map entry since a 0 would get prepended to the ID
-								if ssaInts[name] == 0 {
-									delete(ssaInts, name)
-								}
 							}
 							SSAconversion(artificial.Rhs[i], ssaInts)
-							if !negative {
-								ssaInts[name]++
-							}
-							SSAconversion(l, ssaInts)
 							ssaInts[name]++
+							SSAconversion(l, ssaInts)
+							alreadySSA[node] = struct{}{}
 						}
 					}
 					stmts = append(stmts, artificial)
@@ -218,7 +215,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					fromElse = false
 				}
 			}
-			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels, fromElse)
+			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels, fromElse, alreadySSA)
 		}
 	} else {
 
