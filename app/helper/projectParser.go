@@ -323,7 +323,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && IsFromLog(fn) {
+				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && IsFromLog(fn) {				
 					parentArgs := usesParentArgs(parentFn, ret)
 					value := fnStruct{
 						n:              n,

@@ -119,9 +119,6 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					}
 					stmts = append(stmts, artificial)
 					pathLabels = append(pathLabels, currWrapper.GetLabel())
-					// if currWrapper.GetLabel() == NoLabel{
-					// 	fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
-					// }
 				}
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)

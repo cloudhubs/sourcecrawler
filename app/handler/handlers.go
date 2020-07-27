@@ -84,6 +84,10 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	for _, m := range seenLogTypes{
+		fmt.Println("Filtered log", m)
+	}
+
 	topLevelWrapper := cfg.SetupPersistentData(request.ProjectRoot)
 
 	// ==== Tested, should be getting the correct info
@@ -137,6 +141,20 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	//gather the paths
 	paths := pathList.TraverseCFG(exceptionBlock, entryWrapper)
+
+	//Print labels on paths
+	cnt := 1
+	for _, path := range paths{
+		fmt.Println("---------- PATH", cnt, " -------------")
+		cnt++
+
+		//Should print each constraint with its label
+		for index := range path.Expressions{
+			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.Expressions[index])
+			fmt.Print(" ---- ", path.ExecStatus[index])
+			fmt.Println()
+		}
+	}
 
 	for i, path := range paths {
 		fmt.Println("PATH", i+1)

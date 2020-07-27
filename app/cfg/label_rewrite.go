@@ -74,11 +74,13 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 				//Check for possible log msg and log matchings
 				if CheckLogStatus(wrap.Block.Nodes, logs) {
 					wrap.SetLabel(Must)
+				}else{
+					wrap.SetLabel(MustNot) //label as must-not if no logs detected
 				}
 			}
 		} else {
 			fmt.Println("Wrapper is already labeled", wrapper)
-			return
+			// return
 		}
 
 		//Set next wrapper (parents) - two parent case should already be handled already by GetTopAndLabel
@@ -176,7 +178,7 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 			curr.SetLabel(May)
 		}
 
-		//If it's part of a log block then label as must (not catching else conditions in an if-else??)
+		//If it's part of a log block then label as must
 		if isLog {
 			curr.SetLabel(Must)
 		}
@@ -208,6 +210,7 @@ func CheckFnStatus(wrapper *FnWrapper, stackInfo helper.StackTraceStruct) bool {
 }
 
 //Helper function to check if a BlockWrapper contains a log, or if it matches a relevant regex
+//Checks nodes within a block and sees if it matches with the logMessage output.
 func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 
 	var done = false
@@ -246,7 +249,6 @@ func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 				}
 			}
 		}
-
 	}
 
 	return done
