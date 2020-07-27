@@ -18,22 +18,20 @@ import (
 
 func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 
-	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0))
+	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0), false)
 	return paths.Paths
 }
 
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
-	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel) {
-
+	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel, fromElse bool) {
 
 	//Nil check
 	if curr == nil {
 		return
 	}
 
-	
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -184,6 +182,16 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				return true
 			})
 
+			if cond, ok := condition.(ast.Expr); fromElse && ok {
+				// Came from an else and the condition is an expression
+				// so negate the condition.
+				condition = &ast.UnaryExpr{
+					OpPos: condition.Pos(),
+					Op:    token.NOT,
+					X:     cond,
+				}
+			}
+
 			//pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
 			//pathLabels = append(pathLabels, currWrapper.GetLabel())
 
@@ -207,7 +215,16 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels)
+			// Determine if the next possible conditional should be negated or not
+			children := parent.GetChildren()
+			if len(children) == 2 {
+				if children[1] == curr {
+					fromElse = true
+				} else {
+					fromElse = false
+				}
+			}
+			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels, fromElse)
 		}
 	} else {
 

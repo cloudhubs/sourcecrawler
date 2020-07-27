@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sourcecrawler/app/helper"
 	"sourcecrawler/app/unsafe"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/mitchellh/go-z3"
 
 	"go/ast"
+	"go/printer"
 	"net/http"
 	"regexp"
 	"sourcecrawler/app/cfg"
@@ -136,17 +138,14 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//gather the paths
 	paths := pathList.TraverseCFG(exceptionBlock, entryWrapper)
 
-	//Print paths
-	//cnt := 1
-	//for _, path := range paths{
-	//	fmt.Println("======= PATH", cnt, " ============")
-	//	for index := range path.Expressions{
-	//		printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.Expressions[index])
-	//		fmt.Print(" -- ", path.ExecStatus[index])
-	//		fmt.Println()
-	//	}
-	//	cnt++
-	//}
+	for i, path := range paths {
+		fmt.Println("PATH", i+1)
+		for _, expr := range path.Expressions {
+			printer.Fprint(os.Stdout, topLevelWrapper.Fset, expr)
+			fmt.Println()
+		}
+		fmt.Println()
+	}
 
 	//transform to z3
 	config := z3.NewConfig()
