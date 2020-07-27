@@ -120,7 +120,7 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 
 		//If at very top, stop
 		if len(curr.GetParents()) == 0 {
-			fmt.Println("Finished going up tree")
+			// fmt.Println("Finished going up tree")
 			if totalCount == 0 {
 				fmt.Println("No conditions found")
 			}
@@ -224,7 +224,7 @@ func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 
 					//Set status of log
 					if helper.IsFromLog(realSelector) || strings.Contains(possibleLog, "log") { //if any node in the block contains a log statement, exit early
-						fmt.Println(realSelector, " is a log statement -> label as must")
+						// fmt.Println(realSelector, " is a log statement -> label as must")
 
 						//get log from node
 						for _, arg := range call.Args {
