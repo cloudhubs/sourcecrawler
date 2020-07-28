@@ -32,10 +32,22 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		return
 	}
 
+	var lbl ExecutionLabel = NoLabel
+
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
+		//fmt.Println("Fn Wrapper", printer.Fprint(os.Stdout, curr.GetFileSet(), currWrapper.Fn))
 	case *BlockWrapper:
+
+		//Set inital execution label to must
+		if curr == root{
+			lbl = Must
+			fmt.Println("Exception block", currWrapper)
+		}else {
+			lbl = currWrapper.GetLabel()
+		}
+
 		if len(currWrapper.Succs) == 2 {
 			ast.Inspect(currWrapper.Block.Nodes[len(currWrapper.Block.Nodes)-1], func(node ast.Node) bool {
 				switch node := node.(type) {
@@ -118,7 +130,8 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 						}
 					}
 					stmts = append(stmts, artificial)
-					pathLabels = append(pathLabels, currWrapper.GetLabel())
+					fmt.Println("Curr wrapper", currWrapper)
+					pathLabels = append(pathLabels, lbl)
 				}
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)
@@ -201,11 +214,13 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				}
 			}
 			if !contained {
+				fmt.Println("Curr wrapper", currWrapper)
 				stmts = append(stmts, condition)
-				pathLabels = append(pathLabels, currWrapper.GetLabel())
+				pathLabels = append(pathLabels, lbl)
 			}
 		}
-
+	default:
+		fmt.Println("Default", currWrapper)
 	}
 
 	//If there are parent blocks to check, continue | otherwise add the path
@@ -228,7 +243,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
 		// fmt.Println("hello", stmts)
-		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels})
+		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: curr.GetLabel()})
 	}
 
 }
@@ -280,6 +295,10 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 			}
 			return false
 		})
+
+		//fset := token.NewFileSet()
+		//fmt.Println("Blocks", c.Format(fset))
+
 		//gather list of parameters
 		// fmt.Println(params)
 		for _, param := range fn.Type.Params.List {

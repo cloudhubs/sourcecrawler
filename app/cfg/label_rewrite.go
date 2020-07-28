@@ -19,6 +19,9 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 	if curr == nil {
 		return
 	}
+	if curr == root{ //Root should be a must
+		curr.SetLabel(Must)
+	}
 
 	wrapper := curr //holds current wrapper
 	var prv Wrapper
@@ -29,6 +32,7 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 		if wrapper.GetLabel() == NoLabel {
 			switch wrap := wrapper.(type) {
 			case *FnWrapper:
+
 				//If it's a function in the stack trace, then it must run
 				//fnwrapper connected to blockWrapper succs
 				if CheckFnStatus(wrap, stackInfo) {
@@ -43,39 +47,28 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 
 				// fmt.Println("Current wrapper in label", curr)
 
-				//Entry should be a must
-				if strings.Contains(wrap.Block.String(), "entry") {
+				//Check for possible log msg and log matchings
+				if CheckLogStatus(wrap.Block.Nodes, logs) {
 					wrap.SetLabel(Must)
-				} else {
-					wrap.SetLabel(May)
-				}
-
-				//If it is part of an if-then or if-else, it is labeled as may
-				if strings.Contains(wrap.Block.String(), "if.then") ||
+				}else if strings.Contains(wrap.Block.String(), "entry") { //Entry has to be a must
+					wrap.SetLabel(Must)
+				}else if strings.Contains(wrap.Block.String(), "if.then") ||//If it is part of an if-then or if-else, it is labeled as may
 					strings.Contains(wrap.Block.String(), "if.else") {
 					wrap.SetLabel(May)
+				}else if strings.Contains(wrap.Block.String(), "if.done"){ //If-done should always be a must
+					wrap.SetLabel(Must)
+				}else if wrap.GetCondition() != nil{ //Only true if a block has 2 successors
+					wrap.SetLabel(Must)
+					//wrap.SetLabel(May)
+				}else{
+					wrap.SetLabel(May) //label as May if no logs detected
+					//wrap.SetLabel(MustNot)
 				}
 
-				//If-done should always be a must
-				// if strings.Contains(wrap.Block.String(), "if.done") {
-				// 	wrap.SetLabel(Must)
-				// }
-
-				//Only true if a block has 2 successors
-				if wrap.GetCondition() != nil {
-					wrap.SetLabel(May)
-				}
 
 				//If two parents, go up to top and label down
 				if len(wrap.GetParents()) == 2 {
 					wrapper = GetTopAndLabel(wrap, logs, wrap, stackInfo)
-				}
-
-				//Check for possible log msg and log matchings
-				if CheckLogStatus(wrap.Block.Nodes, logs) {
-					wrap.SetLabel(Must)
-				}else{
-					wrap.SetLabel(MustNot) //label as must-not if no logs detected
 				}
 			}
 		} else {
@@ -136,10 +129,8 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 	//Label topmost node as must
 	curr.SetLabel(Must)
 
-	isLog := false
-
 	//Go down through children to label nodes
-	LabelDown(curr, start, isLog, logs, stackInfo, totalCount)
+	LabelDown(curr, start, false, logs, stackInfo, totalCount)
 
 	return curr
 }
@@ -147,16 +138,18 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 //Helper function used in GetTopAndLabel
 func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, stackInfo helper.StackTraceStruct, totalCount int) {
 
-	//If at bottom, return
-	if curr == start || totalCount == 0 {
+	isLogStmt := isLog
+	//If at bottom, return, or if there's already a label
+	if curr == start || totalCount == 0{
 		curr.SetLabel(Must)
 		return
 	}
 
 	// fmt.Println("Current wrapper in label", curr)
 
-	//Set label downward
+	//Set label downward | Process current node before processing child node
 	for _, child := range curr.GetChildren() {
+
 
 		//Type switch to get specific info
 		var currNodes = []ast.Node{}
@@ -170,21 +163,48 @@ func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, st
 			}
 		}
 
+		//Label only if not already labeled
 		//If it is a log stmt or matches regex then need to label as must
-		if CheckLogStatus(currNodes, logs) {
-			isLog = true
-			curr.SetLabel(Must)
-		}else{
-			curr.SetLabel(May)
+		if curr.GetLabel() == NoLabel {
+			if CheckLogStatus(currNodes, logs) {
+				isLogStmt = true
+				curr.SetLabel(Must)
+			} else {
+
+				//If it's a block wrapper, check if it's assignStmt
+				if bw, ok := curr.(*BlockWrapper); ok{
+					//fmt.Println("Block", bw)
+
+					if isAssignment(bw.Block.Nodes){
+						curr.SetLabel(Must)
+					}else{
+						curr.SetLabel(May)
+					}
+				}
+			}
+
+			//If it's part of a log block then label as must
+			if isLog {
+				curr.SetLabel(Must)
+			}
 		}
 
-		//If it's part of a log block then label as must
-		if isLog {
-			curr.SetLabel(Must)
-		}
 
-		LabelDown(child, start, isLog, logs, stackInfo, totalCount)
+		LabelDown(child, start, isLogStmt, logs, stackInfo, totalCount)
 	}
+}
+
+func isAssignment(nodes []ast.Node) bool {
+	var isAssignment bool = false
+
+	for _, node := range nodes{
+		//If any node is an assignment statement, then return true
+		if _, ok := node.(*ast.AssignStmt); ok {
+			isAssignment = ok
+			break
+		}
+	}
+	return isAssignment
 }
 
 //Helper for checking if FnWrapper is a may/must (checks function with stack to see if it is relevant)
@@ -210,10 +230,11 @@ func CheckFnStatus(wrapper *FnWrapper, stackInfo helper.StackTraceStruct) bool {
 }
 
 //Helper function to check if a BlockWrapper contains a log, or if it matches a relevant regex
-//Checks nodes within a block and sees if it matches with the logMessage output.
+//Checks all nodes within a block and sees if it matches with the list of messages found in output.
 func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 
 	var done = false
+
 	for _, node := range nodes {
 		if n1, ok := node.(*ast.ExprStmt); ok {
 			if call, ok := n1.X.(*ast.CallExpr); ok {
@@ -235,7 +256,7 @@ func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 									str = strings.ReplaceAll(str, "%d", "0") //remove flags with #'s
 									if regex, err := regexp.Compile(fullRegex); err == nil {
 										if regex.Match([]byte(str)) {
-											fmt.Println(str, " - MATCHES -", fullRegex)
+											// fmt.Println(str, " - MATCHES -", fullRegex)
 											done = true
 											return true
 										}

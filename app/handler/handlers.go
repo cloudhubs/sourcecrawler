@@ -84,8 +84,9 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	//Print filtered logs
 	for _, m := range seenLogTypes{
-		fmt.Println("Filtered log", m)
+		fmt.Println("Filtered log", m.Regex)
 	}
 
 	topLevelWrapper := cfg.SetupPersistentData(request.ProjectRoot)
@@ -129,7 +130,16 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//find the block originating the exception
 	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
 	if exceptionBlock != nil {
-		fmt.Println("Exception block:", exceptionBlock)
+		switch b := exceptionBlock.(type){
+		case *cfg.FnWrapper:
+			fmt.Print("Exception block: ")
+			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), b.Fn)
+			fmt.Println()
+		case *cfg.BlockWrapper:
+			fmt.Print("Exception block: ", b.Block)
+			fmt.Println()
+		}
+		//fmt.Println("Exception block:", exceptionBlock)
 	}else{
 		fmt.Println("Error, empty exception block")
 	}
@@ -137,10 +147,10 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	pathList := cfg.CreateNewPath()
 
 	//label the tree starting from the exception block
-	pathList.LabelCFG(exceptionBlock, seenLogTypes, entryWrapper, stack)
+	pathList.LabelCFG(exceptionBlock, seenLogTypes, exceptionBlock, stack)
 
 	//gather the paths
-	paths := pathList.TraverseCFG(exceptionBlock, entryWrapper)
+	paths := pathList.TraverseCFG(exceptionBlock, exceptionBlock)
 
 	//Print labels on paths
 	cnt := 1
@@ -156,8 +166,9 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	//Print paths
 	for i, path := range paths {
-		fmt.Println("PATH", i+1)
+		fmt.Println("PATH", i+1, " --", path.DidExecute)
 		for _, expr := range path.Expressions {
 			printer.Fprint(os.Stdout, topLevelWrapper.Fset, expr)
 			fmt.Println()
