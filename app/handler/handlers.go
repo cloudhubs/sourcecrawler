@@ -130,16 +130,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//find the block originating the exceptionp
 	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
 	if exceptionBlock != nil {
-		switch b := exceptionBlock.(type) {
-		case *cfg.FnWrapper:
-			fmt.Print("Exception block: ")
-			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), b.Fn)
-			fmt.Println()
-		case *cfg.BlockWrapper:
-			fmt.Print("Exception block: ", b.Block)
-			fmt.Println()
-		}
-		//fmt.Println("Exception block:", exceptionBlock)
+		fmt.Println("Exception block:", exceptionBlock)
 	} else {
 		fmt.Println("Error, empty exception block")
 	}
@@ -163,19 +154,19 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		cnt++
 
 		//Should print each constraint with its label
-		for index := range path.Expressions {
-			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.Expressions[index])
-			fmt.Print(" ---- ", path.ExecStatus[index])
+		for index := range path.Expressions{
+			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.CopyExpressions[index])
+			fmt.Print(" ---- ", path.CopyExecStatus[index])
 			fmt.Println()
 		}
 	}
 	fmt.Printf(" ===================================================\n\n")
-	fmt.Printf("Final paths ===========\n")
+	fmt.Printf("================ Final paths ===============\n")
 
 	//Print paths
 	for i, path := range paths {
-		fmt.Println("PATH", i+1, " --", path.DidExecute)
-		for _, expr := range path.Expressions {
+		fmt.Println("----------- PATH", i+1, " --", path.DidExecute)
+		for _, expr := range path.CopyExpressions {
 			printer.Fprint(os.Stdout, topLevelWrapper.Fset, expr)
 			fmt.Println()
 		}
