@@ -122,6 +122,9 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//label the tree starting from the exception block
 	pathList.LabelCFG(exceptionBlock, seenLogTypes, entryWrapper, stack)
 
+	//rename variables to ssa form
+	cfg.ConvertCFGtoSSAForm(entryWrapper)
+
 	//gather the paths
 	paths := pathList.TraverseCFG(exceptionBlock, entryWrapper)
 
@@ -163,6 +166,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		for name, val := range m.Assignments() {
 			fmt.Printf("%s = %s\n", name, val)
 		}
+		fmt.Println()
 		m.Close()
 	}
 

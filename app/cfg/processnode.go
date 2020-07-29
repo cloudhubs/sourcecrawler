@@ -199,7 +199,7 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Node, fset *token.FileSet) *z3.AS
 				for _, id := range decl.Lhs {
 					if id.(*ast.Ident).Obj == expr.Obj {
 						var bf bytes.Buffer
-						printer.Fprint(&bf, fset, id)
+						printer.Fprint(&bf, fset, expr)
 						return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
 						// rhs := decl.Rhs[i]
 						// switch rhs := rhs.(type) {
@@ -290,18 +290,21 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Node, fset *token.FileSet) *z3.AS
 	return nil
 }
 
-func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
+func SSAconversion(expr ast.Expr, ssaInts map[string]int) map[string]struct{} {
+	changedVars := make(map[string]struct{})
 	ast.Inspect(expr, func(node ast.Node) bool {
 		switch node := node.(type) {
 		case *ast.Ident:
-			if i, ok := ssaInts[node.Name]; ok {
+			if i, ok := ssaInts[node.Name]; ok && i != 0 {
 				if !strings.Contains("0123456789", string(node.Name[0])) {
+					changedVars[node.Name] = struct{}{}
 					node.Name = fmt.Sprint(i, node.Name)
 				}
 			}
 		}
 		return true
 	})
+	return changedVars
 }
 
 // Converts shorthand assignment forms (or IncDec) to their
@@ -310,7 +313,7 @@ func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
 // Note: The identifier is copied because otherwise the
 // left and right hand side would always share the exact same
 // identifier which we would not want.
-func RessignmentConversion(node ast.Node) *ast.AssignStmt {
+func RessignmentConversion(node ast.Node, fset *token.FileSet) (*ast.AssignStmt, bool) {
 	stmt := new(ast.AssignStmt)
 	stmt.Tok = token.ASSIGN
 
@@ -328,7 +331,7 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 				return true
 			})
 			if call {
-				return nil
+				return nil, false
 			}
 		}
 
@@ -344,7 +347,7 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 		case token.REM_ASSIGN: // %=
 			tok = token.REM
 		default:
-			return node
+			return node, true
 		}
 
 		stmt.TokPos = node.TokPos
@@ -379,7 +382,7 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 		case token.DEC: // --
 			tok = token.SUB
 		default:
-			return nil
+			return nil, false
 		}
 
 		stmt.TokPos = node.TokPos
@@ -401,7 +404,7 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 		stmt.Rhs = append(stmt.Rhs, bin)
 	}
 
-	return stmt
+	return stmt, false
 }
 
 //Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function

@@ -18,14 +18,88 @@ import (
 
 func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 
-	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0), false, make(map[ast.Node]struct{}))
+	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0), false)
 	return paths.Paths
+}
+
+func ConvertCFGtoSSAForm(root Wrapper) {
+	ConvertCFGtoSSAFormRecur(root, make(map[string]int), make(map[ast.Node]struct{}))
+}
+
+//adds function name and ssa identifier to variables, done before traversal?
+func ConvertCFGtoSSAFormRecur(curr Wrapper, ssaInts map[string]int, alreadySSA map[ast.Node]struct{}) {
+	if curr, ok := curr.(*BlockWrapper); ok {
+		for _, node := range curr.Block.Nodes {
+			good := false
+			switch node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt, ast.Expr:
+				good = true
+			}
+			if good {
+				ast.Inspect(node, func(node ast.Node) bool {
+					switch node := node.(type) {
+					case *ast.Ident:
+						//Grab function name and identifier name
+						if fn, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
+							var fnName string
+							switch fn := fn.Fn.(type) {
+							case *ast.FuncDecl:
+								fnName = fn.Name.Name
+							case *ast.FuncLit:
+								//TODO: wat do??
+								fnName = "lit"
+							}
+							if !strings.Contains(node.Name, fnName+".") {
+								node.Name = fmt.Sprint(fnName, ".", node.Name)
+							}
+						}
+					}
+					return true
+				})
+			}
+		}
+		for i, node := range curr.Block.Nodes {
+			//Increment counter for each object encountered
+			switch node := node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt:
+				artificial, same := RessignmentConversion(node, curr.GetFileSet())
+				if artificial != nil {
+					if same {
+						artificial = node.(*ast.AssignStmt)
+					}
+					for i, l := range artificial.Lhs {
+						if id, ok := l.(*ast.Ident); ok {
+							name := id.Name
+							if i, ok := ssaInts[name]; ok && i == 0 {
+								delete(ssaInts, name)
+							} else if _, ok := alreadySSA[node]; ok {
+								ssaInts[name]--
+							}
+							SSAconversion(artificial.Rhs[i], ssaInts)
+							ssaInts[name]++
+							SSAconversion(l, ssaInts)
+							alreadySSA[artificial] = struct{}{}
+						}
+					}
+					curr.Block.Nodes[i] = artificial
+				}
+			case *ast.ExprStmt:
+				SSAconversion(node.X, ssaInts)
+			case ast.Expr:
+				SSAconversion(node, ssaInts)
+			}
+		}
+	}
+
+	for _, child := range curr.GetChildren() {
+		ConvertCFGtoSSAFormRecur(child, ssaInts, alreadySSA)
+	}
 }
 
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
-	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel, fromElse bool, alreadySSA map[ast.Node]struct{}) {
+	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel, fromElse bool) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
@@ -56,112 +130,16 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		}
 
 		for _, node := range currWrapper.Block.Nodes {
-			good := false
-			switch node.(type) {
-			case *ast.AssignStmt, *ast.IncDecStmt:
-				good = true
-			}
-			if good {
-				ast.Inspect(node, func(node ast.Node) bool {
-					switch node := node.(type) {
-					case *ast.Ident:
-						//Grab function name and identifier name
-						if fn, ok := currWrapper.GetOuterWrapper().(*FnWrapper); ok {
-							var fnName string
-							switch fn := fn.Fn.(type) {
-							case *ast.FuncDecl:
-								fnName = fn.Name.Name
-							case *ast.FuncLit:
-								//TODO: wat do??
-								fnName = "lit"
-							}
-							if !strings.Contains(node.Name, fnName+".") {
-								node.Name = fmt.Sprint(fnName, ".", node.Name)
-							}
-						}
-					}
-					return true
-				})
-			}
-		}
-
-		for _, node := range currWrapper.Block.Nodes {
 			//Increment counter for each object encountered
 			switch node := node.(type) {
 			case *ast.AssignStmt, *ast.IncDecStmt:
-				artificial := RessignmentConversion(node)
-				if artificial != nil {
-					for i, l := range artificial.Lhs {
-						if id, ok := l.(*ast.Ident); ok {
-							name := id.Name
-							if i, ok := ssaInts[name]; ok && i == 0 {
-								delete(ssaInts, name)
-							} else if _, ok := alreadySSA[node]; ok {
-								// If we don't do this it will keep encountering
-								// the same node on different paths giving different
-								// SSA id's
-								ssaInts[name]--
-							}
-							SSAconversion(artificial.Rhs[i], ssaInts)
-							ssaInts[name]++
-							SSAconversion(l, ssaInts)
-							alreadySSA[node] = struct{}{}
-						}
-					}
-					stmts = append(stmts, artificial)
-					pathLabels = append(pathLabels, currWrapper.GetLabel())
-					// if currWrapper.GetLabel() == NoLabel{
-					// 	fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
-					// }
+				reassignment, _ := RessignmentConversion(node, curr.GetFileSet())
+				if reassignment != nil {
+					stmts = append(stmts, node)
 				}
-			case *ast.ExprStmt:
-				SSAconversion(node.X, ssaInts)
-			case ast.Expr:
-				SSAconversion(node, ssaInts)
+				pathLabels = append(pathLabels, currWrapper.GetLabel())
 			}
 		}
-
-		//=====Integrate-labeling changes
-		// varList := GetVariables(currWrapper, varFilter)
-		// vars := []ast.Node{}
-		// // Filter out variables already in the array again
-		// for _, v := range varList {
-		// 	contained := false
-		// 	for _, existingVar := range stmts {
-		// 		if v == existingVar {
-		// 			contained = true
-		// 			break
-		// 		}
-		// 	}
-		// 	if !contained {
-		// 		vars = append([]ast.Node{v}, vars...)
-		// 		if currWrapper.GetLabel() == NoLabel{
-		// 			fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
-		// 		}
-		// 		pathLabels = append(pathLabels, currWrapper.GetLabel())
-		// 	}
-		// }
-		// stmts = append(stmts, vars...)
-
-		//=========== rewrite branch changes ===============
-		// varList := GetVariables(currWrapper, varFilter)
-
-		// vars := []ast.Node{}
-		// // Filter out variables already in the array again
-		// for _, v := range varList {
-		// 	contained := false
-		// 	for _, existingVar := range stmts {
-		// 		if v == existingVar {
-		// 			contained = true
-		// 			break
-		// 		}
-		// 	}
-		// 	if !contained {
-		// 		vars = append([]ast.Node{v}, vars...)
-
-		// 	}
-		// }
-		// stmts = append(stmts, vars...)
 
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
@@ -215,13 +193,9 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					fromElse = false
 				}
 			}
-			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels, fromElse, alreadySSA)
+			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels, fromElse)
 		}
 	} else {
-
-		// the filter seems to be working but somehow vars
-		// gets 3 of the same thing (since there's 3 functions I guess)
-		// fmt.Println("hello", stmts)
 		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels})
 	}
 
