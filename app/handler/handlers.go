@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sourcecrawler/app/helper"
 	"sourcecrawler/app/unsafe"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/mitchellh/go-z3"
 
 	"go/ast"
+	"go/printer"
 	"net/http"
 	"regexp"
 	"sourcecrawler/app/cfg"
@@ -82,6 +84,11 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	//Print filtered logs
+	for _, m := range seenLogTypes{
+		fmt.Println("Filtered log", m.Regex)
+	}
+
 	topLevelWrapper := cfg.SetupPersistentData(request.ProjectRoot)
 
 	// ==== Tested, should be getting the correct info
@@ -120,10 +127,19 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	entryWrapper.SetOuterWrapper(topLevelWrapper)
 	cfg.ExpandCFG(entryWrapper)
 
-	//find the block originating the exception
+	//find the block originating the exceptionp
 	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
 	if exceptionBlock != nil {
-		fmt.Println("Exception block:", exceptionBlock)
+		switch b := exceptionBlock.(type){
+		case *cfg.FnWrapper:
+			fmt.Print("Exception block: ")
+			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), b.Fn)
+			fmt.Println()
+		case *cfg.BlockWrapper:
+			fmt.Print("Exception block: ", b.Block)
+			fmt.Println()
+		}
+		//fmt.Println("Exception block:", exceptionBlock)
 	}else{
 		fmt.Println("Error, empty exception block")
 	}
@@ -131,22 +147,37 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	pathList := cfg.CreateNewPath()
 
 	//label the tree starting from the exception block
-	pathList.LabelCFG(exceptionBlock, seenLogTypes, entryWrapper, stack)
+	pathList.LabelCFG(exceptionBlock, seenLogTypes, exceptionBlock, stack)
 
 	//gather the paths
-	paths := pathList.TraverseCFG(exceptionBlock, entryWrapper)
+	paths := pathList.TraverseCFG(exceptionBlock, exceptionBlock)
+
+	//Print labels on each constraint
+	cnt := 1
+	fmt.Println("================ Labeled constraints =========================")
+	for _, path := range paths{
+		fmt.Println("---------- PATH", cnt, " -------------")
+		cnt++
+
+		//Should print each constraint with its label
+		for index := range path.Expressions{
+			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.Expressions[index])
+			fmt.Print(" ---- ", path.ExecStatus[index])
+			fmt.Println()
+		}
+	}
+	fmt.Printf(" ===================================================\n\n")
+	fmt.Printf("Final paths ===========\n")
 
 	//Print paths
-	//cnt := 1
-	//for _, path := range paths{
-	//	fmt.Println("======= PATH", cnt, " ============")
-	//	for index := range path.Expressions{
-	//		printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.Expressions[index])
-	//		fmt.Print(" -- ", path.ExecStatus[index])
-	//		fmt.Println()
-	//	}
-	//	cnt++
-	//}
+	for i, path := range paths {
+		fmt.Println("PATH", i+1, " --", path.DidExecute)
+		for _, expr := range path.Expressions {
+			printer.Fprint(os.Stdout, topLevelWrapper.Fset, expr)
+			fmt.Println()
+		}
+		fmt.Println()
+	}
 
 	//transform to z3
 	config := z3.NewConfig()

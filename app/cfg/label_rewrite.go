@@ -19,6 +19,18 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 	if curr == nil {
 		return
 	}
+	if curr == root{ //Exception node should be a must (make sure immediate block before entering exception block is labeled also)
+		curr.SetLabel(Must)
+		if len(curr.GetParents()) == 1{
+			curr.GetParents()[0].SetLabel(Must)
+			//fmt.Println("Parent labeled as must", curr.GetParents()[0])
+		}else if len(curr.GetParents()) == 2{ //Not sure if this ever occurs
+			// truePar := curr.GetParents()[0]
+			// falsePar := curr.GetParents()[1]
+			// fmt.Println("True par", truePar)
+			// fmt.Println("false par", falsePar)
+		}
+	}
 
 	wrapper := curr //holds current wrapper
 	var prv Wrapper
@@ -29,6 +41,7 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 		if wrapper.GetLabel() == NoLabel {
 			switch wrap := wrapper.(type) {
 			case *FnWrapper:
+
 				//If it's a function in the stack trace, then it must run
 				//fnwrapper connected to blockWrapper succs
 				if CheckFnStatus(wrap, stackInfo) {
@@ -41,44 +54,43 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 			case *BlockWrapper: //BlockWrapper can represent a condition, but could be a statement, etc
 				//Check if it's a condition, if not set as must
 
-				// fmt.Println("Current wrapper in label", curr)
+				//fmt.Println("Current wrapper in label", wrap)
 
-				//Entry should be a must
-				if strings.Contains(wrap.Block.String(), "entry") {
-					wrap.SetLabel(Must)
-				} else {
+
+				//Check for possible log msg and log matchings
+				if strings.Contains(wrap.Block.String(), "entry") { //Entry is may
 					wrap.SetLabel(May)
-				}
-
-				//If it is part of an if-then or if-else, it is labeled as may
-				if strings.Contains(wrap.Block.String(), "if.then") ||
+				}else if strings.Contains(wrap.Block.String(), "if.then") ||//If it is part of an if-then or if-else, it is labeled as may (parent can be overriden if log found)
 					strings.Contains(wrap.Block.String(), "if.else") {
+					fmt.Println("Block being processed in if/else", wrap.Block.String())
+					LabelIfElseBlock(curr, logs, root)
+				}else if wrap.GetCondition() != nil{ //Only true if a block has 2 successors
+					//wrap.SetLabel(Must)
 					wrap.SetLabel(May)
+				}else{
+					wrap.SetLabel(May) //label as May if no logs detected
+					//wrap.SetLabel(MustNot)
 				}
 
-				//If-done should always be a must
-				// if strings.Contains(wrap.Block.String(), "if.done") {
-				// 	wrap.SetLabel(Must)
-				// }
-
-				//Only true if a block has 2 successors
-				if wrap.GetCondition() != nil {
-					wrap.SetLabel(May)
+				if CheckLogStatus(wrap.Block.Nodes, logs) { //If there's a matching log statement, then it has to be a must
+					wrap.SetLabel(Must)
+					//wrap.SetLabel(May)
 				}
+
 
 				//If two parents, go up to top and label down
 				if len(wrap.GetParents()) == 2 {
-					wrapper = GetTopAndLabel(wrap, logs, wrap, stackInfo)
-				}
-
-				//Check for possible log msg and log matchings
-				if CheckLogStatus(wrap.Block.Nodes, logs) {
-					wrap.SetLabel(Must)
+					//If the wrapper also has two children, finish labeling other child wrapper first
+					if len(wrap.GetChildren()) == 2{
+						ProcessChildrenWraps(wrapper, logs, root)
+					}
+					//fmt.Println(wrap.Block.String(), " has two parents")
+					wrapper = GetTopAndLabel(wrap, logs, wrap, stackInfo, root)
 				}
 			}
 		} else {
-			fmt.Println("Wrapper is already labeled", wrapper)
-			return
+			//fmt.Println("Wrapper is already labeled", wrapper)
+			// return
 		}
 
 		//Set next wrapper (parents) - two parent case should already be handled already by GetTopAndLabel
@@ -93,8 +105,30 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 	}
 }
 
+func ProcessChildrenWraps(wrapper Wrapper, logs []model.LogType, root Wrapper) {
+
+	if wrapper == nil {
+		return
+	}
+
+	for _, child := range wrapper.GetChildren(){
+		if wrapper.GetLabel() == NoLabel {
+			switch curr := wrapper.(type) {
+			case *BlockWrapper:
+				LabelIfElseBlock(curr, logs, root) //Should set to must or must not
+
+				//If it's an if.done, or something else, set it to may (may need extra logic later)
+				if curr.GetLabel() == NoLabel{
+					curr.SetLabel(May)
+				}
+			}
+		}
+
+		ProcessChildrenWraps(child, logs, root)
+	}
+}
 //Helper function to get topmost node where conditionals connect
-func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackInfo helper.StackTraceStruct) Wrapper {
+func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackInfo helper.StackTraceStruct, root Wrapper) Wrapper {
 
 	//if a new endNode is found,
 	//require that many more conditional
@@ -123,7 +157,7 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 
 		//If at very top, stop
 		if len(curr.GetParents()) == 0 {
-			fmt.Println("Finished going up tree")
+			// fmt.Println("Finished going up tree")
 			if totalCount == 0 {
 				fmt.Println("No conditions found")
 			}
@@ -134,55 +168,107 @@ func GetTopAndLabel(wrapper Wrapper, logs []model.LogType, start Wrapper, stackI
 	//Label topmost node as must
 	curr.SetLabel(Must)
 
-	isLog := false
-
 	//Go down through children to label nodes
-	LabelDown(curr, start, isLog, logs, stackInfo, totalCount)
+	LabelDown(curr, start, false, logs, stackInfo, totalCount, root)
 
 	return curr
 }
 
 //Helper function used in GetTopAndLabel
-func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, stackInfo helper.StackTraceStruct, totalCount int) {
+func LabelDown(curr Wrapper, start Wrapper, isLog bool, logs []model.LogType, stackInfo helper.StackTraceStruct, totalCount int, root Wrapper) {
 
-	//If at bottom, return
-	if curr == start || totalCount == 0 {
-		curr.SetLabel(Must)
+	isLogStmt := isLog
+	//If at bottom, return, or if there's already a label
+	if curr == start || totalCount == 0{
 		return
 	}
 
 	// fmt.Println("Current wrapper in label", curr)
 
-	//Set label downward
+	//Set label downward | Process current node before processing child node
 	for _, child := range curr.GetChildren() {
 
 		//Type switch to get specific info
-		var currNodes = []ast.Node{}
+		//var currNodes = []ast.Node{}
 		switch currType := curr.(type) {
 		case *BlockWrapper:
-			currNodes = currType.Block.Nodes
 
 			//If it's a condition, decrement the count
 			if currType.GetCondition() != nil {
 				totalCount--
 			}
-		}
 
-		//If it is a log stmt or matches regex then need to label as must
-		if CheckLogStatus(currNodes, logs) {
-			isLog = true
-			curr.SetLabel(Must)
-		}else{
-			curr.SetLabel(May)
-		}
+			//Label only if not already labeled
+			//If it is a log stmt or matches regex then need to label as must
+			if curr.GetLabel() == NoLabel {
+				LabelIfElseBlock(currType, logs, root) //Matches logs found in an if/else block, and sets its parent's block if there is one
 
-		//If it's part of a log block then label as must (not catching else conditions in an if-else??)
-		if isLog {
-			curr.SetLabel(Must)
-		}
+				//if CheckLogStatus(currNodes, logs) {
+				//	isLogStmt = true
+				//	//curr.SetLabel(Must)
+				//	fmt.Println("Current block Matches log", currType.Block.String())
+				//} else {
+				//	curr.SetLabel(MustNot)
+				//	fmt.Println("Current block No Matches", currType.Block.String())
+				//}
 
-		LabelDown(child, start, isLog, logs, stackInfo, totalCount)
+				//If it's part of a log block then label as must
+				//if isLog {
+				//	curr.SetLabel(Must)
+				//}
+
+		}
 	}
+
+
+		LabelDown(child, start, isLogStmt, logs, stackInfo, totalCount, root)
+	}
+}
+
+func LabelIfElseBlock(currType Wrapper, logs []model.LogType, root Wrapper){
+
+	switch currType := currType.(type){
+	case *BlockWrapper:
+		if currType.Label == NoLabel {
+			//For if.then, if.else, label must Must/MustNot
+			if strings.Contains(currType.Block.String(), "if.then") || strings.Contains(currType.Block.String(), "if.else") {
+				//If Log match found in an if/else, then label current block and its parent as a must
+				if CheckLogStatus(currType.Block.Nodes, logs) {
+					currType.SetLabel(Must)
+
+					//Need to set the status of the condition in parent's block as well
+					if len(currType.GetParents()) == 1{
+						if currType.GetParents()[0] != root.GetParents()[0] { //don't overwrite the exception block's parents
+							currType.GetParents()[0].SetLabel(Must)
+						}
+					}
+				} else {
+					currType.SetLabel(MustNot)
+
+					//Need to set the status of the condition in parent's block as well
+					if len(currType.GetParents()) == 1 {					
+						//if currType.GetParents()[0].GetLabel() == NoLabel {
+						if currType.GetParents()[0] != root.GetParents()[0] { //don't overwrite the exception block's parents
+							currType.GetParents()[0].SetLabel(MustNot)
+						}					
+					}
+				}
+			}
+		}
+	}
+}
+
+func isAssignment(node ast.Node) bool {
+	var isAssignment bool = false
+
+	//for _, node := range nodes{
+		//If any node is an assignment statement, then return true
+		if _, ok := node.(*ast.AssignStmt); ok {
+			isAssignment = ok
+			//break
+		}
+	//}
+	return isAssignment
 }
 
 //Helper for checking if FnWrapper is a may/must (checks function with stack to see if it is relevant)
@@ -208,9 +294,11 @@ func CheckFnStatus(wrapper *FnWrapper, stackInfo helper.StackTraceStruct) bool {
 }
 
 //Helper function to check if a BlockWrapper contains a log, or if it matches a relevant regex
+//Checks all nodes within a block and sees if it matches with the list of messages found in output.
 func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 
 	var done = false
+
 	for _, node := range nodes {
 		if n1, ok := node.(*ast.ExprStmt); ok {
 			if call, ok := n1.X.(*ast.CallExpr); ok {
@@ -218,21 +306,21 @@ func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 				if realSelector, ok := call.Fun.(*ast.SelectorExpr); ok {
 
 					//Set status of log
-					if helper.IsFromLog(realSelector) || strings.Contains(possibleLog, "log") {
-						//fmt.Println(realSelector, " is a log statement -> label as must")
+					if helper.IsFromLog(realSelector) || strings.Contains(possibleLog, "log") { //if any node in the block contains a log statement, exit early
+						// fmt.Println(realSelector, " is a log statement -> label as must")
 
 						//get log from node
 						for _, arg := range call.Args {
 							switch argNode := arg.(type) {
 							case *ast.BasicLit:
-								//Match regex to possible log
+								//Match regex in the filtered logs that are found to what we find in a block
 								for _, currLog := range logs {
 									fullRegex := "^" + currLog.Regex + "$"
 									str := strings.Trim(argNode.Value, "\"") //remove double quotes
 									str = strings.ReplaceAll(str, "%d", "0") //remove flags with #'s
 									if regex, err := regexp.Compile(fullRegex); err == nil {
 										if regex.Match([]byte(str)) {
-											fmt.Println(str, " - MATCHES -", fullRegex)
+											// fmt.Println(str, " - MATCHES -", fullRegex)
 											done = true
 											return true
 										}
@@ -246,7 +334,6 @@ func CheckLogStatus(nodes []ast.Node, logs []model.LogType) bool {
 				}
 			}
 		}
-
 	}
 
 	return done

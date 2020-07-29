@@ -9,7 +9,8 @@ import (
 type Path struct {
 	Expressions []ast.Node                  //List of all expressions (includes conditions and vars) (slice used b/c of ordering issue with maps)
 	ExecStatus	[]ExecutionLabel			//Parallel array with Expressions
-	Stmts       map[ast.Node]ExecutionLabel
+	Stmts       map[ast.Node]ExecutionLabel 
+	DidExecute	ExecutionLabel  			//Determine if an entire branch has not executed (based on absence of log stmts)
 }
 
 //List of paths
