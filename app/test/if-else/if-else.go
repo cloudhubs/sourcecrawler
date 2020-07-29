@@ -20,8 +20,8 @@ func main() {
 	}
 
 	x := num * 4
-	if x < 9 { //MustNot
-		log.Log().Msgf("%d < 9", num)
+	if x < 9 { //Must
+		log.Log().Msgf("%d is odd", num)
 	}
 
 	num -= 2

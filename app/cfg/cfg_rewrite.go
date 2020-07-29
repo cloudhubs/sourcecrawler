@@ -10,6 +10,7 @@ import (
 	"sourcecrawler/app/helper"
 	"strconv"
 	"strings"
+	"os"
 
 	"golang.org/x/tools/go/cfg"
 )
@@ -147,8 +148,11 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 			}
 		}
 
+		
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
+
+		var isNegated bool = false
 		if condition != nil {
 			ast.Inspect(condition, func(node ast.Node) bool {
 				if node, ok := node.(*ast.Ident); ok {
@@ -165,7 +169,15 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					Op:    token.NOT,
 					X:     cond,
 				}
+				fmt.Print("Negated condition: ")
+				printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
+				fmt.Println()
+				isNegated = true
 			}
+			fmt.Print("Normal condition: ")
+			printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
+			fmt.Println()
+		
 
 			//pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
 			//pathLabels = append(pathLabels, currWrapper.GetLabel())
@@ -182,7 +194,14 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				//TODO: May need to test on more paths
 				if currWrapper.GetLabel() != MustNot && currWrapper.GetLabel() != NoLabel{ //Remove the constraints that have a MustNot Label (assuming if they're must not, we dont need to worry about it)
 					stmts = append(stmts, condition)
-					pathLabels = append(pathLabels, currWrapper.GetLabel())
+					if isNegated && currWrapper.GetLabel() == Must{
+						pathLabels = append(pathLabels, MustNot)
+					}else if isNegated && currWrapper.GetLabel() == MustNot{
+						pathLabels = append(pathLabels, Must)
+					}else{
+						pathLabels = append(pathLabels, currWrapper.GetLabel())
+					}
+					
 				}
 			}
 		}
@@ -214,6 +233,10 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		for _, status := range pathLabels{
 			if status != Must{
 				pthLbl = May
+			}
+			if status == MustNot{
+				pthLbl = MustNot
+				break
 			}
 		}
 		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: pthLbl})
