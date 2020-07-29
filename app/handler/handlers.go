@@ -85,7 +85,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Print filtered logs
-	for _, m := range seenLogTypes{
+	for _, m := range seenLogTypes {
 		fmt.Println("Filtered log", m.Regex)
 	}
 
@@ -149,7 +149,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//Print labels on each constraint
 	cnt := 1
 	fmt.Println("================ Labeled constraints =========================")
-	for _, path := range paths{
+	for _, path := range paths {
 		fmt.Println("---------- PATH", cnt, " -------------")
 		cnt++
 
@@ -163,8 +163,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	fmt.Printf(" ===================================================\n\n")
 	fmt.Printf("================ Final paths ===============\n")
 
-	//Print paths, skipping if not executed
-	fmt.Println("Paths in list", len(pathList.Paths))
+	//Print paths
 	for i, path := range paths {
 		fmt.Println("----------- PATH", i+1, " --", path.DidExecute)
 		for _, expr := range path.CopyExpressions {

@@ -171,19 +171,9 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					Op:    token.NOT,
 					X:     cond,
 				}
-
-				// fmt.Print("Negated condition: ")
-				// printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
-				// fmt.Println()
+		
 				isNegated = true
 			}
-			// fmt.Print("Normal condition: ")
-			// printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
-			// fmt.Println()
-		
-
-			//pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
-			//pathLabels = append(pathLabels, currWrapper.GetLabel())
 
 			//Prevent duplicates
 			contained := false
@@ -196,31 +186,13 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 			if !contained {
 
 				stmts = append(stmts, condition)
-
-				//pathLabels = append(pathLabels, currWrapper.GetLabel())
-				//fmt.Println(isNegated)
 				if isNegated && currWrapper.GetLabel() == MustNot{
 					pathLabels = append(pathLabels, Must)
 				}else if isNegated && currWrapper.GetLabel() == Must{
 					pathLabels = append(pathLabels, MustNot)
 				}else if !isNegated{
-					//fmt.Print("Condition is: ")
-					//printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
-					//fmt.Print(" ", currWrapper.GetLabel())
-					//fmt.Println()
 					pathLabels = append(pathLabels, currWrapper.GetLabel())
 				}
-
-				//if currWrapper.GetLabel() != MustNot && currWrapper.GetLabel() != NoLabel{ //Remove the constraints that have a MustNot Label (assuming if they're must not, we dont need to worry about it)
-					//stmts = append(stmts, condition)
-					//if isNegated && currWrapper.GetLabel() == Must{
-					//	pathLabels = append(pathLabels, MustNot)
-					//}else if isNegated && currWrapper.GetLabel() == MustNot{
-					//	pathLabels = append(pathLabels, Must)
-					//}else{
-					//	pathLabels = append(pathLabels, currWrapper.GetLabel())
-					//}
-				//}
 			}
 		}
 	default:
@@ -246,7 +218,6 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
-		// fmt.Println("hello", stmts)
 
 		pthLbl := Must
 		for _, status := range pathLabels{
@@ -268,19 +239,6 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		for _, lbl := range pathLabels{
 			copiedLabels = append(copiedLabels, lbl)
 		}
-
-		//TODO: test print first path
-		//if len(paths.Paths) == 0{
-		//	fmt.Println("--------First path being added---------------------------")
-		//	for index := range stmts{
-		//			fmt.Print("Stmt: ")
-		//			printer.Fprint(os.Stdout, curr.GetFileSet(), stmts[index])
-		//			fmt.Print(" | Label:", pathLabels[index])
-		//			fmt.Println()
-		//	}
-		//	fmt.Println("First path labels", pathLabels)
-		//	fmt.Println("-----------------------------------")
-		//}
 
 		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: pthLbl, CopyExpressions: copiedNodes, CopyExecStatus: copiedLabels})
 	}
