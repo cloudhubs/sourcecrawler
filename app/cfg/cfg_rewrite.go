@@ -22,22 +22,88 @@ func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 	return paths.Paths
 }
 
+func ConvertCFGtoSSAForm(root Wrapper) {
+	ConvertCFGtoSSAFormRecur(root, make(map[string]int), make(map[ast.Node]struct{}))
+}
+
+//adds function name and ssa identifier to variables, done before traversal?
+func ConvertCFGtoSSAFormRecur(curr Wrapper, ssaInts map[string]int, alreadySSA map[ast.Node]struct{}) {
+	if curr, ok := curr.(*BlockWrapper); ok {
+		for _, node := range curr.Block.Nodes {
+			good := false
+			switch node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt, ast.Expr:
+				good = true
+			}
+			if good {
+				ast.Inspect(node, func(node ast.Node) bool {
+					switch node := node.(type) {
+					case *ast.Ident:
+						//Grab function name and identifier name
+						if fn, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
+							var fnName string
+							switch fn := fn.Fn.(type) {
+							case *ast.FuncDecl:
+								fnName = fn.Name.Name
+							case *ast.FuncLit:
+								//TODO: wat do??
+								fnName = "lit"
+							}
+							if !strings.Contains(node.Name, fnName+".") {
+								node.Name = fmt.Sprint(fnName, ".", node.Name)
+							}
+						}
+					}
+					return true
+				})
+			}
+		}
+		for i, node := range curr.Block.Nodes {
+			//Increment counter for each object encountered
+			switch node := node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt:
+				artificial, same := RessignmentConversion(node, curr.GetFileSet())
+				if artificial != nil {
+					if same {
+						artificial = node.(*ast.AssignStmt)
+					}
+					for i, l := range artificial.Lhs {
+						if id, ok := l.(*ast.Ident); ok {
+							name := id.Name
+							if i, ok := ssaInts[name]; ok && i == 0 {
+								delete(ssaInts, name)
+							} else if _, ok := alreadySSA[node]; ok {
+								ssaInts[name]--
+							}
+							SSAconversion(artificial.Rhs[i], ssaInts)
+							ssaInts[name]++
+							SSAconversion(l, ssaInts)
+							alreadySSA[artificial] = struct{}{}
+						}
+					}
+					curr.Block.Nodes[i] = artificial
+				}
+			case *ast.ExprStmt:
+				SSAconversion(node.X, ssaInts)
+			case ast.Expr:
+				SSAconversion(node, ssaInts)
+			}
+		}
+	}
+
+	for _, child := range curr.GetChildren() {
+		ConvertCFGtoSSAFormRecur(child, ssaInts, alreadySSA)
+	}
+}
+
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel, fromElse bool) {
-
-	//Nil check
-	if curr == nil {
-		return
-	}
-
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
-		//fmt.Println("Fn Wrapper", printer.Fprint(os.Stdout, curr.GetFileSet(), currWrapper.Fn))
 	case *BlockWrapper:
-
 		if len(currWrapper.Succs) == 2 {
 			ast.Inspect(currWrapper.Block.Nodes[len(currWrapper.Block.Nodes)-1], func(node ast.Node) bool {
 				switch node := node.(type) {
@@ -64,62 +130,12 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		}
 
 		for _, node := range currWrapper.Block.Nodes {
-			good := false
-			switch node.(type) {
-			case *ast.AssignStmt, *ast.IncDecStmt:
-				good = true
-			}
-			if good {
-				ast.Inspect(node, func(node ast.Node) bool {
-					switch node := node.(type) {
-					case *ast.Ident:
-						//Grab function name and identifier name
-						if fn, ok := currWrapper.GetOuterWrapper().(*FnWrapper); ok {
-							var fnName string
-							switch fn := fn.Fn.(type) {
-							case *ast.FuncDecl:
-								fnName = fn.Name.Name
-							case *ast.FuncLit:
-								//TODO: wat do??
-								fnName = "lit"
-							}
-							if !strings.Contains(node.Name, fnName+".") {
-								node.Name = fmt.Sprint(fnName, ".", node.Name)
-							}
-						}
-					}
-					return true
-				})
-			}
-		}
-
-		for _, node := range currWrapper.Block.Nodes {
 			//Increment counter for each object encountered
 			switch node := node.(type) {
 			case *ast.AssignStmt, *ast.IncDecStmt:
-				artificial := RessignmentConversion(node)
-				if artificial != nil {
-					for i, l := range artificial.Lhs {
-						if id, ok := l.(*ast.Ident); ok {
-							name := id.Name
-							negative := true
-							if i, ok := ssaInts[name]; ok && i > -1 {
-								negative = false
-								ssaInts[name]--
-								// Delete the map entry since a 0 would get prepended to the ID
-								if ssaInts[name] == 0 {
-									delete(ssaInts, name)
-								}
-							}
-							SSAconversion(artificial.Rhs[i], ssaInts)
-							if !negative {
-								ssaInts[name]++
-							}
-							SSAconversion(l, ssaInts)
-							ssaInts[name]++
-						}
-					}
-					stmts = append(stmts, artificial)
+				reassignment, _ := RessignmentConversion(node, curr.GetFileSet())
+				if reassignment != nil {
+					stmts = append(stmts, node)				
 
 					//Override the label for assignment statements, because its label inside a block could be different from the condition's label
 					if strings.Contains(currWrapper.Block.String(), "if.done") || strings.Contains(currWrapper.Block.String(), "entry"){ //An assignment in ifDone/entry should be must
@@ -130,14 +146,10 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 						pathLabels = append(pathLabels, currWrapper.GetLabel())
 					}
 				}
-			case *ast.ExprStmt:
-				SSAconversion(node.X, ssaInts)
-			case ast.Expr:
-				SSAconversion(node, ssaInts)
+				// pathLabels = append(pathLabels, currWrapper.GetLabel())
 			}
 		}
 
-		
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
 
@@ -153,11 +165,13 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 			if cond, ok := condition.(ast.Expr); fromElse && ok {
 				// Came from an else and the condition is an expression
 				// so negate the condition.
+
 				condition = &ast.UnaryExpr{
 					OpPos: condition.Pos(),
 					Op:    token.NOT,
 					X:     cond,
 				}
+
 				// fmt.Print("Negated condition: ")
 				// printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
 				// fmt.Println()
@@ -180,17 +194,33 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				}
 			}
 			if !contained {
-				
-				if currWrapper.GetLabel() != MustNot && currWrapper.GetLabel() != NoLabel{ //Remove the constraints that have a MustNot Label (assuming if they're must not, we dont need to worry about it)
-					stmts = append(stmts, condition)
-					if isNegated && currWrapper.GetLabel() == Must{
-						pathLabels = append(pathLabels, MustNot)
-					}else if isNegated && currWrapper.GetLabel() == MustNot{
-						pathLabels = append(pathLabels, Must)
-					}else{
-						pathLabels = append(pathLabels, currWrapper.GetLabel())
-					}
+
+				stmts = append(stmts, condition)
+
+				//pathLabels = append(pathLabels, currWrapper.GetLabel())
+				//fmt.Println(isNegated)
+				if isNegated && currWrapper.GetLabel() == MustNot{
+					pathLabels = append(pathLabels, Must)
+				}else if isNegated && currWrapper.GetLabel() == Must{
+					pathLabels = append(pathLabels, MustNot)
+				}else if !isNegated{
+					//fmt.Print("Condition is: ")
+					//printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
+					//fmt.Print(" ", currWrapper.GetLabel())
+					//fmt.Println()
+					pathLabels = append(pathLabels, currWrapper.GetLabel())
 				}
+
+				//if currWrapper.GetLabel() != MustNot && currWrapper.GetLabel() != NoLabel{ //Remove the constraints that have a MustNot Label (assuming if they're must not, we dont need to worry about it)
+					//stmts = append(stmts, condition)
+					//if isNegated && currWrapper.GetLabel() == Must{
+					//	pathLabels = append(pathLabels, MustNot)
+					//}else if isNegated && currWrapper.GetLabel() == MustNot{
+					//	pathLabels = append(pathLabels, Must)
+					//}else{
+					//	pathLabels = append(pathLabels, currWrapper.GetLabel())
+					//}
+				//}
 			}
 		}
 	default:
@@ -228,7 +258,31 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				break
 			}
 		}
-		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: pthLbl})
+
+		//Make shallow copy of nodes so the conditions/labels don't get changed after recursive processing (only used in printing)
+		copiedNodes := []ast.Node{}
+		for _, st := range stmts{
+			copiedNodes = append(copiedNodes, st)
+		}
+		copiedLabels := []ExecutionLabel{}
+		for _, lbl := range pathLabels{
+			copiedLabels = append(copiedLabels, lbl)
+		}
+
+		//TODO: test print first path
+		//if len(paths.Paths) == 0{
+		//	fmt.Println("--------First path being added---------------------------")
+		//	for index := range stmts{
+		//			fmt.Print("Stmt: ")
+		//			printer.Fprint(os.Stdout, curr.GetFileSet(), stmts[index])
+		//			fmt.Print(" | Label:", pathLabels[index])
+		//			fmt.Println()
+		//	}
+		//	fmt.Println("First path labels", pathLabels)
+		//	fmt.Println("-----------------------------------")
+		//}
+
+		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: pthLbl, CopyExpressions: copiedNodes, CopyExecStatus: copiedLabels})
 	}
 
 }
@@ -281,8 +335,8 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 			return false
 		})
 
-		// fset := token.NewFileSet()
-		// fmt.Println("Blocks", c.Format(fset))
+		//fset := token.NewFileSet()
+		//fmt.Println("Blocks", c.Format(fset))
 
 		//gather list of parameters
 		// fmt.Println(params)
@@ -676,7 +730,7 @@ func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
 				pos := w.GetFileSet().Position(node.Pos())
 
 				//Nil pointer checks on the node and pos
-				if node == nil{
+				if node == nil {
 					fmt.Println("nil node, continue")
 					continue
 				}

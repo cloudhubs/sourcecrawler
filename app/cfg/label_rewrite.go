@@ -231,26 +231,50 @@ func LabelIfElseBlock(currType Wrapper, logs []model.LogType, root Wrapper){
 	case *BlockWrapper:
 		if currType.Label == NoLabel {
 			//For if.then, if.else, label must Must/MustNot
-			if strings.Contains(currType.Block.String(), "if.then") || strings.Contains(currType.Block.String(), "if.else") {
+			if strings.Contains(currType.Block.String(), "if.then"){
 				//If Log match found in an if/else, then label current block and its parent as a must
 				if CheckLogStatus(currType.Block.Nodes, logs) {
 					currType.SetLabel(Must)
+					//fmt.Println(currType.Block.String(), " has a match")
 
 					//Need to set the status of the condition in parent's block as well
 					if len(currType.GetParents()) == 1{
-						if currType.GetParents()[0] != root.GetParents()[0] { //don't overwrite the exception block's parents
+						if currType.GetParents()[0] != root.GetParents()[0]{ //don't overwrite the exception block's parents
 							currType.GetParents()[0].SetLabel(Must)
 						}
 					}
 				} else {
 					currType.SetLabel(MustNot)
+					//fmt.Println(currType.Block.String(), " -- no match")
 
 					//Need to set the status of the condition in parent's block as well
 					if len(currType.GetParents()) == 1 {					
 						//if currType.GetParents()[0].GetLabel() == NoLabel {
-						if currType.GetParents()[0] != root.GetParents()[0] { //don't overwrite the exception block's parents
+						if currType.GetParents()[0] != root.GetParents()[0]{ //don't overwrite the exception block's parents
 							currType.GetParents()[0].SetLabel(MustNot)
 						}					
+					}
+				}
+			}else if strings.Contains(currType.Block.String(), "if.else"){
+				if CheckLogStatus(currType.Block.Nodes, logs) {
+					currType.SetLabel(Must)
+					//fmt.Println(currType.Block.String(), " has a match")
+					//Need to set the status of the condition in parent's block as well
+					if len(currType.GetParents()) == 1 {
+						par := currType.GetParents()[0]
+						if par != root.GetParents()[0] && par.GetLabel() != MustNot{ //If a if.then is processed, don't overwrite its label
+							currType.GetParents()[0].SetLabel(Must)
+						}
+					}
+				}else{
+					currType.SetLabel(MustNot)
+					//fmt.Println(currType.Block.String(), " -- no match")
+					//Need to set the status of the condition in parent's block as well
+					if len(currType.GetParents()) == 1 {
+						par := currType.GetParents()[0]
+						if par != root.GetParents()[0] && par.GetLabel() != Must{ //don't overwrite the exception block's parents TODO: Needed?
+							currType.GetParents()[0].SetLabel(MustNot)
+						}
 					}
 				}
 			}
