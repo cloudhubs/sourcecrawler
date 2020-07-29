@@ -309,7 +309,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			//continue processing if CallExpr casts
 			//as a SelectorExpr
 
-			//Additional processing for "log" library in go
+			//Additional processing for "log" functions in std go library (Ex: log.Print, log.Println)
 			basicLog := strings.Contains(fmt.Sprint(ret.Fun), "log")
 
 			if fn, ok := ret.Fun.(*ast.SelectorExpr); ok {
@@ -323,7 +323,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && IsFromLog(fn) {
+				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && IsFromLog(fn) {				
 					parentArgs := usesParentArgs(parentFn, ret)
 					value := fnStruct{
 						n:              n,
