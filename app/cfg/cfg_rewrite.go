@@ -64,40 +64,10 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		}
 
 		for _, node := range currWrapper.Block.Nodes {
-			good := false
-			switch node.(type) {
-			case *ast.AssignStmt, *ast.IncDecStmt:
-				good = true
-			}
-			if good {
-				ast.Inspect(node, func(node ast.Node) bool {
-					switch node := node.(type) {
-					case *ast.Ident:
-						//Grab function name and identifier name
-						if fn, ok := currWrapper.GetOuterWrapper().(*FnWrapper); ok {
-							var fnName string
-							switch fn := fn.Fn.(type) {
-							case *ast.FuncDecl:
-								fnName = fn.Name.Name
-							case *ast.FuncLit:
-								//TODO: wat do??
-								fnName = "lit"
-							}
-							if !strings.Contains(node.Name, fnName+".") {
-								node.Name = fmt.Sprint(fnName, ".", node.Name)
-							}
-						}
-					}
-					return true
-				})
-			}
-		}
-
-		for _, node := range currWrapper.Block.Nodes {
 			//Increment counter for each object encountered
 			switch node := node.(type) {
 			case *ast.AssignStmt, *ast.IncDecStmt:
-				artificial := RessignmentConversion(node)
+				artificial, _ := RessignmentConversion(node, curr.GetFileSet())
 				if artificial != nil {
 					for i, l := range artificial.Lhs {
 						if id, ok := l.(*ast.Ident); ok {
@@ -122,22 +92,18 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					stmts = append(stmts, artificial)
 
 					//Override the label for assignment statements, because its label inside a block could be different from the condition's label
-					if strings.Contains(currWrapper.Block.String(), "if.done") || strings.Contains(currWrapper.Block.String(), "entry"){ //An assignment in ifDone/entry should be must
+					if strings.Contains(currWrapper.Block.String(), "if.done") || strings.Contains(currWrapper.Block.String(), "entry") { //An assignment in ifDone/entry should be must
 						//fmt.Println("If done block", currWrapper.Block.String())
 						pathLabels = append(pathLabels, Must)
-					}else {
+					} else {
 						//fmt.Println("Lbl in conversion", currWrapper.GetLabel())
 						pathLabels = append(pathLabels, currWrapper.GetLabel())
 					}
 				}
-			case *ast.ExprStmt:
-				SSAconversion(node.X, ssaInts)
-			case ast.Expr:
-				SSAconversion(node, ssaInts)
+				pathLabels = append(pathLabels, currWrapper.GetLabel())
 			}
 		}
 
-		
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
 
@@ -166,7 +132,6 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 			// fmt.Print("Normal condition: ")
 			// printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
 			// fmt.Println()
-		
 
 			//pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
 			//pathLabels = append(pathLabels, currWrapper.GetLabel())
@@ -180,14 +145,14 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				}
 			}
 			if !contained {
-				
-				if currWrapper.GetLabel() != MustNot && currWrapper.GetLabel() != NoLabel{ //Remove the constraints that have a MustNot Label (assuming if they're must not, we dont need to worry about it)
+
+				if currWrapper.GetLabel() != MustNot && currWrapper.GetLabel() != NoLabel { //Remove the constraints that have a MustNot Label (assuming if they're must not, we dont need to worry about it)
 					stmts = append(stmts, condition)
-					if isNegated && currWrapper.GetLabel() == Must{
+					if isNegated && currWrapper.GetLabel() == Must {
 						pathLabels = append(pathLabels, MustNot)
-					}else if isNegated && currWrapper.GetLabel() == MustNot{
+					} else if isNegated && currWrapper.GetLabel() == MustNot {
 						pathLabels = append(pathLabels, Must)
-					}else{
+					} else {
 						pathLabels = append(pathLabels, currWrapper.GetLabel())
 					}
 				}
@@ -219,11 +184,11 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		// fmt.Println("hello", stmts)
 
 		pthLbl := Must
-		for _, status := range pathLabels{
-			if status != Must{
+		for _, status := range pathLabels {
+			if status != Must {
 				pthLbl = May
 			}
-			if status == MustNot{
+			if status == MustNot {
 				pthLbl = MustNot
 				break
 			}
@@ -231,6 +196,80 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: pthLbl})
 	}
 
+}
+
+func ConvertCFGtoSSAForm(root Wrapper) {
+	ConvertCFGtoSSAFormRecur(root, make(map[string]int), make(map[ast.Node]struct{}))
+}
+
+//adds function name and ssa identifier to variables, done before traversal?
+func ConvertCFGtoSSAFormRecur(curr Wrapper, ssaInts map[string]int, alreadySSA map[ast.Node]struct{}) {
+	if curr, ok := curr.(*BlockWrapper); ok {
+		for _, node := range curr.Block.Nodes {
+			good := false
+			switch node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt, ast.Expr:
+				good = true
+			}
+			if good {
+				ast.Inspect(node, func(node ast.Node) bool {
+					switch node := node.(type) {
+					case *ast.Ident:
+						//Grab function name and identifier name
+						if fn, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
+							var fnName string
+							switch fn := fn.Fn.(type) {
+							case *ast.FuncDecl:
+								fnName = fn.Name.Name
+							case *ast.FuncLit:
+								//TODO: wat do??
+								fnName = "lit"
+							}
+							if !strings.Contains(node.Name, fnName+".") {
+								node.Name = fmt.Sprint(fnName, ".", node.Name)
+							}
+						}
+					}
+					return true
+				})
+			}
+		}
+		for i, node := range curr.Block.Nodes {
+			//Increment counter for each object encountered
+			switch node := node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt:
+				artificial, same := RessignmentConversion(node, curr.GetFileSet())
+				if artificial != nil {
+					if same {
+						artificial = node.(*ast.AssignStmt)
+					}
+					for i, l := range artificial.Lhs {
+						if id, ok := l.(*ast.Ident); ok {
+							name := id.Name
+							if i, ok := ssaInts[name]; ok && i == 0 {
+								delete(ssaInts, name)
+							} else if _, ok := alreadySSA[node]; ok {
+								ssaInts[name]--
+							}
+							SSAconversion(artificial.Rhs[i], ssaInts)
+							ssaInts[name]++
+							SSAconversion(l, ssaInts)
+							alreadySSA[artificial] = struct{}{}
+						}
+					}
+					curr.Block.Nodes[i] = artificial
+				}
+			case *ast.ExprStmt:
+				SSAconversion(node.X, ssaInts)
+			case ast.Expr:
+				SSAconversion(node, ssaInts)
+			}
+		}
+	}
+
+	for _, child := range curr.GetChildren() {
+		ConvertCFGtoSSAFormRecur(child, ssaInts, alreadySSA)
+	}
 }
 
 //The value returned should be the topmost wrapper
@@ -676,7 +715,7 @@ func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
 				pos := w.GetFileSet().Position(node.Pos())
 
 				//Nil pointer checks on the node and pos
-				if node == nil{
+				if node == nil {
 					fmt.Println("nil node, continue")
 					continue
 				}

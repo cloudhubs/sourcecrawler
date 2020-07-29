@@ -85,7 +85,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Print filtered logs
-	for _, m := range seenLogTypes{
+	for _, m := range seenLogTypes {
 		fmt.Println("Filtered log", m.Regex)
 	}
 
@@ -118,7 +118,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		//fmt.Print("Entry function is: ")
 		//printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), entryFnNode)
 		//fmt.Println()
-	}else{
+	} else {
 		fmt.Println("EntryFnNode is nil")
 	}
 
@@ -130,7 +130,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//find the block originating the exceptionp
 	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
 	if exceptionBlock != nil {
-		switch b := exceptionBlock.(type){
+		switch b := exceptionBlock.(type) {
 		case *cfg.FnWrapper:
 			fmt.Print("Exception block: ")
 			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), b.Fn)
@@ -140,7 +140,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			fmt.Println()
 		}
 		//fmt.Println("Exception block:", exceptionBlock)
-	}else{
+	} else {
 		fmt.Println("Error, empty exception block")
 	}
 
@@ -149,18 +149,21 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//label the tree starting from the exception block
 	pathList.LabelCFG(exceptionBlock, seenLogTypes, exceptionBlock, stack)
 
+	//rename variables to ssa form
+	cfg.ConvertCFGtoSSAForm(entryWrapper)
+
 	//gather the paths
 	paths := pathList.TraverseCFG(exceptionBlock, exceptionBlock)
 
 	//Print labels on each constraint
 	cnt := 1
 	fmt.Println("================ Labeled constraints =========================")
-	for _, path := range paths{
+	for _, path := range paths {
 		fmt.Println("---------- PATH", cnt, " -------------")
 		cnt++
 
 		//Should print each constraint with its label
-		for index := range path.Expressions{
+		for index := range path.Expressions {
 			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.Expressions[index])
 			fmt.Print(" ---- ", path.ExecStatus[index])
 			fmt.Println()
@@ -204,10 +207,15 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		m := s.Model()
-		assignments = append(assignments, m.Assignments())
-		for name, val := range m.Assignments() {
+		newAssignments := m.Assignments()
+		cfg.FilterToUserInput(exceptionBlock, path.Expressions, newAssignments)
+		assignments = append(assignments, newAssignments)
+
+		for name, val := range newAssignments {
 			fmt.Printf("%s = %s\n", name, val)
 		}
+		fmt.Println()
+
 		m.Close()
 	}
 
