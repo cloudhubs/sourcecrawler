@@ -127,7 +127,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	entryWrapper.SetOuterWrapper(topLevelWrapper)
 	cfg.ExpandCFG(entryWrapper)
 
-	//find the block originating the exception
+	//find the block originating the exceptionp
 	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
 	if exceptionBlock != nil {
 		switch b := exceptionBlock.(type){
@@ -152,7 +152,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	//gather the paths
 	paths := pathList.TraverseCFG(exceptionBlock, exceptionBlock)
 
-	//Print labels on paths
+	//Print labels on each constraint
 	cnt := 1
 	for _, path := range paths{
 		fmt.Println("---------- PATH", cnt, " -------------")
@@ -165,6 +165,8 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 			fmt.Println()
 		}
 	}
+	fmt.Printf(" ===================================================\n\n")
+	fmt.Printf("Final paths ===========\n")
 
 	//Print paths
 	for i, path := range paths {

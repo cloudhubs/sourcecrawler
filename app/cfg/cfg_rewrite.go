@@ -32,7 +32,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		return
 	}
 
-	var lbl ExecutionLabel = NoLabel
+	//var lbl ExecutionLabel = NoLabel
 
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
@@ -42,10 +42,10 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 
 		//Set inital execution label to must
 		if curr == root{
-			lbl = Must
-			fmt.Println("Exception block", currWrapper)
+			//lbl = Must
+			//fmt.Println("Exception block", currWrapper)
 		}else {
-			lbl = currWrapper.GetLabel()
+			//lbl = currWrapper.GetLabel()
 		}
 
 		if len(currWrapper.Succs) == 2 {
@@ -130,8 +130,15 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 						}
 					}
 					stmts = append(stmts, artificial)
-					fmt.Println("Curr wrapper", currWrapper)
-					pathLabels = append(pathLabels, lbl)
+
+					//Override the label for assignment statements, because its label inside a block could be different from the condition's label
+					if strings.Contains(currWrapper.Block.String(), "if.done") || strings.Contains(currWrapper.Block.String(), "entry"){ //An assignment in ifDone/entry should be must
+						//fmt.Println("If done block", currWrapper.Block.String())
+						pathLabels = append(pathLabels, Must)
+					}else {
+						//fmt.Println("Lbl in conversion", currWrapper.GetLabel())
+						pathLabels = append(pathLabels, currWrapper.GetLabel())
+					}
 				}
 			case *ast.ExprStmt:
 				SSAconversion(node.X, ssaInts)
@@ -139,48 +146,6 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				SSAconversion(node, ssaInts)
 			}
 		}
-
-		//=====Integrate-labeling changes
-		// varList := GetVariables(currWrapper, varFilter)
-		// vars := []ast.Node{}
-		// // Filter out variables already in the array again
-		// for _, v := range varList {
-		// 	contained := false
-		// 	for _, existingVar := range stmts {
-		// 		if v == existingVar {
-		// 			contained = true
-		// 			break
-		// 		}
-		// 	}
-		// 	if !contained {
-		// 		vars = append([]ast.Node{v}, vars...)
-		// 		if currWrapper.GetLabel() == NoLabel{
-		// 			fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
-		// 		}
-		// 		pathLabels = append(pathLabels, currWrapper.GetLabel())
-		// 	}
-		// }
-		// stmts = append(stmts, vars...)
-
-		//=========== rewrite branch changes ===============
-		// varList := GetVariables(currWrapper, varFilter)
-
-		// vars := []ast.Node{}
-		// // Filter out variables already in the array again
-		// for _, v := range varList {
-		// 	contained := false
-		// 	for _, existingVar := range stmts {
-		// 		if v == existingVar {
-		// 			contained = true
-		// 			break
-		// 		}
-		// 	}
-		// 	if !contained {
-		// 		vars = append([]ast.Node{v}, vars...)
-
-		// 	}
-		// }
-		// stmts = append(stmts, vars...)
 
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
@@ -214,9 +179,11 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				}
 			}
 			if !contained {
-				fmt.Println("Curr wrapper", currWrapper)
-				stmts = append(stmts, condition)
-				pathLabels = append(pathLabels, lbl)
+				//TODO: May need to test on more paths
+				if currWrapper.GetLabel() != MustNot && currWrapper.GetLabel() != NoLabel{ //Remove the constraints that have a MustNot Label (assuming if they're must not, we dont need to worry about it)
+					stmts = append(stmts, condition)
+					pathLabels = append(pathLabels, currWrapper.GetLabel())
+				}
 			}
 		}
 	default:
@@ -243,7 +210,13 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
 		// fmt.Println("hello", stmts)
-		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: curr.GetLabel()})
+		pthLbl := Must
+		for _, status := range pathLabels{
+			if status != Must{
+				pthLbl = May
+			}
+		}
+		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: pthLbl})
 	}
 
 }
@@ -296,8 +269,8 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 			return false
 		})
 
-		//fset := token.NewFileSet()
-		//fmt.Println("Blocks", c.Format(fset))
+		fset := token.NewFileSet()
+		fmt.Println("Blocks", c.Format(fset))
 
 		//gather list of parameters
 		// fmt.Println(params)
