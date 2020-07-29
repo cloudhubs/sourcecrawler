@@ -166,7 +166,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		cfg.FilterToUserInput(exceptionBlock, path.Expressions, newAssignments)
 		assignments = append(assignments, newAssignments)
 
-		for name, val := range m.Assignments() {
+		for name, val := range newAssignments {
 			fmt.Printf("%s = %s\n", name, val)
 		}
 		fmt.Println()

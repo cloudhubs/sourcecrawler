@@ -62,7 +62,7 @@ func hasAssignment(nodes []ast.Node, id *ast.Ident) bool {
 			switch node := node.(type) {
 			case *ast.AssignStmt:
 				for i, l := range node.Lhs {
-					if foundID, ok := l.(*ast.Ident); ok && id == foundID {
+					if foundID, ok := l.(*ast.Ident); ok && id.Name == foundID.Name {
 						switch r := node.Rhs[i].(type) {
 						case *ast.SelectorExpr:
 							if id, ok := r.X.(*ast.Ident); ok {
@@ -82,6 +82,8 @@ func hasAssignment(nodes []ast.Node, id *ast.Ident) bool {
 									}
 								}
 							}
+						default:
+							isAssigned = true
 						}
 						return false
 					}
