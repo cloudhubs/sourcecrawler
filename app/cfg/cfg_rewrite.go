@@ -634,15 +634,24 @@ func (b *BlockWrapper) GetFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr
 func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
 	if w != nil {
 		switch w := w.(type) {
+		case *FnWrapper:
 		case *BlockWrapper:
 			for _, node := range w.Block.Nodes {
 				pos := w.GetFileSet().Position(node.Pos())
+
+				//Nil pointer checks on the node and pos
+				if node == nil {
+					fmt.Println("nil node, continue")
+					continue
+				}
+
 				if strings.Contains(pos.Filename, traceStruct.FileName[0]) {
 					lineNum, err := strconv.Atoi(traceStruct.LineNum[0])
 					if err == nil && pos.Line == lineNum {
 						return w
 					}
 				}
+
 			}
 		}
 		for _, child := range w.GetChildren() {

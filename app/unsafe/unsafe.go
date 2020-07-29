@@ -23,9 +23,9 @@ func Unsafe(x int, msg string) ([]string, error) {
 		y := x + 5
 
 		if y < 10 {
-			fmt.Println("y is small")
+			log.Info().Msg("y is small")
 		} else {
-			fmt.Println("y is large")
+			log.Info().Msg("y is large")
 		}
 
 		var array [10]string
