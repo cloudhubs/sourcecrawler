@@ -55,9 +55,6 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 				//Check if it's a condition, if not set as must
 
 				//fmt.Println("Current wrapper in label", wrap)
-				//if strings.Contains(wrap.Block.String(), "block 5") || strings.Contains(wrap.Block.String(), "block 6"){
-				//	fmt.Println("BLOCK 5 OR BLOCK 6")
-				//}
 
 
 				//Check for possible log msg and log matchings
