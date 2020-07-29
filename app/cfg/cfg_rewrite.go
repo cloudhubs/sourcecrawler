@@ -22,80 +22,6 @@ func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 	return paths.Paths
 }
 
-func ConvertCFGtoSSAForm(root Wrapper) {
-	ConvertCFGtoSSAFormRecur(root, make(map[string]int), make(map[ast.Node]struct{}))
-}
-
-//adds function name and ssa identifier to variables, done before traversal?
-func ConvertCFGtoSSAFormRecur(curr Wrapper, ssaInts map[string]int, alreadySSA map[ast.Node]struct{}) {
-	if curr, ok := curr.(*BlockWrapper); ok {
-		for _, node := range curr.Block.Nodes {
-			good := false
-			switch node.(type) {
-			case *ast.AssignStmt, *ast.IncDecStmt, ast.Expr:
-				good = true
-			}
-			if good {
-				ast.Inspect(node, func(node ast.Node) bool {
-					switch node := node.(type) {
-					case *ast.Ident:
-						//Grab function name and identifier name
-						if fn, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
-							var fnName string
-							switch fn := fn.Fn.(type) {
-							case *ast.FuncDecl:
-								fnName = fn.Name.Name
-							case *ast.FuncLit:
-								//TODO: wat do??
-								fnName = "lit"
-							}
-							if !strings.Contains(node.Name, fnName+".") {
-								node.Name = fmt.Sprint(fnName, ".", node.Name)
-							}
-						}
-					}
-					return true
-				})
-			}
-		}
-		for i, node := range curr.Block.Nodes {
-			//Increment counter for each object encountered
-			switch node := node.(type) {
-			case *ast.AssignStmt, *ast.IncDecStmt:
-				artificial, same := RessignmentConversion(node, curr.GetFileSet())
-				if artificial != nil {
-					if same {
-						artificial = node.(*ast.AssignStmt)
-					}
-					for i, l := range artificial.Lhs {
-						if id, ok := l.(*ast.Ident); ok {
-							name := id.Name
-							if i, ok := ssaInts[name]; ok && i == 0 {
-								delete(ssaInts, name)
-							} else if _, ok := alreadySSA[node]; ok {
-								ssaInts[name]--
-							}
-							SSAconversion(artificial.Rhs[i], ssaInts)
-							ssaInts[name]++
-							SSAconversion(l, ssaInts)
-							alreadySSA[artificial] = struct{}{}
-						}
-					}
-					curr.Block.Nodes[i] = artificial
-				}
-			case *ast.ExprStmt:
-				SSAconversion(node.X, ssaInts)
-			case ast.Expr:
-				SSAconversion(node, ssaInts)
-			}
-		}
-	}
-
-	for _, child := range curr.GetChildren() {
-		ConvertCFGtoSSAFormRecur(child, ssaInts, alreadySSA)
-	}
-}
-
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
@@ -199,6 +125,80 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels})
 	}
 
+}
+
+func ConvertCFGtoSSAForm(root Wrapper) {
+	ConvertCFGtoSSAFormRecur(root, make(map[string]int), make(map[ast.Node]struct{}))
+}
+
+//adds function name and ssa identifier to variables, done before traversal?
+func ConvertCFGtoSSAFormRecur(curr Wrapper, ssaInts map[string]int, alreadySSA map[ast.Node]struct{}) {
+	if curr, ok := curr.(*BlockWrapper); ok {
+		for _, node := range curr.Block.Nodes {
+			good := false
+			switch node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt, ast.Expr:
+				good = true
+			}
+			if good {
+				ast.Inspect(node, func(node ast.Node) bool {
+					switch node := node.(type) {
+					case *ast.Ident:
+						//Grab function name and identifier name
+						if fn, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
+							var fnName string
+							switch fn := fn.Fn.(type) {
+							case *ast.FuncDecl:
+								fnName = fn.Name.Name
+							case *ast.FuncLit:
+								//TODO: wat do??
+								fnName = "lit"
+							}
+							if !strings.Contains(node.Name, fnName+".") {
+								node.Name = fmt.Sprint(fnName, ".", node.Name)
+							}
+						}
+					}
+					return true
+				})
+			}
+		}
+		for i, node := range curr.Block.Nodes {
+			//Increment counter for each object encountered
+			switch node := node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt:
+				artificial, same := RessignmentConversion(node, curr.GetFileSet())
+				if artificial != nil {
+					if same {
+						artificial = node.(*ast.AssignStmt)
+					}
+					for i, l := range artificial.Lhs {
+						if id, ok := l.(*ast.Ident); ok {
+							name := id.Name
+							if i, ok := ssaInts[name]; ok && i == 0 {
+								delete(ssaInts, name)
+							} else if _, ok := alreadySSA[node]; ok {
+								ssaInts[name]--
+							}
+							SSAconversion(artificial.Rhs[i], ssaInts)
+							ssaInts[name]++
+							SSAconversion(l, ssaInts)
+							alreadySSA[artificial] = struct{}{}
+						}
+					}
+					curr.Block.Nodes[i] = artificial
+				}
+			case *ast.ExprStmt:
+				SSAconversion(node.X, ssaInts)
+			case ast.Expr:
+				SSAconversion(node, ssaInts)
+			}
+		}
+	}
+
+	for _, child := range curr.GetChildren() {
+		ConvertCFGtoSSAFormRecur(child, ssaInts, alreadySSA)
+	}
 }
 
 //The value returned should be the topmost wrapper
