@@ -10,7 +10,6 @@ import (
 	"sourcecrawler/app/helper"
 	"strconv"
 	"strings"
-	"os"
 
 	"golang.org/x/tools/go/cfg"
 )
@@ -33,21 +32,11 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		return
 	}
 
-	//var lbl ExecutionLabel = NoLabel
-
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
 		//fmt.Println("Fn Wrapper", printer.Fprint(os.Stdout, curr.GetFileSet(), currWrapper.Fn))
 	case *BlockWrapper:
-
-		//Set inital execution label to must
-		if curr == root{
-			//lbl = Must
-			//fmt.Println("Exception block", currWrapper)
-		}else {
-			//lbl = currWrapper.GetLabel()
-		}
 
 		if len(currWrapper.Succs) == 2 {
 			ast.Inspect(currWrapper.Block.Nodes[len(currWrapper.Block.Nodes)-1], func(node ast.Node) bool {
@@ -152,7 +141,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
 
-		var isNegated bool = false
+		var isNegated bool = false //Used to assign a Must/MustNot label accordingly
 		if condition != nil {
 			ast.Inspect(condition, func(node ast.Node) bool {
 				if node, ok := node.(*ast.Ident); ok {
@@ -169,14 +158,14 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					Op:    token.NOT,
 					X:     cond,
 				}
-				fmt.Print("Negated condition: ")
-				printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
-				fmt.Println()
+				// fmt.Print("Negated condition: ")
+				// printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
+				// fmt.Println()
 				isNegated = true
 			}
-			fmt.Print("Normal condition: ")
-			printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
-			fmt.Println()
+			// fmt.Print("Normal condition: ")
+			// printer.Fprint(os.Stdout, currWrapper.GetFileSet(), condition)
+			// fmt.Println()
 		
 
 			//pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
@@ -191,7 +180,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				}
 			}
 			if !contained {
-				//TODO: May need to test on more paths
+				
 				if currWrapper.GetLabel() != MustNot && currWrapper.GetLabel() != NoLabel{ //Remove the constraints that have a MustNot Label (assuming if they're must not, we dont need to worry about it)
 					stmts = append(stmts, condition)
 					if isNegated && currWrapper.GetLabel() == Must{
@@ -201,7 +190,6 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 					}else{
 						pathLabels = append(pathLabels, currWrapper.GetLabel())
 					}
-					
 				}
 			}
 		}
@@ -229,6 +217,7 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
 		// fmt.Println("hello", stmts)
+
 		pthLbl := Must
 		for _, status := range pathLabels{
 			if status != Must{
@@ -292,8 +281,8 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 			return false
 		})
 
-		fset := token.NewFileSet()
-		fmt.Println("Blocks", c.Format(fset))
+		// fset := token.NewFileSet()
+		// fmt.Println("Blocks", c.Format(fset))
 
 		//gather list of parameters
 		// fmt.Println(params)

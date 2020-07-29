@@ -154,6 +154,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	//Print labels on each constraint
 	cnt := 1
+	fmt.Println("================ Labeled constraints =========================")
 	for _, path := range paths{
 		fmt.Println("---------- PATH", cnt, " -------------")
 		cnt++

@@ -19,16 +19,16 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 	if curr == nil {
 		return
 	}
-	if curr == root{ //Root should be a must (make sure immediate block before entering exception block is labeled)
+	if curr == root{ //Exception node should be a must (make sure immediate block before entering exception block is labeled also)
 		curr.SetLabel(Must)
 		if len(curr.GetParents()) == 1{
 			curr.GetParents()[0].SetLabel(Must)
 			//fmt.Println("Parent labeled as must", curr.GetParents()[0])
 		}else if len(curr.GetParents()) == 2{ //Not sure if this ever occurs
-			truePar := curr.GetParents()[0]
-			falsePar := curr.GetParents()[1]
-			fmt.Println("True par", truePar)
-			fmt.Println("false par", falsePar)
+			// truePar := curr.GetParents()[0]
+			// falsePar := curr.GetParents()[1]
+			// fmt.Println("True par", truePar)
+			// fmt.Println("false par", falsePar)
 		}
 	}
 
@@ -71,10 +71,6 @@ func (paths *PathList) LabelCFG(curr Wrapper, logs []model.LogType, root Wrapper
 					wrap.SetLabel(May) //label as May if no logs detected
 					//wrap.SetLabel(MustNot)
 				}
-
-				/*else if strings.Contains(wrap.Block.String(), "if.done"){ //If-done should always be a must
-					wrap.SetLabel(Must)
-				}*/
 
 				if CheckLogStatus(wrap.Block.Nodes, logs) { //If there's a matching log statement, then it has to be a must
 					wrap.SetLabel(Must)
@@ -233,9 +229,6 @@ func LabelIfElseBlock(currType Wrapper, logs []model.LogType, root Wrapper){
 
 	switch currType := currType.(type){
 	case *BlockWrapper:
-
-		//fmt.Println("Block in label If/else", currType.Block.String())
-
 		if currType.Label == NoLabel {
 			//For if.then, if.else, label must Must/MustNot
 			if strings.Contains(currType.Block.String(), "if.then") || strings.Contains(currType.Block.String(), "if.else") {
@@ -245,31 +238,20 @@ func LabelIfElseBlock(currType Wrapper, logs []model.LogType, root Wrapper){
 
 					//Need to set the status of the condition in parent's block as well
 					if len(currType.GetParents()) == 1{
-						fmt.Println("Parent of ", currType.Block.String(), " set to must")
-						//if currType.GetParents()[0].GetLabel() == NoLabel {
 						if currType.GetParents()[0] != root.GetParents()[0] { //don't overwrite the exception block's parents
 							currType.GetParents()[0].SetLabel(Must)
 						}
-						//}else{
-						//	fmt.Println("Parent is already labeled")
-						//}
 					}
-					fmt.Println("Current block Matches log", currType.Block.String())
 				} else {
 					currType.SetLabel(MustNot)
 
 					//Need to set the status of the condition in parent's block as well
-					if len(currType.GetParents()) == 1 {
-						fmt.Println("Parent of ", currType.Block.String(), " set to MustNot")
+					if len(currType.GetParents()) == 1 {					
 						//if currType.GetParents()[0].GetLabel() == NoLabel {
 						if currType.GetParents()[0] != root.GetParents()[0] { //don't overwrite the exception block's parents
 							currType.GetParents()[0].SetLabel(MustNot)
-						}
-						//}else{
-						//	fmt.Println("Parent is already labeled")
-						//}
+						}					
 					}
-					fmt.Println("Current block (no matches found)", currType.Block.String())
 				}
 			}
 		}
