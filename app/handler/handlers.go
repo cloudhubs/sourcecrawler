@@ -184,7 +184,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	finalPaths := []cfg.Path{}
 	for _, path := range paths {
-		if path.DidExecute == cfg.Must {
+		if path.DidExecute != cfg.MustNot {
 			finalPaths = append(finalPaths, path)
 		}
 	}
