@@ -10,6 +10,7 @@ import (
 
 	"github.com/mitchellh/go-z3"
 
+	"bytes"
 	"go/ast"
 	"go/printer"
 	"net/http"
@@ -182,12 +183,31 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	s := ctx.NewSolver()
 	defer s.Close()
 
+	type PathResp struct {
+		Path  []string `json:"path"`
+		Label string   `json:"label"`
+	}
+
+	respPath := make([]PathResp, 0)
+
 	finalPaths := []cfg.Path{}
 	for _, path := range paths {
 		if path.DidExecute != cfg.MustNot {
 			finalPaths = append(finalPaths, path)
+			p := make([]string, 0)
+			for _, cond := range path.CopyExpressions {
+				var b bytes.Buffer
+				printer.Fprint(&b, topLevelWrapper.Fset, cond)
+				p = append(p, b.String())
+			}
+			respPath = append(respPath, PathResp{
+				Path:  p,
+				Label: path.DidExecute.String(),
+			})
 		}
 	}
+
+	mustAssignments := make([]string, 0)
 
 	//solve and display each path
 	assignments := make([]map[string]*z3.AST, 0)
@@ -210,11 +230,22 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		assignments = append(assignments, newAssignments)
 
 		for name, val := range newAssignments {
-			fmt.Printf("%s = %s\n", name, val)
+			a := fmt.Sprintf("%s = %s", name, val)
+			fmt.Println(a)
+			mustAssignments = append(mustAssignments, a)
 		}
 		fmt.Println()
 
 		m.Close()
 	}
 
+	resp := struct {
+		Paths       []PathResp `json:"paths"`
+		Assignments []string   `json:"assignments"`
+	}{
+		respPath,
+		mustAssignments,
+	}
+
+	respondJSON(w, http.StatusOK, resp)
 }
