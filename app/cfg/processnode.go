@@ -6,7 +6,7 @@ import (
 	"go/ast"
 	"go/printer"
 	"go/token"
-	"sourcecrawler/app/logsource"
+	"sourcecrawler/app/helper"
 	"strconv"
 	"strings"
 
@@ -62,7 +62,7 @@ func hasAssignment(nodes []ast.Node, id *ast.Ident) bool {
 			switch node := node.(type) {
 			case *ast.AssignStmt:
 				for i, l := range node.Lhs {
-					if foundID, ok := l.(*ast.Ident); ok && id == foundID {
+					if foundID, ok := l.(*ast.Ident); ok && id.Name == foundID.Name {
 						switch r := node.Rhs[i].(type) {
 						case *ast.SelectorExpr:
 							if id, ok := r.X.(*ast.Ident); ok {
@@ -82,6 +82,8 @@ func hasAssignment(nodes []ast.Node, id *ast.Ident) bool {
 									}
 								}
 							}
+						default:
+							isAssigned = true
 						}
 						return false
 					}
@@ -196,27 +198,30 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Node, fset *token.FileSet) *z3.AS
 					//case *ast.SelectorExpr:
 				}
 			case *ast.AssignStmt:
-				for i, id := range decl.Lhs {
+				for _, id := range decl.Lhs {
 					if id.(*ast.Ident).Obj == expr.Obj {
-						rhs := decl.Rhs[i]
-						switch rhs := rhs.(type) {
-						case *ast.UnaryExpr:
-							if rhs, ok := rhs.X.(*ast.BasicLit); ok {
-								switch rhs.Kind {
-								case token.INT:
-									var bf bytes.Buffer
-									printer.Fprint(&bf, fset, id)
-									return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
-								}
-							}
-						case *ast.BasicLit:
-							switch rhs.Kind {
-							case token.INT:
-								var bf bytes.Buffer
-								printer.Fprint(&bf, fset, id)
-								return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
-							}
-						}
+						var bf bytes.Buffer
+						printer.Fprint(&bf, fset, expr)
+						return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
+						// rhs := decl.Rhs[i]
+						// switch rhs := rhs.(type) {
+						// case *ast.UnaryExpr:
+						// 	if rhs, ok := rhs.X.(*ast.BasicLit); ok {
+						// 		switch rhs.Kind {
+						// 		case token.INT:
+						// 			var bf bytes.Buffer
+						// 			printer.Fprint(&bf, fset, id)
+						// 			return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
+						// 		}
+						// 	}
+						// case *ast.BasicLit:
+						// 	switch rhs.Kind {
+						// 	case token.INT:
+						// 		var bf bytes.Buffer
+						// 		printer.Fprint(&bf, fset, id)
+						// 		return ctx.Const(ctx.Symbol(bf.String()), ctx.IntSort())
+						// 	}
+						// }
 					}
 				}
 			}
@@ -287,18 +292,21 @@ func ConvertExprToZ3(ctx *z3.Context, expr ast.Node, fset *token.FileSet) *z3.AS
 	return nil
 }
 
-func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
+func SSAconversion(expr ast.Expr, ssaInts map[string]int) map[string]struct{} {
+	changedVars := make(map[string]struct{})
 	ast.Inspect(expr, func(node ast.Node) bool {
 		switch node := node.(type) {
 		case *ast.Ident:
-			if i, ok := ssaInts[node.Name]; ok {
+			if i, ok := ssaInts[node.Name]; ok && i != 0 {
 				if !strings.Contains("0123456789", string(node.Name[0])) {
+					changedVars[node.Name] = struct{}{}
 					node.Name = fmt.Sprint(i, node.Name)
 				}
 			}
 		}
 		return true
 	})
+	return changedVars
 }
 
 // Converts shorthand assignment forms (or IncDec) to their
@@ -307,7 +315,7 @@ func SSAconversion(expr ast.Expr, ssaInts map[string]int) {
 // Note: The identifier is copied because otherwise the
 // left and right hand side would always share the exact same
 // identifier which we would not want.
-func RessignmentConversion(node ast.Node) *ast.AssignStmt {
+func RessignmentConversion(node ast.Node, fset *token.FileSet) (*ast.AssignStmt, bool) {
 	stmt := new(ast.AssignStmt)
 	stmt.Tok = token.ASSIGN
 
@@ -325,7 +333,7 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 				return true
 			})
 			if call {
-				return nil
+				return nil, false
 			}
 		}
 
@@ -341,22 +349,28 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 		case token.REM_ASSIGN: // %=
 			tok = token.REM
 		default:
-			return node
+			return node, true
 		}
 
 		stmt.TokPos = node.TokPos
 		for i, l := range node.Lhs {
-			stmt.Lhs = append(stmt.Lhs, l)
-			var id *ast.Ident
-			if node, ok := l.(*ast.Ident); ok {
-				id = &ast.Ident{
-					Name:    node.Name,
-					NamePos: node.NamePos,
-					Obj:     node.Obj,
-				}
+			l, ok := l.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			leftCopy := &ast.Ident{
+				NamePos: l.NamePos,
+				Name:    l.Name,
+				Obj:     l.Obj,
+			}
+			stmt.Lhs = append(stmt.Lhs, leftCopy)
+			rightCopy := &ast.Ident{
+				Name:    l.Name,
+				NamePos: l.NamePos,
+				Obj:     l.Obj,
 			}
 			bin := &ast.BinaryExpr{
-				X:     id,
+				X:     rightCopy,
 				OpPos: node.TokPos,
 				Op:    tok,
 				Y:     node.Rhs[i],
@@ -370,7 +384,7 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 		case token.DEC: // --
 			tok = token.SUB
 		default:
-			return nil
+			return nil, false
 		}
 
 		stmt.TokPos = node.TokPos
@@ -392,7 +406,7 @@ func RessignmentConversion(node ast.Node) *ast.AssignStmt {
 		stmt.Rhs = append(stmt.Rhs, bin)
 	}
 
-	return stmt
+	return stmt, false
 }
 
 //Method to get condition, nil if not a conditional (specific to block wrapper) - used in traverse function
@@ -441,7 +455,7 @@ func GetVariables(curr Wrapper, filter map[string]ast.Node) []ast.Node {
 
 //Helper function to get var name (handles both assign and declaration vars)
 func GetVar(curr Wrapper, node ast.Node) (string, ast.Node) {
-	var name string = ""
+	name := ""
 
 	// fmt.Println("var", node, reflect.TypeOf(node))
 
@@ -513,243 +527,6 @@ func GetPointedName(curr Wrapper, node ast.Expr) (string, ast.Node) {
 	return fmt.Sprint(node), node
 }
 
-//Processes function node information
-func GetFuncInfo(curr Wrapper, node ast.Node) (string, map[string]ast.Node) {
-
-	funcName := ""
-	funcVars := make(map[string]ast.Node)
-
-	ast.Inspect(node, func(currNode ast.Node) bool {
-		switch node := node.(type) {
-		case *ast.FuncDecl: //Check parameters
-			funcName = node.Name.Name
-
-			if node.Type.Params != nil {
-				//Get parameters
-				for _, params := range node.Type.Params.List {
-					if params != nil {
-						//fmt.Println("Parameter", params.Names)
-						//fmt.Println("Param type", fmt.Sprint(params.Type))
-					}
-				}
-			}
-
-			//Go through body for statements
-			for _, statement := range node.Body.List {
-				switch stmt := statement.(type) {
-				case *ast.AssignStmt: //for variables
-					//fmt.Println("Assign stmt found", stmt)
-					//fmt.Println("Var name", GetVarName(stmt))
-
-					//If var is already in the map, skip
-					varName, _ := GetVar(curr, stmt)
-					if _, ok := funcVars[varName]; ok {
-
-					} else {
-						funcVars[varName] = stmt
-					}
-
-				case *ast.ReturnStmt: //Not sure if this is even needed
-					//fmt.Println("Return stmt", stmt)
-				default:
-					//fmt.Println("default", stmt)
-				}
-			}
-
-		case *ast.FuncLit:
-			//TOOD: handle literals
-		}
-		return true
-	})
-
-	return funcName, funcVars
-}
-
-//Expression String
-func GetExprStr(expr ast.Expr) string {
-	if expr == nil {
-		return ""
-	}
-
-	//Return expression based on the type
-	switch condition := expr.(type) {
-	case *ast.BasicLit:
-		return condition.Value
-	case *ast.Ident:
-		return condition.Name
-	case *ast.BinaryExpr:
-		leftStr, rightStr := "", ""
-		leftStr = GetExprStr(condition.X)
-		rightStr = GetExprStr(condition.Y)
-		return fmt.Sprint(leftStr, condition.Op, rightStr)
-	case *ast.UnaryExpr:
-		op := condition.Op.String()
-		str := GetExprStr(condition.X)
-		return fmt.Sprint(op, str)
-	case *ast.SelectorExpr:
-		selector := ""
-		if condition.Sel != nil {
-			selector = condition.Sel.String()
-		}
-		str := GetExprStr(condition.X)
-		return fmt.Sprintf("%s.%s", str, selector)
-	case *ast.ParenExpr:
-		return fmt.Sprintf("(%s)", GetExprStr(condition.X))
-	case *ast.CallExpr:
-		fn := GetExprStr(condition.Fun)
-		args := make([]string, 0)
-		for _, arg := range condition.Args {
-			args = append(args, GetExprStr(arg))
-		}
-		if condition.Ellipsis != token.NoPos {
-			args[len(args)-1] = fmt.Sprintf("%s...", args[len(args)-1])
-		}
-
-		var builder strings.Builder
-		_, _ = builder.WriteString(fmt.Sprintf("%s(", fn))
-		for i, arg := range args {
-			var s string
-			if i == len(args)-1 {
-				s = fmt.Sprintf("%s)", arg)
-			} else {
-				s = fmt.Sprintf("%s, ", arg)
-			}
-			_, _ = builder.WriteString(s)
-		}
-		if len(args) == 0 {
-			_, _ = builder.WriteString(")")
-		}
-
-		return builder.String()
-	case *ast.IndexExpr:
-		expr := GetExprStr(condition.X)
-		ndx := GetExprStr(condition.Index)
-		return fmt.Sprintf("%s[%s]", expr, ndx)
-	case *ast.KeyValueExpr:
-		key := GetExprStr(condition.Key)
-		value := GetExprStr(condition.Value)
-		return fmt.Sprint(key, ":", value)
-	case *ast.SliceExpr: // not sure about this one
-		expr := GetExprStr(condition.X)
-		low := GetExprStr(condition.Low)
-		high := GetExprStr(condition.High)
-		if condition.Slice3 {
-			max := GetExprStr(condition.Max)
-			return fmt.Sprintf("%s[%s : %s : %s]", expr, low, high, max)
-		}
-		return fmt.Sprintf("%s[%s : %s]", expr, low, high)
-	case *ast.StarExpr:
-		expr := GetExprStr(condition.X)
-		return fmt.Sprintf("*%s", expr)
-	case *ast.TypeAssertExpr:
-		expr := GetExprStr(condition.X)
-		typecast := GetExprStr(condition.Type)
-		return fmt.Sprintf("%s(%s)", typecast, expr)
-		//case *ast.FuncType:
-		//	params := fnCfg.getFuncParams(condition.Params, "")
-		//	rets := fnCfg.getFuncReturns(condition.Results)
-		//	b := strings.Builder{}
-		//	b.Write([]byte("func("))
-		//	i := 0
-		//	for _, param := range params {
-		//		b.Write([]byte(fmt.Sprintf("%s", param.VarName)))
-		//		if i < len(params)-1 {
-		//			b.Write([]byte(", "))
-		//		}
-		//	}
-		//	b.Write([]byte(")"))
-		//	for i, ret := range rets {
-		//		b.Write([]byte(fmt.Sprintf("%s %s", ret.Name, ret.ReturnType)))
-		//		if i < len(params)-1 {
-		//			b.Write([]byte(", "))
-		//		}
-		//	}
-		//	return b.String()
-	}
-	return ""
-}
-
-func GetVarExpr(curr Wrapper, assignNode *ast.AssignStmt) string {
-
-	var exprValue string
-	exprOp := assignNode.Tok.String()
-	varName, _ := GetVar(curr, assignNode)
-
-	//Checks if rhs if a variable gets a value from a function or literal
-	for _, rhsExpr := range assignNode.Rhs {
-		switch expr := rhsExpr.(type) {
-		//Basic literals indicate the var shouldn't have been returned from a function and a real value
-		case *ast.BasicLit:
-			if exprOp == ":=" {
-				exprValue = varName + " " + exprOp + " " + expr.Value
-			} else if exprOp == "=" {
-				exprValue = "var " + varName + " " + expr.Kind.String() + " " + exprOp + " " + expr.Value
-			}
-			//isFromFunction = false
-			//isReal = true
-
-		case *ast.CompositeLit: //Indicates a variable being assigned a struct/slice/array (real value?)
-			//fmt.Println("Is composite literal", expr.Type)
-
-			//Grabbing the struct/slice assignment from the composite literal
-			//litPos := expr.Type.Pos()
-			//tempFile := fnCfg.fset.Position(litPos).Filename //TODO: need fset
-			//lineNum := fnCfg.fset.Position(litPos).Line
-			//file, err := os.Open(tempFile)
-			//if err != nil {
-			//	fmt.Println("Error opening file")
-			//}
-
-			//Read file at specific line to get function name
-			//cnt := 1
-			//var rightValue string = ""
-			//scanner := bufio.NewScanner(file)
-			//for scanner.Scan() {
-			//	if cnt == lineNum {
-			//		rightValue = scanner.Text()
-			//		break
-			//	}
-			//	cnt++
-			//}
-
-			//Get the right side value assignment
-			//rightValue = rightValue[strings.Index(rightValue, "=")+2 : strings.Index(rightValue, "{")]
-			//
-			//isFromFunction = false
-			//isReal = false
-			exprValue = varName + " " + exprOp + " " + "composite lit"
-
-		default: //If it isn't a literal, it will be a symbolic value (from variable or from function)
-			//litPos := expr.Pos()
-			//tempFile := fnCfg.fset.Position(litPos).Filename
-			//lineNum := fnCfg.fset.Position(litPos).Line
-			//file, err := os.Open(tempFile)
-			//if err != nil {
-			//	fmt.Println("Error opening file")
-			//}
-			//
-			////Read file at specific line to get function name
-			//cnt := 1
-			//var rightValue string = ""
-			//scanner := bufio.NewScanner(file)
-			//for scanner.Scan() {
-			//	if cnt == lineNum {
-			//		rightValue = scanner.Text()
-			//		break
-			//	}
-			//	cnt++
-			//}
-			//
-			////Sets the variable expression
-			//isFromFunction, exprValue = isFunctionAssignment(rightValue)
-			//isReal = false
-			exprValue = varName + " " + exprOp + " default"
-		}
-	}
-
-	return exprValue
-}
-
 //Extract logging statements from a cfg block
 func ExtractLogRegex(block *cfg.Block) (regexes []string) {
 
@@ -758,12 +535,12 @@ func ExtractLogRegex(block *cfg.Block) (regexes []string) {
 		ast.Inspect(currNode, func(node ast.Node) bool {
 			if call, ok := node.(*ast.CallExpr); ok {
 				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-					if logsource.IsFromLog(sel) {
+					if helper.IsFromLog(sel) {
 						//get log regex from the node
 						for _, arg := range call.Args {
 							switch logNode := arg.(type) {
 							case *ast.BasicLit:
-								regexStr := logsource.CreateRegex(logNode.Value)
+								regexStr := helper.CreateRegex(logNode.Value)
 								regexes = append(regexes, regexStr)
 							}
 							//Currently an runtime bug with catching Msgf ->

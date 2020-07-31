@@ -5,44 +5,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"sourcecrawler/app/db"
-	"sourcecrawler/app/logsource"
+	"path/filepath"
 	"sourcecrawler/app/model"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 )
-
-func createTestNeoNodes() {
-	//These literals don't have the right amount of values
-
-	// node7 := db.StatementNode{"test.go", 7, "", nil}
-	// node6 := db.StatementNode{"test.go", 6, "another log regex", &node7}
-	// node5 := db.StatementNode{"test.go", 5, "", &node6}
-	// node4 := db.StatementNode{"test.go", 4, "my log regex", &node6}
-	// node3 := db.ConditionalNode{"test.go", 3, "myvar != nil", &node4, &node5}
-	// node2 := db.StatementNode{"test.go", 2, "", &node3}
-	// node1 := db.StatementNode{"test.go", 1, "", &node2}
-
-	// dao := db.NodeDaoNeoImpl{}
-	// //close driver when dao goes out of scope
-	// defer dao.DisconnectFromNeo()
-	// dao.CreateTree(&node1)
-
-	// nodeG := db.StatementNode{"connect.go", 7, "do nothing", nil}
-	// nodeF := db.FunctionNode{"connect.go", 6, "main", nil}
-	// nodeE := db.ConditionalNode{"connect.go", 5, "yes?", &nodeF, &nodeG}
-	// nodeD := db.FunctionDeclNode{"connect.go", 4, "func", nil, nil, nil, &nodeE}
-
-	// nodeC := db.StatementNode{"connect.go", 3, "the end", nil}
-	// nodeB := db.StatementNode{"connect.go", 2, "", &nodeC}
-	// nodeA := db.FunctionDeclNode{"connect.go", 1, "main", nil, nil, nil, &nodeB}
-
-	// cfg.PrintCfg(&nodeD, "")
-	// fmt.Println()
-	// cfg.ConnectStackTrace([]db.Node{&nodeA, &nodeD})
-	// cfg.PrintCfg(&nodeD, "")
-}
 
 type varDecls struct {
 	asns  []*ast.AssignStmt
@@ -129,32 +98,54 @@ func ParseProject(projectRoot string) []model.LogType {
 		}
 	}
 
-	//Remove duplicate regexes and log statements
-	logTypes = RemoveDuplicateLogs(logTypes)
-
 	return logTypes
 }
 
-func RemoveDuplicateLogs(logTypes []model.LogType) []model.LogType{
+/*
+ Determines if a function is called somewhere else based on its name (path and line number)
+  -currently goes through all files and finds if it's used
+*/
+func findFunctionNodes(filesToParse []string) []FdeclStruct {
 
-	filteredLogs := []model.LogType{}
+	//Map of all function names with a [line number, file path]
+	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
+	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
+	functCalls := []FdeclStruct{}
 
-	//Loop through to add only 1 copy to new array
-	for _, currLog := range logTypes{
-		var isDuplicate bool = false
-		for _, goodLog := range filteredLogs{
-			if currLog.Regex == goodLog.Regex{
-				isDuplicate = true
-				break
+	//Inspect each file for calls to this function
+	for _, file := range filesToParse {
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, file, nil, 0)
+		if err != nil {
+			log.Error().Err(err).Msg("Error parsing file " + file)
+		}
+
+		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
+		//packageName := node.Name.Name + ":"
+
+		//Inspect AST for explicit function declarations
+		ast.Inspect(node, func(currNode ast.Node) bool {
+			fdNode, ok := currNode.(*ast.FuncDecl)
+			if ok {
+				//package name is appended to separate diff functions across packages
+				functionName := fdNode.Name.Name
+				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
+				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
+
+				//Add astNode and the FuncDecl node to the function calls
+				functCalls = append(functCalls, FdeclStruct{
+					currNode,
+					fdNode,
+					fpath,
+					linePos,
+					functionName,
+				})
 			}
-		}
-
-		if !isDuplicate{
-			filteredLogs = append(filteredLogs, currLog)
-		}
+			return true
+		})
 	}
 
-	return filteredLogs
+	return functCalls
 }
 
 //This is just a struct
@@ -318,15 +309,13 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			//continue processing if CallExpr casts
 			//as a SelectorExpr
 
-			//Additional processing for "log" library in go
+			//Additional processing for "log" functions in std go library (Ex: log.Print, log.Println)
 			basicLog := strings.Contains(fmt.Sprint(ret.Fun), "log")
-
 
 			if fn, ok := ret.Fun.(*ast.SelectorExpr); ok {
 				// fmt.Printf("%T, %v\n", fn, fn)
 				//convert Selector into String for comparison
 				val := fmt.Sprint(fn.Sel)
-
 
 				//fmt.Println("Val: " + val)
 
@@ -334,7 +323,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//the preceding SelectorExpressions contain a call
 				//to log, which means this is most
 				//definitely a log statement
-				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && logsource.IsFromLog(fn)  {
+				if (strings.Contains(val, "Msg") || val == "Err" || val == "Errorf" || basicLog) && IsFromLog(fn) {				
 					parentArgs := usesParentArgs(parentFn, ret)
 					value := fnStruct{
 						n:              n,
@@ -373,7 +362,7 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 		currentLog.FilePath = fset.File(l.n.Pos()).Name()
 		currentLog.LineNumber = fset.Position(l.n.Pos()).Line
 		for _, a := range l.fn.Args {
-			good := false
+			// good := false
 			//later will be used to call functions
 			//to extract data more eficiently for multiple
 			//types of arguments
@@ -382,10 +371,10 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 			//this case catches string literals,
 			//our proof-of-concept case
 			case *ast.BasicLit:
-				good = true
-				//fmt.Println("Basic v.Value", v.Value)
+				// good = true
+				// fmt.Println("Basic", v.Value)
 
-				currentLog.Regex = logsource.CreateRegex(v.Value)
+				currentLog.Regex = CreateRegex(v.Value)
 
 				logInfo = append(logInfo, currentLog)
 
@@ -404,16 +393,16 @@ func findLogsInFile(path string, base string) ([]model.LogType, map[string]struc
 				//so we can check if declarations refer to a
 				//variable used in a log statement
 				varsInLogs[v.Name] = struct{}{}
-				good = true
+				// good = true
 
 			default:
 				//fmt.Println("type arg", reflect.TypeOf(a), a)
 			}
 			//if the type is known and handled,
 			//add it to the result array
-			if good {
-				logInfo = append(logInfo, currentLog)
-			}
+			// if good {
+			// 	logInfo = append(logInfo, currentLog)
+			// }
 		}
 		//fmt.Println()
 	}
@@ -433,64 +422,4 @@ func mapLogRegex(logInfo []model.LogType) map[int]string {
 	}
 
 	return regexMap
-}
-
-func FindMustHaves(root db.Node, stackTrace []StackTraceStruct, regexs []string) ([]db.Node, map[string]string) {
-	//must-have is on stack trace or contains a regex
-	funcLabels := make(map[string]string)
-	return findMustHavesRecur(root, stackTrace, regexs, &funcLabels), funcLabels
-}
-
-func findMustHavesRecur(n db.Node, stackTrace []StackTraceStruct, regexs []string, funcLabels *map[string]string) []db.Node {
-	funcCalls := []db.Node{}
-
-	if n != nil {
-		if n, ok := n.(*db.FunctionNode); ok {
-			funcCalls = append(funcCalls, n)
-			if isInStack(n, stackTrace) || wasLogged(n, regexs) {
-				(*funcLabels)[n.FunctionName] = "must"
-			} else {
-				(*funcLabels)[n.FunctionName] = "may"
-			}
-		}
-		for child := range n.GetChildren() {
-			funcCalls = append(funcCalls, findMustHavesRecur(child, stackTrace, regexs, funcLabels)...)
-		}
-	}
-	return funcCalls
-}
-
-func isInStack(fn db.Node, stackTrace []StackTraceStruct) bool {
-	//traverse
-	for _, trace := range stackTrace {
-		for _, funcName := range trace.FuncName {
-			if fn, ok := fn.(*db.FunctionNode); ok {
-				if fn.FunctionName == funcName {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-func wasLogged(fn db.Node, regexs []string) bool {
-	//traverse children that are not function
-	//calls and see if any contain log statements seen
-	//in regexs
-	for child := range fn.GetChildren() {
-		//stop at function nodes
-		if _, ok := child.(*db.FunctionNode); ok {
-			continue
-		}
-		if child, ok := child.(*db.StatementNode); ok {
-			if strings.Contains(strings.Join(regexs, ","), child.LogRegex) {
-				return true
-			}
-		}
-		return wasLogged(child, regexs)
-	}
-	//if no children found a matching log statment
-	//this function is not logged
-	return false
 }

@@ -1,11 +1,9 @@
 package app
 
 import (
-	// "fmt"
 	"log"
 	"net/http"
 	"sourcecrawler/app/handler"
-	// "sourcecrawler/app/model"
 	"sourcecrawler/config"
 
 	"github.com/gorilla/mux"
@@ -20,35 +18,14 @@ type App struct {
 
 // Initialize initializes the app with predefined configuration
 func (a *App) Initialize(config *config.Config) {
-	// dbURI := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True",
-	// 	config.DB.Username,
-	// 	config.DB.Password,
-	// 	config.DB.Host,
-	// 	config.DB.Port,
-	// 	config.DB.Name,
-	// 	config.DB.Charset)
-
-	// db, err := gorm.Open(config.DB.Dialect, dbURI)
-	// if err != nil {
-	// 	log.Fatal("Could not connect database")
-	// }
-	// a.DB = model.DBMigrate(db)
-	
 	a.Router = mux.NewRouter()
 	a.setRouters()
 }
 
 // setRouters sets the all required routers
 func (a *App) setRouters() {
-	a.Get("/parser", a.handleRequest(handler.GetAllLogTypes))
-	a.Post("/parser", a.handleRequest(handler.CreateProjectLogTypes))
-	a.Post("/matcher", a.handleRequest(handler.FindLogSource))
 	a.Post("/slicer", a.handleRequest(handler.SliceProgram))
 	a.Post("/unsafe", a.handleRequest(handler.UnsafeEndpoint))
-	// a.Post("/neotest", a.handleRequest(handler.NeoTest))
-	a.Post("/cfg", a.handleRequest(handler.ConnectedCfgTest))
-	a.Post("/rewrite", a.handleRequest(handler.TestRewriteCFG))
-	a.Post("/container", a.handleRequest(handler.ContainerEndpoint))
 }
 
 // Get wraps the router for GET method

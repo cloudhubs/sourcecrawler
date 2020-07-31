@@ -3,136 +3,23 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sourcecrawler/app/helper"
 	"sourcecrawler/app/unsafe"
-	"strconv"
 	"strings"
 
+	"github.com/mitchellh/go-z3"
+
 	"go/ast"
-	"go/parser"
-	"go/token"
+	"go/printer"
 	"net/http"
 	"regexp"
 	"sourcecrawler/app/cfg"
-	neoDb "sourcecrawler/app/db"
 	"sourcecrawler/app/model"
 	_ "strings" //
 
 	"github.com/jinzhu/gorm"
-	"github.com/rs/zerolog/log"
 )
-
-func ConnectedCfgTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	request := model.ParseProjectRequest{}
-
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&request); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	defer r.Body.Close()
-
-	var decls []neoDb.Node
-
-	fset := token.NewFileSet()
-	for _, goFile := range helper.GatherGoFiles(request.ProjectRoot) {
-		f, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
-		if err != nil {
-			log.Error().Err(err).Msg("unable to parse file")
-		}
-
-		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
-		//regexes := mapLogRegex(logInfo)
-
-		c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
-		ast.Inspect(f, func(node ast.Node) bool {
-			if fn, ok := node.(*ast.FuncDecl); ok {
-				// fmt.Println("parsing", fn)
-				decls = append(decls, c.CreateCfg(fn))
-			}
-			return true
-		})
-		// fmt.Println("done parsing")
-	}
-	// fmt.Println("finally done parsing")
-
-	decls = cfg.ConnectFnCfgs(decls)
-
-	for _, decl := range decls {
-		cfg.PrintCfg(decl, "")
-		fmt.Println()
-	}
-
-}
-
-//func NeoTest(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-//	helper.createTestNeoNodes()
-//}
-
-func CreateProjectLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	request := model.ParseProjectRequest{}
-
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&request); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	defer r.Body.Close()
-
-	//actually parse the project
-	logsTypes := helper.ParseProject(request.ProjectRoot)
-
-	for _, logType := range logsTypes {
-
-		// save logType to DB
-		if err := db.Save(&logType).Error; err != nil {
-			respondError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-
-	respondJSON(w, http.StatusNoContent, nil)
-}
-
-func FindLogSource(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	request := model.LogSourceRequest{}
-
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&request); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	defer r.Body.Close()
-
-	fmt.Println("Requested", request.LogMessage)
-	if response, err := matchLog(request.LogMessage, db); response != nil && err != nil {
-		// Successfully matched
-		respondJSON(w, http.StatusOK, response)
-	} else {
-		// Could not find a match
-		respondError(w, http.StatusNotFound, err.Error())
-	}
-}
-
-func GetAllLogTypes(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	types := []model.LogType{}
-	db.Find(&types)
-	respondJSON(w, http.StatusOK, types)
-}
-
-//Test Endpoint for create CFG
-func CreateCfgForFile(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	request := struct {
-		FilePath string `json:"filePath"`
-	}{}
-
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&request); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	defer r.Body.Close()
-}
 
 func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	request := struct {
@@ -158,84 +45,6 @@ func UnsafeEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// NOTE: Values can be hardcoded in here for testing (Can't run from Postman without additional docker configuration)
-//  Run the following: curl -X POST http://127.0.0.1:3000/container
-func ContainerEndpoint(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	projectRoot := "./"
-	fmt.Println("container endpoint")
-	respondJSON(w, http.StatusOK, projectRoot)
-}
-
-//Test for rewrite cfg
-func TestRewriteCFG(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	request := struct {
-		StackTrace  string   `json:"stackTrace"`
-		LogMessages []string `json:"logMessages"` //it holds raw log statements
-		ProjectRoot string   `json:"projectRoot"`
-	}{}
-
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&request); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	defer r.Body.Close()
-
-	//1 -- parse stack trace for functions that led to exception
-	parsedStack := helper.ParsePanic(request.ProjectRoot, request.StackTrace)
-
-	//2 -- Parse project for log statements with regex + line + file name
-	logTypes := helper.ParseProject(request.ProjectRoot)
-	fmt.Println(logTypes)
-
-	// 3 -- Generate CFGs (including log information) for each function in the stack trace
-	outerWrapper := cfg.SetupPersistentData(request.ProjectRoot)
-	var wrap *cfg.FnWrapper
-	for _, goFile := range outerWrapper.GetASTs() {
-
-		// extract CFGs for all relevant functions from this file
-		ast.Inspect(goFile, func(node ast.Node) bool {
-			if fn, ok := node.(*ast.FuncDecl); ok {
-				// only add this function declaration if it is part of the stack trace
-				shouldAppendFunction := false
-				//for _, value := range parsedStack {
-					for index, stackFuncName := range parsedStack.FuncName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile.Name.Name, parsedStack.FileName[index]) {
-							shouldAppendFunction = true
-							break
-						}
-					}
-				//}
-
-				if shouldAppendFunction && wrap == nil {
-					wrap = cfg.NewFnWrapper(fn, make([]ast.Expr, 0))
-				}
-			}
-			return true
-		})
-	}
-
-	//TODO: Call CFG rewrite functions
-	//Set wrapper properties if not nil
-	// if wrap != nil {
-	// 	wrap.Fset = outerWrapper.Fset
-	// 	wrap.ASTs = outerWrapper.GetASTs()
-	// 	cfg.ExpandCFG(wrap, make([]*cfg.FnWrapper, 0))
-	// }
-
-	// condStmts := make(map[ast.Node]cfg.ExecutionLabel)
-	// vars := make([]ast.Node, 0)
-
-	// path := cfg.CreateNewPath()
-	// leaves := cfg.GetLeafNodes(w)
-	// for _, leaf := range leaves {
-	// 	path.TraverseCFG(leaf, condStmts, vars, wrap, make(map[string]ast.Node))
-	// }
-
-	response := ""
-	respondJSON(w, http.StatusOK, response)
-}
-
 //Slices the program - first parses the stack trace, and then parses the project for log calls
 // -Afterwards it creates the CFG and attempts to connect each of the functions in the stack trace
 func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -252,6 +61,10 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	// fmt.Println(request.StackTrace)
+	// fmt.Println(request.LogMessages)
+	// fmt.Println(request.ProjectRoot)
+
 	//1 -- parse stack trace for functions that led to exception
 	parsedStack := helper.ParsePanic(request.ProjectRoot, request.StackTrace)
 
@@ -259,174 +72,142 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	logTypes := helper.ParseProject(request.ProjectRoot)
 
 	// Matching log messages to a regex (only returns used regexes)
-	regexes := []string{}
-	for index := range request.LogMessages {
+	seenLogTypes := []model.LogType{}
+	for _, msg := range request.LogMessages {
 		for _, value := range logTypes {
-			matched, _ := regexp.MatchString(value.Regex, request.LogMessages[index])
+			matched, _ := regexp.MatchString(value.Regex, msg)
 			if matched {
-				regexes = append(regexes, value.Regex)
+				seenLogTypes = append(seenLogTypes, value)
 				//fmt.Println("Valid regexes:", value.Regex)
 				break
 			}
 		}
 	}
 
-	// 3 -- Generate CFGs (including log information) for each function in the stack trace
-	var decls []neoDb.Node
-	fset := token.NewFileSet()
-	filesToParse := helper.GatherGoFiles(request.ProjectRoot)
-	for _, goFile := range filesToParse {
+	//Print filtered logs
+	for _, m := range seenLogTypes {
+		fmt.Println("Filtered log", m.Regex)
+	}
 
-		// only parse this file if it appears in the stack trace
-		shouldParseFile := false
-		//for _, value := range parsedStack {
-			for _, stackFileName := range parsedStack.FileName {
-				if strings.Contains(goFile, stackFileName) {
-					shouldParseFile = true
-					break
+	topLevelWrapper := cfg.SetupPersistentData(request.ProjectRoot)
+
+	// ==== Tested, should be getting the correct info
+	stack := parsedStack //likely only one stack trace
+	entryPackage := stack.PackageName[len(stack.FileName)-1]
+	entryName := stack.FuncName[len(stack.FuncName)-1]
+	//fmt.Println("entryPackage:", entryPackage)
+	//fmt.Println("entryName:", entryName)
+
+	//grab the entry function (tested)
+	var entryFnNode ast.Node
+	for _, file := range topLevelWrapper.ASTs {
+		if strings.Contains(file.Name.Name, entryPackage) {
+			for _, decl := range file.Decls {
+				if decl, ok := decl.(*ast.FuncDecl); ok {
+					if strings.EqualFold(decl.Name.Name, entryName) {
+						entryFnNode = decl
+						break
+					}
 				}
 			}
-		//}
+		}
+	}
 
-		if !shouldParseFile { // file not in stack trace, skip it
+	//Test print entry function (Good)
+	if entryFnNode != nil {
+		//fmt.Print("Entry function is: ")
+		//printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), entryFnNode)
+		//fmt.Println()
+	} else {
+		fmt.Println("EntryFnNode is nil")
+	}
+
+	//expand the cfg
+	entryWrapper := cfg.NewFnWrapper(entryFnNode, nil)
+	entryWrapper.SetOuterWrapper(topLevelWrapper)
+	cfg.ExpandCFG(entryWrapper)
+
+	//find the block originating the exceptionp
+	exceptionBlock := cfg.FindPanicWrapper(entryWrapper, &stack)
+	if exceptionBlock != nil {
+		fmt.Println("Exception block:", exceptionBlock)
+	} else {
+		fmt.Println("Error, empty exception block")
+	}
+
+	pathList := cfg.CreateNewPath()
+
+	//label the tree starting from the exception block
+	pathList.LabelCFG(exceptionBlock, seenLogTypes, exceptionBlock, stack)
+
+	//rename variables to ssa form
+	cfg.ConvertCFGtoSSAForm(entryWrapper)
+
+	//gather the paths
+	paths := pathList.TraverseCFG(exceptionBlock, exceptionBlock)
+
+	//Print labels on each constraint
+	cnt := 1
+	fmt.Println("================ Labeled constraints =========================")
+	for _, path := range paths {
+		fmt.Println("---------- PATH", cnt, " -------------")
+		cnt++
+
+		//Should print each constraint with its label
+		for index := range path.Expressions{
+			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.CopyExpressions[index])
+			fmt.Print(" ---- ", path.CopyExecStatus[index])
+			fmt.Println()
+		}
+	}
+	fmt.Printf(" ===================================================\n\n")
+	fmt.Printf("================ Final paths ===============\n")
+
+	//Print paths
+	for i, path := range paths {
+		fmt.Println("----------- PATH", i+1, " --", path.DidExecute)
+		for _, expr := range path.CopyExpressions {
+			printer.Fprint(os.Stdout, topLevelWrapper.Fset, expr)
+			fmt.Println()
+		}
+		fmt.Println()
+	}
+
+	//transform to z3
+	config := z3.NewConfig()
+	ctx := z3.NewContext(config)
+	config.Close()
+	defer ctx.Close()
+
+	s := ctx.NewSolver()
+	defer s.Close()
+
+	//solve and display each path
+	assignments := make([]map[string]*z3.AST, 0)
+	for _, path := range paths {
+		var z3group *z3.AST
+		for _, expr := range path.Expressions {
+			z3group = cfg.ConvertExprToZ3(ctx, expr, topLevelWrapper.Fset)
+			if z3group != nil {
+				s.Assert(z3group)
+			}
+		}
+
+		if v := s.Check(); v != z3.True {
+			fmt.Println("Unsolvable")
 			continue
 		}
+		m := s.Model()
+		newAssignments := m.Assignments()
+		cfg.FilterToUserInput(exceptionBlock, path.Expressions, newAssignments)
+		assignments = append(assignments, newAssignments)
 
-		// get ast root for this file
-		f, err := parser.ParseFile(fset, goFile, nil, parser.ParseComments)
-		if err != nil {
-			log.Error().Err(err).Msg("unable to parse file")
+		for name, val := range newAssignments {
+			fmt.Printf("%s = %s\n", name, val)
 		}
+		fmt.Println()
 
-		// get map of linenumber -> regex for thsi file
-		//logInfo, _ := findLogsInFile(goFile, request.ProjectRoot)
-		//regexes := mapLogRegex(logInfo)
-
-		// extract CFGs for all relevant functions from this file
-		c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
-		ast.Inspect(f, func(node ast.Node) bool {
-			if fn, ok := node.(*ast.FuncDecl); ok {
-				// only add this function declaration if it is part of the stack trace
-				shouldAppendFunction := false
-				//for _, value := range parsedStack {
-					for index, stackFuncName := range parsedStack.FuncName {
-						if stackFuncName == fn.Name.Name && strings.Contains(goFile, parsedStack.FileName[index]) {
-							shouldAppendFunction = true
-							break
-						}
-					}
-				//}
-
-				if shouldAppendFunction {
-					decls = append(decls, c.CreateCfg(fn))
-				}
-			}
-			return true
-		})
+		m.Close()
 	}
 
-	// // find all function declarations in this project
-	// allFuncDecls := findFunctionNodes(filesToParse)
-	// funcDeclMap := make(map[string]*ast.FuncDecl)
-	// for _, fn := range allFuncDecls {
-	// 	key := fmt.Sprintf("%v", fn.Name)
-	// 	funcDeclMap[key] = fn.fd
-	// }
-
-	//4 -- Connect the CFG nodes together
-	decls = cfg.ConnectFnCfgs(decls)
-
-	for _, decl := range decls {
-		fmt.Println(decl)
-	}
-
-	line, _ := strconv.Atoi(parsedStack.LineNum[0])
-
-	node := *getExceptionNode(&decls[len(decls)-1], parsedStack.FileName[0], line)
-
-	fmt.Println(node.GetFilename(), node.GetLineNumber(), node.GetParents())
-
-	c := cfg.NewFnCfgCreator("pkg", request.ProjectRoot, fset)
-
-	c.ConstructExecutionPaths(node, nil, nil, false)
-
-	var returnVal [][]string
-
-	for _, path := range c.GetExecutionPaths() {
-		var stringPath []string
-		for _, stmt := range path.Statements {
-			stringPath = append(stringPath, stmt)
-		}
-		returnVal = append(returnVal, stringPath)
-	}
-
-	respondJSON(w, http.StatusOK, returnVal)
-
-	// funcLabels := map[string]string{}
-	// funcCalls := []neoDb.Node{}
-	// mustHaves := []neoDb.Node{}
-	// mayHaves := []neoDb.Node{}
-
-	// for _, root := range decls {
-	// 	newFuncs, newLabels := FindMustHaves(root, parsedStack, regexes)
-	// 	funcLabels = cfg.MergeLabelMaps(funcLabels, newLabels)
-	// 	funcCalls = append(funcCalls, newFuncs...)
-	// }
-
-	// mustHaves, mayHaves = cfg.FilterMustMay(funcCalls, mustHaves, mayHaves, funcLabels)
-
-	// //Test print the declarations
-	// for _, decl := range decls {
-	// 	cfg.PrintCfg(decl, "")
-	// 	fmt.Println()
-	// }
-
-	// response := struct {
-	// 	MustHaveFunctions []string `json:"mustHaveFunctions"`
-	// 	MayHaveFunctions  []string `json:"mayHaveFunctions"`
-	// }{}
-
-	// response.MustHaveFunctions = convertNodesToStrings(mustHaves)
-	// response.MayHaveFunctions = convertNodesToStrings(mayHaves)
-
-	// respondJSON(w, http.StatusOK, response)
-}
-
-// Returns the function names of the passed-in function call nodes
-func convertNodesToStrings(elements []neoDb.Node) []string {
-	encountered := map[string]bool{}
-	result := []string{}
-	for _, v := range elements {
-		node := v.(*neoDb.FunctionNode)
-		if encountered[node.FunctionName] == true {
-			// Do not add duplicate.
-		} else {
-			// Record this element as an encountered element.
-			encountered[node.FunctionName] = true
-			// Append to result slice.
-			result = append(result, node.FunctionName)
-		}
-	}
-	// Return the new slice.
-	return result
-}
-
-func getExceptionNode(node *neoDb.Node, filename string, linenumber int) *neoDb.Node {
-	fmt.Println((*node).GetFilename(), (*node).GetLineNumber())
-
-	if strings.Contains((*node).GetFilename(), filename) && (*node).GetLineNumber() == linenumber {
-		return node
-	}
-
-	fmt.Println((*node).GetChildren())
-
-	for child, _ := range (*node).GetChildren() {
-		fmt.Println("child", child.GetFilename(), child.GetLineNumber())
-		newNode := getExceptionNode(&child, filename, linenumber)
-		if newNode != nil {
-			return newNode
-		}
-	}
-
-	return nil
 }

@@ -1,4 +1,4 @@
-package logsource
+package helper
 
 import (
 	"fmt"

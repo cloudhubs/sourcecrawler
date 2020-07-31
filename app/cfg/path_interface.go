@@ -3,13 +3,17 @@ package cfg
 import (
 	"fmt"
 	"go/ast"
+	"reflect"
 )
 
 // ---- Represents a possible execution path --------
 type Path struct {
 	Expressions []ast.Node                  //List of all expressions (includes conditions and vars) (slice used b/c of ordering issue with maps)
 	ExecStatus	[]ExecutionLabel			//Parallel array with Expressions
-	Stmts       map[ast.Node]ExecutionLabel
+	Stmts       map[ast.Node]ExecutionLabel 
+	DidExecute	ExecutionLabel  			//Determine if an entire branch has not executed (based on absence of log stmts)
+	CopyExpressions []ast.Node
+	CopyExecStatus []ExecutionLabel
 }
 
 //List of paths
@@ -22,7 +26,16 @@ type PathList struct {
 
 //Adds a path to the list
 func (p *PathList) AddNewPath(path Path) {
-	p.Paths = append(p.Paths, path)
+	do := true
+	for _, aPath := range p.Paths {
+		if reflect.DeepEqual(aPath, path) {
+			do = false
+			break
+		}
+	}
+	if do {
+		p.Paths = append(p.Paths, path)
+	}
 }
 
 //Instantiates a new instance of a path list

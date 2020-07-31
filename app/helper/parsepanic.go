@@ -22,11 +22,12 @@ type panicStruct struct {
 //Parsing a panic runtime stack trace (Id, messageLevel, file name and line #, function name)
 // -the fileName + LineNum + funcName will be stored in parallel arrays - same index
 type StackTraceStruct struct {
-	Id       int
-	MsgLevel string
-	FileName []string
-	LineNum  []string
-	FuncName []string
+	Id          int
+	MsgLevel    string
+	PackageName []string
+	FileName    []string
+	LineNum     []string
+	FuncName    []string
 }
 
 //Helper function to grab OS separator
@@ -64,7 +65,7 @@ func ParsePanic(projectRoot string, stackMessage string) StackTraceStruct {
 	}
 
 	//Helper map for quick function lookup
-	functionsMap := functionDeclsMap(filesToParse)
+	functionsMap := FunctionDeclsMap(filesToParse)
 
 	//Open stack trace log file (assume there will be a log file named this)
 	//file, err := os.Open("stackTrace.log")
@@ -76,11 +77,12 @@ func ParsePanic(projectRoot string, stackMessage string) StackTraceStruct {
 	//scanner := bufio.NewScanner(file)
 	stackTrc := []StackTraceStruct{}
 	tempStackTrace := StackTraceStruct{
-		Id:       1,
-		MsgLevel: "",
-		FileName: []string{},
-		LineNum:  []string{},
-		FuncName: []string{},
+		Id:          1,
+		MsgLevel:    "",
+		PackageName: []string{},
+		FileName:    []string{},
+		LineNum:     []string{},
+		FuncName:    []string{},
 	}
 	fileLineNum := 1
 	id := 1
@@ -105,11 +107,12 @@ func ParsePanic(projectRoot string, stackMessage string) StackTraceStruct {
 
 			//New statement trace
 			tempStackTrace = StackTraceStruct{
-				Id:       id,
-				MsgLevel: "",
-				FileName: []string{},
-				LineNum:  []string{},
-				FuncName: []string{},
+				Id:          id,
+				MsgLevel:    "",
+				PackageName: []string{},
+				FileName:    []string{},
+				LineNum:     []string{},
+				FuncName:    []string{},
 			}
 
 			//Assign panic type
@@ -178,6 +181,14 @@ func ParsePanic(projectRoot string, stackMessage string) StackTraceStruct {
 		//Read the file name/line number line - ONLY if a corresponding function is found
 		if functionFound && strings.Contains(logStr, ".go") {
 			fileName := logStr[strings.LastIndex(logStr, "/")+1 : strings.LastIndex(logStr, ":")]
+
+			//store package name instead of file name
+			file, err := parser.ParseFile(token.NewFileSet(), logStr[strings.Index(logStr, "/"):strings.LastIndex(logStr, ":")], nil, parser.ParseComments)
+			if err != nil {
+				panic(err)
+			}
+			packageName := file.Name.Name
+
 			indxLineNumStart := strings.LastIndex(logStr, ":")
 			lineNumLarge := logStr[indxLineNumStart+1:]
 
@@ -192,6 +203,7 @@ func ParsePanic(projectRoot string, stackMessage string) StackTraceStruct {
 			//Check for originating files where the exception was thrown (could be multiple files, parent calls, etc)
 			// We only want to match local files and not any extraneous files
 			if _, ok := localFilesMap[fileName]; ok {
+				tempStackTrace.PackageName = append(tempStackTrace.PackageName, packageName)
 				tempStackTrace.FileName = append(tempStackTrace.FileName, fileName)
 				tempStackTrace.LineNum = append(tempStackTrace.LineNum, lineNum)
 				//fmt.Println("Matching file+lines: ", fileName,LineNum)

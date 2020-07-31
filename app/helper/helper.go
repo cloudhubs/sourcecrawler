@@ -2,14 +2,14 @@ package helper
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 //Struct for quick access to the function declaration nodes
@@ -43,17 +43,26 @@ func GatherGoFiles(projectRoot string) []string {
 	return filesToParse
 }
 
+//Struct for quick access to the function declaration nodes
+type FdeclStruct struct {
+	Node     ast.Node
+	Fd       *ast.FuncDecl
+	FilePath string
+	LineNum  string
+	Name     string
+}
+
 /*
  Determines if a function is called somewhere else based on its name (path and line number)
   -currently goes through all files and finds if it's used
 */
-func functionDeclsMap(filesToParse []string) map[string][]string {
+func FunctionDeclsMap(filesToParse []string) map[string][]string {
 
 	//Map of all function names with a [line number, file path]
 	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
 	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
 	functMap := map[string][]string{}
-	functCalls := []fdeclStruct{}
+	functCalls := []FdeclStruct{}
 
 	//Inspect each file for calls to this function
 	for _, file := range filesToParse {
@@ -80,7 +89,7 @@ func functionDeclsMap(filesToParse []string) map[string][]string {
 				functMap[functionName] = data
 
 				//Add astNode and the FuncDecl node to the function calls
-				functCalls = append(functCalls, fdeclStruct{
+				functCalls = append(functCalls, FdeclStruct{
 					currNode,
 					fdNode,
 					fpath,
@@ -109,71 +118,3 @@ func functionDeclsMap(filesToParse []string) map[string][]string {
 
 	return functMap
 }
-
-/*
- Determines if a function is called somewhere else based on its name (path and line number)
-  -currently goes through all files and finds if it's used
-*/
-func findFunctionNodes(filesToParse []string) []fdeclStruct {
-
-	//Map of all function names with a [line number, file path]
-	// ex: ["HandleMessage" : {"45":"insights-results-aggregator/consumer/processing.go"}]
-	//They key is the function name. Go doesn't support function overloading -> so each name will be unique
-	functCalls := []fdeclStruct{}
-
-	//Inspect each file for calls to this function
-	for _, file := range filesToParse {
-		fset := token.NewFileSet()
-		node, err := parser.ParseFile(fset, file, nil, 0)
-		if err != nil {
-			log.Error().Err(err).Msg("Error parsing file " + file)
-		}
-
-		//Grab package name - needed to prevent duplicate function names across different packages, keep colon
-		//packageName := node.Name.Name + ":"
-
-		//Inspect AST for explicit function declarations
-		ast.Inspect(node, func(currNode ast.Node) bool {
-			fdNode, ok := currNode.(*ast.FuncDecl)
-			if ok {
-				//package name is appended to separate diff functions across packages
-				functionName := fdNode.Name.Name
-				linePos := strconv.Itoa(fset.Position(fdNode.Pos()).Line)
-				fpath, _ := filepath.Abs(fset.File(fdNode.Pos()).Name())
-
-				//Add astNode and the FuncDecl node to the function calls
-				functCalls = append(functCalls, fdeclStruct{
-					currNode,
-					fdNode,
-					fpath,
-					linePos,
-					functionName,
-				})
-			}
-			return true
-		})
-	}
-
-	return functCalls
-}
-
-//Helper function to find origin of function (not used but may need later)
-func findFuncOrigin(name string, funcDecList []fdeclStruct) {
-	for _, value := range funcDecList {
-		if name == value.fd.Name.Name {
-			fmt.Println(name, value.filePath, value.lineNum)
-		}
-	}
-}
-
-//Takes in a file name + function name -> returns AST FuncDecl node
-func getFdASTNode(fileName string, functionName string, stackFuncNodes []fdeclStruct) *ast.FuncDecl {
-	for _, val := range stackFuncNodes {
-		if strings.Contains(val.filePath, fileName) && functionName == val.Name {
-			return val.fd
-		}
-	}
-
-	return nil
-}
-

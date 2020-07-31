@@ -8,6 +8,7 @@ import (
 	"go/printer"
 	"go/token"
 	"sourcecrawler/app/helper"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/cfg"
@@ -17,29 +18,92 @@ import (
 
 func (paths *PathList) TraverseCFG(curr Wrapper, root Wrapper) []Path {
 
-	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0))
+	paths.TraverseCFGRecur(curr, make(map[string]int), make([]ast.Node, 0), root, make(map[string]ast.Node), make([]ExecutionLabel, 0), false)
 	return paths.Paths
+}
+
+func ConvertCFGtoSSAForm(root Wrapper) {
+	ConvertCFGtoSSAFormRecur(root, make(map[string]int), make(map[ast.Node]struct{}))
+}
+
+//adds function name and ssa identifier to variables, done before traversal?
+func ConvertCFGtoSSAFormRecur(curr Wrapper, ssaInts map[string]int, alreadySSA map[ast.Node]struct{}) {
+	if curr, ok := curr.(*BlockWrapper); ok {
+		for _, node := range curr.Block.Nodes {
+			good := false
+			switch node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt, ast.Expr:
+				good = true
+			}
+			if good {
+				ast.Inspect(node, func(node ast.Node) bool {
+					switch node := node.(type) {
+					case *ast.Ident:
+						//Grab function name and identifier name
+						if fn, ok := curr.GetOuterWrapper().(*FnWrapper); ok {
+							var fnName string
+							switch fn := fn.Fn.(type) {
+							case *ast.FuncDecl:
+								fnName = fn.Name.Name
+							case *ast.FuncLit:
+								//TODO: wat do??
+								fnName = "lit"
+							}
+							if !strings.Contains(node.Name, fnName+".") {
+								node.Name = fmt.Sprint(fnName, ".", node.Name)
+							}
+						}
+					}
+					return true
+				})
+			}
+		}
+		for i, node := range curr.Block.Nodes {
+			//Increment counter for each object encountered
+			switch node := node.(type) {
+			case *ast.AssignStmt, *ast.IncDecStmt:
+				artificial, same := RessignmentConversion(node, curr.GetFileSet())
+				if artificial != nil {
+					if same {
+						artificial = node.(*ast.AssignStmt)
+					}
+					for i, l := range artificial.Lhs {
+						if id, ok := l.(*ast.Ident); ok {
+							name := id.Name
+							if i, ok := ssaInts[name]; ok && i == 0 {
+								delete(ssaInts, name)
+							} else if _, ok := alreadySSA[node]; ok {
+								ssaInts[name]--
+							}
+							SSAconversion(artificial.Rhs[i], ssaInts)
+							ssaInts[name]++
+							SSAconversion(l, ssaInts)
+							alreadySSA[artificial] = struct{}{}
+						}
+					}
+					curr.Block.Nodes[i] = artificial
+				}
+			case *ast.ExprStmt:
+				SSAconversion(node.X, ssaInts)
+			case ast.Expr:
+				SSAconversion(node, ssaInts)
+			}
+		}
+	}
+
+	for _, child := range curr.GetChildren() {
+		ConvertCFGtoSSAFormRecur(child, ssaInts, alreadySSA)
+	}
 }
 
 // ------------- Traversal function ---------------
 // Assumptions: outer wrapper has already been assigned, and tree structure has been created.
 func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
-	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel) {
+	stmts []ast.Node, root Wrapper, varFilter map[string]ast.Node, pathLabels []ExecutionLabel, fromElse bool) {
 	//Check if if is a FnWrapper or BlockWrapper Type
 	switch currWrapper := curr.(type) {
 	case *FnWrapper:
-		// fmt.Println("FnWrapper", currWrapper)
-		// fnName, funcVars := GetFuncInfo(currWrapper, currWrapper.Fn) //Gets the function name and a list of variables
-		// fmt.Printf("Function name (%s), (%v)\n", fnName, funcVars)
-
 	case *BlockWrapper:
-
-		// get cond after getting variables, and replace them in the condition
-		//Gets a list of all variables inside the block, and add
-		// -Filter out relevant variables
-
-		//SSA -> map of variable names to count
-
 		if len(currWrapper.Succs) == 2 {
 			ast.Inspect(currWrapper.Block.Nodes[len(currWrapper.Block.Nodes)-1], func(node ast.Node) bool {
 				switch node := node.(type) {
@@ -66,120 +130,30 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 		}
 
 		for _, node := range currWrapper.Block.Nodes {
-			good := false
-			switch node.(type) {
-			case *ast.AssignStmt, *ast.IncDecStmt:
-				good = true
-			}
-			if good {
-				ast.Inspect(node, func(node ast.Node) bool {
-					switch node := node.(type) {
-					case *ast.Ident:
-						//Grab function name and identifier name
-						if fn, ok := currWrapper.GetOuterWrapper().(*FnWrapper); ok {
-							var fnName string
-							switch fn := fn.Fn.(type) {
-							case *ast.FuncDecl:
-								fnName = fn.Name.Name
-							case *ast.FuncLit:
-								//TODO: wat do??
-								fnName = "lit"
-							}
-							if !strings.Contains(node.Name, fnName+".") {
-								node.Name = fmt.Sprint(fnName, ".", node.Name)
-							}
-						}
-					}
-					return true
-				})
-			}
-		}
-
-		for _, node := range currWrapper.Block.Nodes {
 			//Increment counter for each object encountered
 			switch node := node.(type) {
 			case *ast.AssignStmt, *ast.IncDecStmt:
-				artificial := RessignmentConversion(node)
-				if artificial != nil {
-					for i, l := range artificial.Lhs {
-						if id, ok := l.(*ast.Ident); ok {
-							name := id.Name
-							negative := true
-							if i, ok := ssaInts[name]; ok && i > -1 {
-								negative = false
-								ssaInts[name]--
-								// Delete the map entry since a 0 would get prepended to the ID
-								if ssaInts[name] == 0 {
-									delete(ssaInts, name)
-								}
-							}
-							SSAconversion(artificial.Rhs[i], ssaInts)
-							if !negative {
-								ssaInts[name]++
-							}
-							SSAconversion(l, ssaInts)
-							ssaInts[name]++
-						}
+				reassignment, _ := RessignmentConversion(node, curr.GetFileSet())
+				if reassignment != nil {
+					stmts = append(stmts, node)				
+
+					//Override the label for assignment statements, because its label inside a block could be different from the condition's label
+					if strings.Contains(currWrapper.Block.String(), "if.done") || strings.Contains(currWrapper.Block.String(), "entry"){ //An assignment in ifDone/entry should be must
+						//fmt.Println("If done block", currWrapper.Block.String())
+						pathLabels = append(pathLabels, Must)
+					}else {
+						//fmt.Println("Lbl in conversion", currWrapper.GetLabel())
+						pathLabels = append(pathLabels, currWrapper.GetLabel())
 					}
-					stmts = append(stmts, artificial)				
-					pathLabels = append(pathLabels, currWrapper.GetLabel())
-					// if currWrapper.GetLabel() == NoLabel{
-					// 	fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
-					// }
 				}
-			case *ast.ExprStmt:
-				SSAconversion(node.X, ssaInts)
-			case ast.Expr:
-				SSAconversion(node, ssaInts)
+				// pathLabels = append(pathLabels, currWrapper.GetLabel())
 			}
 		}
 
-		//=====Integrate-labeling changes
-		// varList := GetVariables(currWrapper, varFilter)
-		// vars := []ast.Node{}
-		// // Filter out variables already in the array again
-		// for _, v := range varList {
-		// 	contained := false
-		// 	for _, existingVar := range stmts {
-		// 		if v == existingVar {
-		// 			contained = true
-		// 			break
-		// 		}
-		// 	}
-		// 	if !contained {
-		// 		vars = append([]ast.Node{v}, vars...)
-		// 		if currWrapper.GetLabel() == NoLabel{
-		// 			fmt.Println("Current wrapper has no label", currWrapper.Block.String(), currWrapper)
-		// 		}
-		// 		pathLabels = append(pathLabels, currWrapper.GetLabel())
-		// 	}
-		// }
-		// stmts = append(stmts, vars...)
-
-
-		//=========== rewrite branch changes ===============
-		// varList := GetVariables(currWrapper, varFilter)
-
-		// vars := []ast.Node{}
-		// // Filter out variables already in the array again
-		// for _, v := range varList {
-		// 	contained := false
-		// 	for _, existingVar := range stmts {
-		// 		if v == existingVar {
-		// 			contained = true
-		// 			break
-		// 		}
-		// 	}
-		// 	if !contained {
-		// 		vars = append([]ast.Node{v}, vars...)
-
-		// 	}
-		// }
-		// stmts = append(stmts, vars...)
-
-
 		//If conditional block, extract the condition and add to list
 		condition := currWrapper.GetCondition()
+
+		var isNegated bool = false //Used to assign a Must/MustNot label accordingly
 		if condition != nil {
 			ast.Inspect(condition, func(node ast.Node) bool {
 				if node, ok := node.(*ast.Ident); ok {
@@ -188,8 +162,18 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				return true
 			})
 
-			//pathLabels[condition] = currWrapper.GetLabel() //add label to conditionals
-			//pathLabels = append(pathLabels, currWrapper.GetLabel())
+			if cond, ok := condition.(ast.Expr); fromElse && ok {
+				// Came from an else and the condition is an expression
+				// so negate the condition.
+
+				condition = &ast.UnaryExpr{
+					OpPos: condition.Pos(),
+					Op:    token.NOT,
+					X:     cond,
+				}
+		
+				isNegated = true
+			}
 
 			//Prevent duplicates
 			contained := false
@@ -200,25 +184,63 @@ func (paths *PathList) TraverseCFGRecur(curr Wrapper, ssaInts map[string]int,
 				}
 			}
 			if !contained {
+
 				stmts = append(stmts, condition)
-				pathLabels = append(pathLabels, currWrapper.GetLabel())
+				if isNegated && currWrapper.GetLabel() == MustNot{
+					pathLabels = append(pathLabels, Must)
+				}else if isNegated && currWrapper.GetLabel() == Must{
+					pathLabels = append(pathLabels, MustNot)
+				}else if !isNegated{
+					pathLabels = append(pathLabels, currWrapper.GetLabel())
+				}
 			}
 		}
-
+	default:
+		fmt.Println("Default", currWrapper)
 	}
 
 	//If there are parent blocks to check, continue | otherwise add the path
 	if len(curr.GetParents()) != 0 {
 		//Go through each parent in the wrapper
 		for _, parent := range curr.GetParents() {
-			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels)
+			// Determine if the next possible conditional should be negated or not
+			children := parent.GetChildren()
+			if len(children) == 2 {
+				if children[1] == curr {
+					fromElse = true
+				} else {
+					fromElse = false
+				}
+			}
+			paths.TraverseCFGRecur(parent, ssaInts, stmts, root, varFilter, pathLabels, fromElse)
 		}
 	} else {
 
 		// the filter seems to be working but somehow vars
 		// gets 3 of the same thing (since there's 3 functions I guess)
-		// fmt.Println("hello", stmts)
-		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels})
+
+		pthLbl := Must
+		for _, status := range pathLabels{
+			if status != Must{
+				pthLbl = May
+			}
+			if status == MustNot{
+				pthLbl = MustNot
+				break
+			}
+		}
+
+		//Make shallow copy of nodes so the conditions/labels don't get changed after recursive processing (only used in printing)
+		copiedNodes := []ast.Node{}
+		for _, st := range stmts{
+			copiedNodes = append(copiedNodes, st)
+		}
+		copiedLabels := []ExecutionLabel{}
+		for _, lbl := range pathLabels{
+			copiedLabels = append(copiedLabels, lbl)
+		}
+
+		paths.AddNewPath(Path{Expressions: stmts, ExecStatus: pathLabels, DidExecute: pthLbl, CopyExpressions: copiedNodes, CopyExecStatus: copiedLabels})
 	}
 
 }
@@ -270,6 +292,10 @@ func NewFnWrapper(root ast.Node, callingArgs []ast.Expr) *FnWrapper {
 			}
 			return false
 		})
+
+		//fset := token.NewFileSet()
+		//fmt.Println("Blocks", c.Format(fset))
+
 		//gather list of parameters
 		// fmt.Println(params)
 		for _, param := range fn.Type.Params.List {
@@ -359,7 +385,11 @@ func newBlockWrapper(block *cfg.Block, parent Wrapper, outer Wrapper, cache map[
 //goal is to continuously build the CFG
 //by adding in function calls, should be called
 //from the root with an empty stack
-func ExpandCFG(w Wrapper, stack []*FnWrapper) {
+func ExpandCFG(w Wrapper) {
+	ExpandCFGRecur(w, make([]*FnWrapper, 0))
+}
+
+func ExpandCFGRecur(w Wrapper, stack []*FnWrapper) {
 	if w != nil {
 		switch b := w.(type) {
 		case *FnWrapper:
@@ -374,7 +404,7 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 				}
 			}
 			if !found {
-				ExpandCFG(b.FirstBlock, append(stack, b))
+				ExpandCFGRecur(b.FirstBlock, append(stack, b))
 			}
 		case *BlockWrapper:
 			//check if the next block is a FnWrapper
@@ -419,10 +449,9 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 						topBlock, bottomBlock := b.splitAtNodeIndex(i)
 
 						//TODO:
-						newFn := getDeclarationOfFunction(b.Outer, call, call.Args)
+						newFn := GetDeclarationOfFunction(b.Outer, call, call.Args)
 
 						//get new function wrapper
-						//newFn := b.getFunctionWrapperFor(call, call.Args)
 						if newFn != nil {
 							newFn.SetOuterWrapper(b.Outer)
 
@@ -459,7 +488,7 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 							//stop after first function, block is now
 							//obsolete, move on to sucessors of topBlock
 							for _, succ := range topBlock.Succs {
-								ExpandCFG(succ, stack)
+								ExpandCFGRecur(succ, stack)
 							}
 						}
 
@@ -475,14 +504,14 @@ func ExpandCFG(w Wrapper, stack []*FnWrapper) {
 			// it should be harmless since it has no connections
 			// and the recursion will still expand its successors
 			for _, c := range b.Succs {
-				ExpandCFG(c, stack)
+				ExpandCFGRecur(c, stack)
 			}
 		}
 	}
 }
 
 //TODO: test this because it's a mess and I'm pretty sure it'll break
-func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrapper {
+func GetDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrapper {
 	//if in map, get declaration
 	switch v := fn.(type) {
 	case *ast.CallExpr:
@@ -494,11 +523,11 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 					return NewFnWrapper(fnParam, args)
 				} else {
 					//identifier
-					return getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
+					return GetDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 				}
 			} else {
 				//if not a parameter, find it using blind method
-				return w.(*FnWrapper).FirstBlock.(*BlockWrapper).getFunctionWrapperFor(fn.(*ast.CallExpr), args)
+				return w.(*FnWrapper).FirstBlock.(*BlockWrapper).GetFunctionWrapperFor(fn.(*ast.CallExpr), args)
 			}
 		}
 	case *ast.Ident:
@@ -510,7 +539,7 @@ func getDeclarationOfFunction(w Wrapper, fn ast.Expr, args []ast.Expr) *FnWrappe
 				return NewFnWrapper(fnParam, args)
 			} else {
 				//identifier
-				return getDeclarationOfFunction(w.GetOuterWrapper(), param, args)
+				return GetDeclarationOfFunction(w.GetOuterWrapper(), param, args)
 			}
 		}
 		switch decl := v.Obj.Decl.(type) {
@@ -618,7 +647,7 @@ func GetLeafNodes(w Wrapper) []Wrapper {
 }
 
 //must be called on a Wrapper to give access to the ASTs
-func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr) *FnWrapper {
+func (b *BlockWrapper) GetFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr) *FnWrapper {
 	var fn *ast.FuncDecl
 	//loop through every AST file
 	for _, file := range b.GetASTs() {
@@ -646,6 +675,39 @@ func (b *BlockWrapper) getFunctionWrapperFor(node *ast.CallExpr, args []ast.Expr
 
 	if fn != nil {
 		return NewFnWrapper(fn, args)
+	}
+	return nil
+}
+
+func FindPanicWrapper(w Wrapper, traceStruct *helper.StackTraceStruct) Wrapper {
+	if w != nil {
+		switch w := w.(type) {
+		case *FnWrapper:
+		case *BlockWrapper:
+			for _, node := range w.Block.Nodes {
+				pos := w.GetFileSet().Position(node.Pos())
+
+				//Nil pointer checks on the node and pos
+				if node == nil {
+					fmt.Println("nil node, continue")
+					continue
+				}
+
+				if strings.Contains(pos.Filename, traceStruct.FileName[0]) {
+					lineNum, err := strconv.Atoi(traceStruct.LineNum[0])
+					if err == nil && pos.Line == lineNum {
+						return w
+					}
+				}
+
+			}
+		}
+		for _, child := range w.GetChildren() {
+			ret := FindPanicWrapper(child, traceStruct)
+			if ret != nil {
+				return ret
+			}
+		}
 	}
 	return nil
 }
