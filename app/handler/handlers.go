@@ -154,7 +154,7 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		cnt++
 
 		//Should print each constraint with its label
-		for index := range path.Expressions{
+		for index := range path.Expressions {
 			printer.Fprint(os.Stdout, topLevelWrapper.GetFileSet(), path.CopyExpressions[index])
 			fmt.Print(" ---- ", path.CopyExecStatus[index])
 			fmt.Println()
@@ -182,9 +182,16 @@ func SliceProgram(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	s := ctx.NewSolver()
 	defer s.Close()
 
+	finalPaths := []cfg.Path{}
+	for _, path := range paths {
+		if path.DidExecute != cfg.MustNot {
+			finalPaths = append(finalPaths, path)
+		}
+	}
+
 	//solve and display each path
 	assignments := make([]map[string]*z3.AST, 0)
-	for _, path := range paths {
+	for _, path := range finalPaths {
 		var z3group *z3.AST
 		for _, expr := range path.Expressions {
 			z3group = cfg.ConvertExprToZ3(ctx, expr, topLevelWrapper.Fset)
